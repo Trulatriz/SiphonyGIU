@@ -11,6 +11,7 @@ from modules.sem_module import SEMImageEditor as SEMModule
 from modules.oc_module import OCModule
 from modules.pdr_module import PDRModule
 from modules.plot_module import PlotModule
+from modules.heatmap_module import HeatmapModule
 from modules.settings_manager import SettingsManager, SettingsDialog
 from modules.foam_type_manager import FoamTypeManager, FoamTypeDialog, PaperDialog, NewPaperDialog, ManageFoamsDialog, ManagePapersDialog
 
@@ -148,8 +149,16 @@ class PressTechGUI:
         )
         manage_foams_btn.grid(row=1, column=1, padx=10, pady=10, sticky=(tk.W, tk.E))
 
+        heatmap_btn = ttk.Button(
+            buttons_frame,
+            text="🔥 HEATMAPS",
+            command=self.open_heatmap,
+            **button_style
+        )
+        heatmap_btn.grid(row=1, column=2, padx=10, pady=10, sticky=(tk.W, tk.E))
+
         # Add tooltips
-        self.add_tooltips(analysis_btn, combine_btn, specific_btn, manage_papers_btn, manage_foams_btn)
+        self.add_tooltips(analysis_btn, combine_btn, specific_btn, manage_papers_btn, manage_foams_btn, heatmap_btn)
     
     def add_tooltips(self, *buttons):
         """Add tooltips to buttons"""
@@ -168,6 +177,8 @@ class PressTechGUI:
                 tooltip_map[b] = "Review papers, base folders, and delete or relocate"
             elif 'MANAGE FOAMS' in txt:
                 tooltip_map[b] = "Edit foam types per paper and global list"
+            elif 'HEATMAPS' in txt:
+                tooltip_map[b] = "Spearman heatmaps with column selection"
 
         for button, text in tooltip_map.items():
             self.create_tooltip(button, text)
@@ -268,6 +279,7 @@ class PressTechGUI:
         # Tools menu
         tools_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Tools", menu=tools_menu)
+        tools_menu.add_command(label="Heatmaps", command=self.open_heatmap)
 
         # Plots menu
         plots_menu = tk.Menu(menubar, tearoff=0)
@@ -783,6 +795,13 @@ Developed for advanced polymer foam research.
         except Exception as e:
             messagebox.showerror("Error", f"Failed to manage papers: {str(e)}")
 
+
+
+    def open_heatmap(self):
+        try:
+            HeatmapModule(self.root, self.settings)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open heatmap module: {str(e)}")
 
 
     def manage_foams(self):

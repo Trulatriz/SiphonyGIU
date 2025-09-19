@@ -17,6 +17,7 @@ class SettingsManager:
             "last_histogram_folder": "",
             "last_dsc_folder": "",
             "last_oc_folder": "",
+            "last_heatmap_file": "",
             "auto_save_enabled": True,
             "auto_save_interval": 10,
             "backup_enabled": True,
