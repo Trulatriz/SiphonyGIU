@@ -1,0 +1,50 @@
+{
+  "last_output_file": "",
+  "last_doe_file": "",
+  "last_density_file": "",
+  "last_pdr_file": "",
+  "last_histogram_folder": "",
+  "last_dsc_folder": "",
+  "last_oc_folder": "",
+  "auto_save_enabled": true,
+  "auto_save_interval": 10,
+  "backup_enabled": true,
+  "validation_enabled": true,
+  "parallel_processing": false,
+  "theme": "light",
+  "window_geometry": "800x600+880+420",
+  "recent_files": [],
+  "max_recent_files": 10,
+  "plot_last_state": {
+    "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\Results\\All_Results_20250918.xlsx::All_Results": {
+      "x": "m(g)",
+      "y": "\u00f8 (\u00b5m)",
+      "group": "<None>",
+      "errorbars": false,
+      "monochrome": false,
+      "dpi": 300,
+      "constraints": {
+        "m(g)": "",
+        "Water (g)": "",
+        "T (\u00b0C)": "",
+        "P CO2 (bar)": "",
+        "t (min)": ""
+      }
+    },
+    "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\Results\\All_Results_20250918.xlsx::HDPE": {
+      "x": "T (\u00b0C)",
+      "y": "\u03c1 foam (g/cm^3)",
+      "group": "Water (g)",
+      "errorbars": false,
+      "monochrome": false,
+      "dpi": 300,
+      "constraints": {
+        "m(g)": "",
+        "Water (g)": "",
+        "T (\u00b0C)": "",
+        "P CO2 (bar)": "200.0",
+        "t (min)": "30.0"
+      }
+    }
+  }
+}

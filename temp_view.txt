@@ -1,0 +1,43 @@
+    def create_buttons(self):
+        """Create the main functionality buttons"""
+        buttons_frame = ttk.Frame(self.main_frame)
+        buttons_frame.grid(row=1, column=0, pady=20, sticky=(tk.W, tk.E))
+        buttons_frame.columnconfigure(0, weight=1)
+        buttons_frame.columnconfigure(1, weight=1)
+        buttons_frame.columnconfigure(2, weight=1)
+
+        # Button configuration (ttk.Button doesn't support font option)
+        button_style = {
+            'width': 25,
+            'padding': 15
+        }
+
+        # Row 1: Analysis and Combine (paper-level)
+        analysis_btn = ttk.Button(
+            buttons_frame,
+            text="📊 ANALYSIS RESULTS",
+            command=self.open_analysis,
+            **button_style
+        )
+        analysis_btn.grid(row=0, column=0, padx=10, pady=10, sticky=(tk.W, tk.E))
+
+        combine_btn = ttk.Button(
+            buttons_frame,
+            text="⚡ SMART COMBINE",
+            command=self.open_combine,
+            **button_style
+        )
+        combine_btn.grid(row=0, column=1, padx=10, pady=10, sticky=(tk.W, tk.E))
+
+        # Row 1: Entry point to foam-specific analysis
+        specific_btn = ttk.Button(
+            buttons_frame,
+            text="🔬 FOAM-SPECIFIC ANALYSIS",
+            command=self.show_foam_specific_dialog,
+            **button_style
+        )
+        specific_btn.grid(row=0, column=2, padx=10, pady=10, sticky=(tk.W, tk.E))
+
+        # Add tooltips
+        self.add_tooltips(analysis_btn, combine_btn, specific_btn)
+    

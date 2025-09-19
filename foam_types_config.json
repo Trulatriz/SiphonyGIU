@@ -1,0 +1,196 @@
+{
+  "foam_types": [
+    "HDPE",
+    "PS",
+    "LDPE",
+    "PP",
+    "HDPE-PEG",
+    "HDPE-MCC",
+    "PS-cork0",
+    "PS-cork"
+  ],
+  "current_foam_type": "HDPE",
+  "module_paths": {
+    "OC": {
+      "TEST": {
+        "PP": {
+          "input_folder": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\PP\\Open-cell content\\Input",
+          "output_folder": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\PP\\Open-cell content\\Output",
+          "density_file": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\Density.xlsx",
+          "results_file": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\PP\\Open-cell content\\Output\\OC_Results_PP.xlsx",
+          "last_used": "2025-09-08T20:46:34.419927"
+        },
+        "HDPE": {
+          "input_folder": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\HDPE\\Open-cell content\\Input",
+          "output_folder": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\HDPE\\Open-cell content\\Output",
+          "density_file": "C:/Users/x/OneDrive - UVa/Tesis doctoral/PressTech/TEST/TEST/Density.xlsx",
+          "results_file": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\HDPE\\Open-cell content\\Output\\OC_Results_HDPE.xlsx",
+          "last_used": "2025-09-08T20:46:44.327460"
+        },
+        "PS": {
+          "input_folder": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\PS\\Open-cell content\\Input",
+          "output_folder": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\PS\\Open-cell content\\Output",
+          "density_file": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\Density.xlsx",
+          "results_file": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\PS\\Open-cell content\\Output\\OC_Results_PS.xlsx",
+          "last_used": "2025-09-08T20:35:28.737317"
+        },
+        "LDPE": {
+          "input_folder": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\LDPE\\Open-cell content\\Input",
+          "output_folder": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\LDPE\\Open-cell content\\Output",
+          "density_file": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\Density.xlsx",
+          "results_file": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\LDPE\\Open-cell content\\Output\\OC_Results_LDPE.xlsx",
+          "last_used": "2025-09-08T20:52:26.808594"
+        }
+      }
+    },
+    "PDR": {
+      "TEST": {
+        "HDPE": {}
+      }
+    },
+    "DSC": {
+      "TEST": {
+        "HDPE": {
+          "input_folder": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\HDPE\\DSC\\Input",
+          "output_folder": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\HDPE\\DSC\\Output",
+          "results_file": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\HDPE\\DSC\\Output\\DSC_Results_HDPE.xlsx",
+          "last_used": "2025-09-05T13:40:09.728657"
+        },
+        "PS": {
+          "input_folder": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\PS\\DSC\\Input",
+          "output_folder": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\PS\\DSC\\Output",
+          "results_file": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\PS\\DSC\\Output\\DSC_Results_PS.xlsx",
+          "last_used": "2025-09-05T13:40:17.040301"
+        },
+        "LDPE": {
+          "input_folder": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\LDPE\\DSC\\Input",
+          "output_folder": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\LDPE\\DSC\\Output",
+          "results_file": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\LDPE\\DSC\\Output\\DSC_Results_LDPE.xlsx",
+          "last_used": "2025-09-05T13:40:27.573268"
+        }
+      }
+    },
+    "SEM": {
+      "TEST": {
+        "PP": {},
+        "PS": {},
+        "HDPE": {},
+        "LDPE": {}
+      }
+    }
+  },
+  "papers": [
+    "TEST",
+    "HDPE_TW",
+    "HDPE_PEG_MCC",
+    "PS_cork",
+    "HDPE_MOBO"
+  ],
+  "current_paper": "HDPE_TW",
+  "all_results_paths": {},
+  "module_scopes": {
+    "Combine": "paper",
+    "Analysis": "paper",
+    "PDR": "paper+foam",
+    "OC": "paper+foam",
+    "SEM": "paper+foam",
+    "DSC": "paper+foam"
+  },
+  "paper_foam_types": {
+    "Paper 1": [
+      "HDPE",
+      "PS",
+      "LDPE",
+      "PP"
+    ],
+    "Paper 4": [
+      "PS",
+      "PP"
+    ],
+    "Paper 5": [
+      "HDPE",
+      "PS",
+      "LDPE",
+      "PP"
+    ],
+    "Paper 6": [
+      "HDPE",
+      "PS",
+      "LDPE",
+      "PP"
+    ],
+    "pmma": [
+      "HDPE"
+    ],
+    "Paper 2": [
+      "HDPE",
+      "PS",
+      "LDPE",
+      "PP"
+    ],
+    "Paper 3": [],
+    "test": [
+      "HDPE",
+      "PS",
+      "LDPE",
+      "PP"
+    ],
+    "Paper 7": [
+      "HDPE",
+      "PS",
+      "LDPE",
+      "PP"
+    ],
+    "Paper 8": [
+      "HDPE",
+      "PS",
+      "LDPE",
+      "PP"
+    ],
+    "Paper 9": [
+      "HDPE",
+      "PS",
+      "LDPE",
+      "PP"
+    ],
+    "Paper 10": [
+      "HDPE",
+      "PS",
+      "LDPE",
+      "PP"
+    ],
+    "TEST": [
+      "HDPE",
+      "PS",
+      "LDPE",
+      "PP"
+    ],
+    "HDPE_TW": [
+      "HDPE"
+    ],
+    "HDPE_PEG_MCC": [
+      "HDPE",
+      "HDPE-PEG",
+      "HDPE-MCC"
+    ],
+    "PS_cork": [
+      "PS",
+      "PS-cork0",
+      "PS-cork"
+    ],
+    "HDPE_MOBO": [
+      "HDPE"
+    ]
+  },
+  "paper_root_paths": {
+    "Paper 7": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\Paper 7",
+    "Paper 8": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\Paper 8",
+    "test": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\test",
+    "Paper 10": "Paper 10",
+    "TEST": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST",
+    "HDPE_TW": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW",
+    "HDPE_PEG_MCC": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_PEG_MCC",
+    "PS_cork": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\PS_cork",
+    "HDPE_MOBO": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_MOBO"
+  }
+}

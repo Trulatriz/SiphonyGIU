@@ -1,0 +1,1041 @@
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+import pandas as pd
+import os
+import re
+import glob
+import warnings
+from .foam_type_manager import FoamTypeManager, FoamTypeSelector
+
+# Suppress warnings for better user experience
+warnings.filterwarnings("ignore", category=FutureWarning, module="pandas")
+
+
+class OCModule:
+    def __init__(self, root, paper_path=None, foam_type=None):
+        self.root = root
+        self.root.title("Open-Cell Content Analysis")
+        self.root.geometry("900x700")
+
+        # Store context
+        self.paper_path = paper_path
+        self.foam_manager = FoamTypeManager()
+
+        # Current foam type
+        if foam_type and foam_type in self.foam_manager.get_foam_types():
+            self.current_foam_type = foam_type
+        else:
+            self.current_foam_type = self.foam_manager.get_current_foam_type()
+
+        # Paths / state
+        self.picnometry_folder = None
+        self.selected_picnometry_files = []
+        self.density_file = None
+        self.output_folder = None
+        
+        # Review data after processing
+        self.processed_data = []  # List of dicts with processing results
+        self.review_window = None
+
+        # Suggest density at paper root
+        if self.paper_path:
+            maybe_density = os.path.join(self.paper_path, "Density.xlsx")
+            if os.path.exists(maybe_density):
+                self.density_file = maybe_density
+
+        self.create_widgets()
+
+    def create_widgets(self):
+        main = ttk.Frame(self.root, padding="10")
+        main.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.W, tk.E))
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=1)
+        main.columnconfigure(0, weight=1)
+        main.rowconfigure(3, weight=1)
+
+        ttk.Label(main, text="Open-Cell Content Analysis", font=("Arial", 16, "bold")).grid(row=0, column=0, pady=(0, 16))
+
+        # Foam type selector
+        self.foam_selector = FoamTypeSelector(main, self.foam_manager, self.on_foam_type_changed)
+
+        setup = ttk.LabelFrame(main, text="Setup Files and Folders", padding="10")
+        setup.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(4, 10))
+        setup.columnconfigure(1, weight=1)
+
+        # Input folder like PDR
+        ttk.Label(setup, text="Input Folder:").grid(row=0, column=0, sticky=tk.W, pady=(0, 5))
+        self.picnometry_folder_var = tk.StringVar()
+        ttk.Entry(setup, textvariable=self.picnometry_folder_var, state="readonly", width=60).grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(10, 5))
+        ttk.Button(setup, text="Browse", command=self.browse_picnometry_folder).grid(row=0, column=2)
+
+        # Density file (paper-level)
+        ttk.Label(setup, text="Density File:").grid(row=1, column=0, sticky=tk.W, pady=(5, 5))
+        self.density_file_var = tk.StringVar()
+        ttk.Entry(setup, textvariable=self.density_file_var, state="readonly", width=60).grid(row=1, column=1, sticky=(tk.W, tk.E), padx=(10, 5))
+        ttk.Button(setup, text="Browse", command=self.browse_density_file).grid(row=1, column=2)
+
+        # Output folder
+        ttk.Label(setup, text="Output Folder:").grid(row=2, column=0, sticky=tk.W, pady=(5, 5))
+        self.output_folder_var = tk.StringVar()
+        ttk.Entry(setup, textvariable=self.output_folder_var, state="readonly", width=60).grid(row=2, column=1, sticky=(tk.W, tk.E), padx=(10, 5))
+        ttk.Button(setup, text="Browse", command=self.browse_output_folder).grid(row=2, column=2)
+
+        # Results file
+        ttk.Label(setup, text="OC Results:").grid(row=3, column=0, sticky=tk.W, pady=(5, 0))
+        self.results_file_var = tk.StringVar()
+        results_row = ttk.Frame(setup)
+        results_row.grid(row=3, column=1, columnspan=2, sticky=(tk.W, tk.E))
+        results_row.columnconfigure(0, weight=1)
+        ttk.Entry(results_row, textvariable=self.results_file_var, state="readonly", width=60).grid(row=0, column=0, sticky=(tk.W, tk.E), padx=(10, 5))
+        ttk.Button(results_row, text="Open/Create", command=self.open_or_create_results_file).grid(row=0, column=1)
+
+        # Suggested paths
+        self.load_suggested_paths()
+
+        # Scan button
+        ttk.Button(setup, text="🔍 Scan Folder", command=self.scan_picnometry_files).grid(row=4, column=0, pady=(10, 5))
+
+        # Files table
+        file_frame = ttk.LabelFrame(main, text="Selected Picnometry Files", padding="10")
+        file_frame.grid(row=3, column=0, sticky=(tk.N, tk.S, tk.W, tk.E))
+        file_frame.columnconfigure(0, weight=1)
+        file_frame.rowconfigure(1, weight=1)
+
+        # Selection buttons
+        sel_frame = ttk.Frame(file_frame)
+        sel_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 5))
+        ttk.Button(sel_frame, text="Select All", command=self.select_all_files).grid(row=0, column=0, padx=(0, 5))
+        ttk.Button(sel_frame, text="Select None", command=self.select_none_files).grid(row=0, column=1, padx=(0, 5))
+        ttk.Label(sel_frame, text="(Ctrl+Click to select/deselect individual files)").grid(row=0, column=2, padx=(10, 0))
+
+        cols = ("filename", "size", "status")
+        self.file_tree = ttk.Treeview(file_frame, columns=cols, show="headings", height=8, selectmode="extended")
+        self.file_tree.heading("filename", text="Picnometry File Name")
+        self.file_tree.heading("size", text="Size (KB)")
+        self.file_tree.heading("status", text="Status")
+        self.file_tree.column("filename", width=420)
+        self.file_tree.column("size", width=100, anchor="center")
+        self.file_tree.column("status", width=160, anchor="center")
+        self.file_tree.grid(row=1, column=0, sticky=(tk.N, tk.S, tk.W, tk.E))
+        vbar = ttk.Scrollbar(file_frame, orient=tk.VERTICAL, command=self.file_tree.yview)
+        vbar.grid(row=1, column=1, sticky=(tk.N, tk.S))
+        self.file_tree.configure(yscrollcommand=vbar.set)
+        
+        # Bind Ctrl+Click for selection (remove old click binding)
+        self.file_tree.bind("<Control-Button-1>", self.on_ctrl_click)
+
+        # Buttons
+        btns = ttk.Frame(main)
+        btns.grid(row=4, column=0, pady=10)
+        ttk.Button(btns, text=" Process Selected", command=self.process_files).grid(row=0, column=0, padx=(0, 10))
+        ttk.Button(btns, text="📊 Open/Create Results", command=self.open_or_create_results_file).grid(row=0, column=1, padx=(0, 10))
+        ttk.Button(btns, text="💾 Save Paths", command=self.save_current_paths).grid(row=0, column=2, padx=(0, 10))
+        ttk.Button(btns, text="❌ Close", command=self.root.destroy).grid(row=0, column=3)
+
+        # Status + progress
+        self.status_var = tk.StringVar(value="Ready - Select foam type and configure paths")
+        ttk.Label(main, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W).grid(row=5, column=0, sticky=(tk.W, tk.E))
+        self.progress = ttk.Progressbar(main, mode="determinate")
+        self.progress.grid(row=6, column=0, sticky=(tk.W, tk.E), pady=(5, 0))
+
+        # Pre-fill shown values if known
+        if self.density_file:
+            self.density_file_var.set(self.density_file)
+
+    def load_suggested_paths(self):
+        sug = self.foam_manager.get_suggested_paths("OC", self.current_foam_type)
+        if not sug:
+            return
+        # Input (suggested path even if it doesn't exist yet)
+        if sug.get("input_folder"):
+            if os.path.exists(sug["input_folder"]) or not self.picnometry_folder:
+                self.picnometry_folder = sug["input_folder"]
+                self.picnometry_folder_var.set(self.picnometry_folder)
+        # Output (suggested path even if it doesn't exist yet)
+        if sug.get("output_folder"):
+            if os.path.exists(sug["output_folder"]) or not self.output_folder:
+                self.output_folder = sug["output_folder"]
+                self.output_folder_var.set(self.output_folder)
+        # Density (suggested path even if it doesn't exist yet)
+        if sug.get("density_file"):
+            if os.path.exists(sug["density_file"]) or not self.density_file:
+                self.density_file = sug["density_file"]
+                self.density_file_var.set(self.density_file)
+        # Results file path suggestion
+        if sug.get("results_file"):
+            self.results_file_var.set(sug["results_file"])
+
+    def on_foam_type_changed(self, new_type):
+        # Save current paths before switching
+        if self.output_folder or self.density_file or self.picnometry_folder:
+            self.save_current_paths()
+        self.current_foam_type = new_type
+        # Clear files table
+        for item in self.file_tree.get_children():
+            self.file_tree.delete(item)
+        self.selected_picnometry_files = []
+        # Reload suggestions
+        self.load_suggested_paths()
+        self.status_var.set(f"Switched to {new_type} - paths updated")
+
+    def save_current_paths(self):
+        data = {}
+        if self.picnometry_folder:
+            data["input_folder"] = self.picnometry_folder
+        if self.output_folder:
+            data["output_folder"] = self.output_folder
+        if self.density_file:
+            data["density_file"] = self.density_file
+        if self.results_file_var.get():
+            data["results_file"] = self.results_file_var.get()
+        if data:
+            self.foam_manager.save_module_paths("OC", self.current_foam_type, data)
+            self.status_var.set(f"Paths saved for {self.current_foam_type}")
+
+    def on_ctrl_click(self, event):
+        """Handle Ctrl+Click for file selection (similar to PDR)"""
+        pass  # Let default treeview selection handle this
+
+    def select_all_files(self):
+        """Select all files in the tree"""
+        for item in self.file_tree.get_children():
+            self.file_tree.selection_add(item)
+
+    def select_none_files(self):
+        """Deselect all files in the tree"""
+        self.file_tree.selection_remove(self.file_tree.selection())
+
+    def get_selected_files(self):
+        """Get list of files that are selected in the treeview"""
+        selected = []
+        selected_items = self.file_tree.selection()
+        for item in selected_items:
+            values = self.file_tree.item(item, "values")
+            if values:
+                filename = values[0]  # filename is now in first column
+                # Find full path
+                for full_path in self.selected_picnometry_files:
+                    if os.path.basename(full_path) == filename:
+                        selected.append(full_path)
+                        break
+        return selected
+
+    def browse_picnometry_folder(self):
+        # Try suggested as initial dir
+        initial = None
+        sug = self.foam_manager.get_suggested_paths("OC", self.current_foam_type)
+        if sug and sug.get("input_folder"):
+            initial = sug["input_folder"]
+        folder = filedialog.askdirectory(title="Select Picnometry Folder", initialdir=initial)
+        if folder:
+            self.picnometry_folder = folder
+            self.picnometry_folder_var.set(folder)
+            self.scan_picnometry_files()
+
+    def scan_picnometry_files(self):
+        self.selected_picnometry_files = []
+        folder = self.picnometry_folder or self.picnometry_folder_var.get()
+        if not folder:
+            messagebox.showwarning("No folder", "Please select an Input Folder first.")
+            return
+        excel_files = []
+        for ext in ("*.xlsx", "*.xls"):
+            excel_files.extend(glob.glob(os.path.join(folder, ext)))
+        excel_files = sorted(excel_files)
+        if not excel_files:
+            messagebox.showinfo("Info", "No Excel files found in the selected folder")
+            self.update_file_tree([])
+            return
+        self.selected_picnometry_files = excel_files
+        self.update_file_tree(excel_files)
+        self.status_var.set(f"Found {len(excel_files)} files in folder")
+
+    def update_file_tree(self, files):
+        for item in self.file_tree.get_children():
+            self.file_tree.delete(item)
+        for p in files:
+            name = os.path.basename(p)
+            try:
+                size_kb = round(os.path.getsize(p) / 1024, 1)
+            except Exception:
+                size_kb = "?"
+            item = self.file_tree.insert("", "end", values=(name, size_kb, "Ready"))
+            # Select all by default
+            self.file_tree.selection_add(item)
+
+    def browse_density_file(self):
+        initial = None
+        sug = self.foam_manager.get_suggested_paths("OC", self.current_foam_type)
+        if sug and sug.get("density_file"):
+            initial = os.path.dirname(sug["density_file"]) or None
+        filename = filedialog.askopenfilename(
+            title="Select Density.xlsx file",
+            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+            initialfile="Density.xlsx",
+            initialdir=initial,
+        )
+        if filename:
+            self.density_file = filename
+            self.density_file_var.set(filename)
+            self.status_var.set(f"Density file set: {os.path.basename(filename)}")
+
+    def browse_output_folder(self):
+        initial = None
+        sug = self.foam_manager.get_suggested_paths("OC", self.current_foam_type)
+        if sug and sug.get("output_folder"):
+            initial = os.path.dirname(sug["output_folder"]) or None
+        folder = filedialog.askdirectory(title="Select output folder", initialdir=initial)
+        if folder:
+            self.output_folder = folder
+            self.output_folder_var.set(folder)
+            # Suggest results file path if not set
+            results = os.path.join(folder, self.get_output_filename())
+            self.results_file_var.set(results)
+            self.status_var.set(f"Output folder set: {os.path.basename(folder)}")
+
+    def get_output_filename(self):
+        """Generate dynamic filename based on foam type"""
+        if not self.current_foam_type:
+            print(f"Warning: current_foam_type is empty or None: '{self.current_foam_type}'")
+            return "OC_Results.xlsx"  # Fallback
+        return f"OC_Results_{self.current_foam_type}.xlsx"
+
+    def open_or_create_results_file(self):
+        target = self.results_file_var.get()
+        if not target:
+            sug = self.foam_manager.get_suggested_paths("OC", self.current_foam_type)
+            target = sug.get("results_file") if sug else None
+            if not target:
+                messagebox.showerror("Error", "No results file path configured. Set an Output Folder first.")
+                return
+            self.results_file_var.set(target)
+        
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        
+        if os.path.exists(target):
+            # File exists, open it directly
+            try:
+                os.startfile(target)
+                self.status_var.set(f"Opened {os.path.basename(target)}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to open results file: {e}")
+        else:
+            # File doesn't exist, ask to create
+            response = messagebox.askyesno(
+                "Create OC Results File", 
+                "No OC results file found. Would you like to create a new one?"
+            )
+            
+            if response:
+                try:
+                    cols = [
+                        "Label",
+                        "Density (g/cm3)",
+                        "m (g)",
+                        "Vext (cm3)",
+                        "Vpyc unfixed (cm3)",
+                        "Vpyc (cm3)",
+                        "ρr",
+                        "Vext - Vpyc (cm3)",
+                        "1-ρr",
+                        "Vext(1-ρr) (cm3)",
+                        "%OC",
+                        "Comment Analysis",
+                    ]
+                    pd.DataFrame(columns=cols).to_excel(target, index=False, engine="openpyxl")
+                    # Overwrite with canonical headers to avoid duplicates/mojibake
+                    try:
+                        _canon_cols = [
+                            "Label",
+                            "\u03C1 foam (g/cm^3)",
+                            "m (g)",
+                            "Vext (cm3)",
+                            "Vpyc unfixed (cm3)",
+                            "Vpyc (cm3)",
+                            "\u03C1r",
+                            "Vext - Vpyc (cm3)",
+                            "1-\u03C1r",
+                            "Vext(1-\u03C1r) (cm3)",
+                            "%OC",
+                            "Comment Analysis",
+                        ]
+                        pd.DataFrame(columns=_canon_cols).to_excel(target, index=False, engine="openpyxl")
+                    except Exception:
+                        pass
+                    self.status_var.set(f"Created {os.path.basename(target)}")
+                    
+                    # Open the newly created file
+                    os.startfile(target)
+                    messagebox.showinfo("Success", f"New OC results file created and opened:\\n{target}")
+                    
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to create OC results file: {str(e)}")
+                    self.status_var.set("Error creating OC results file")
+
+    # ---------- Processing ----------
+    def process_files(self):
+        selected_files = self.get_selected_files()
+        if not selected_files:
+            messagebox.showerror("Error", "No files selected for processing. Check files in the list.")
+            return
+        if not self.density_file or not os.path.exists(self.density_file):
+            messagebox.showerror("Error", "Density.xlsx not set or not found.")
+            return
+        if not self.output_folder:
+            messagebox.showerror("Error", "Output folder not selected.")
+            return
+        os.makedirs(self.output_folder, exist_ok=True)
+
+        # Load density for current foam sheet
+        try:
+            density_df = pd.read_excel(self.density_file, sheet_name=self.current_foam_type, engine="openpyxl")
+            density_df["Label"] = density_df["Label"].astype(str)
+            density_df.set_index("Label", inplace=True)
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not read density sheet for '{self.current_foam_type}': {e}")
+            return
+
+        # Map fixed Excel columns to iloc positions (F for density, I for rho_r)
+        try:
+            # Label is in column B in Density.xlsx
+            self._density_pos = self._excel_letter_to_iloc_pos('F', label_letter='B')
+            self._rho_r_pos = self._excel_letter_to_iloc_pos('I', label_letter='B')
+            ncols_check = density_df.shape[1]
+            if not (0 <= self._density_pos < ncols_check and 0 <= self._rho_r_pos < ncols_check):
+                raise IndexError(f"Positions out of range (ncols={ncols_check}): F->{self._density_pos}, I->{self._rho_r_pos}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to map Excel columns F/I: {e}")
+            return
+
+        self.progress["maximum"] = len(selected_files)
+        self.progress["value"] = 0
+        self.processed_data = []
+        errors = 0
+
+        for i, path in enumerate(selected_files):
+            fname = os.path.basename(path)
+            self.status_var.set(f"Processing {fname}…")
+            self.root.update()
+            ok, data = self.process_single_file(path, density_df)
+            if ok and data:
+                # Add extra info for review
+                data['filename'] = fname
+                data['filepath'] = path
+                self.processed_data.append(data)
+                self._set_tree_status(fname, "✅ Processed")
+            else:
+                errors += 1
+                self._set_tree_status(fname, "❌ Error")
+            self.progress["value"] = i + 1
+            self.root.update()
+
+        if self.processed_data:
+            # Show review window instead of saving directly
+            self.show_review_window()
+            self.status_var.set(f"Processed: {len(self.processed_data)} files ready for review")
+        else:
+            self.status_var.set("No files were successfully processed")
+
+        self.progress["value"] = 0
+
+    def _set_tree_status(self, filename, status):
+        for item in self.file_tree.get_children():
+            vals = self.file_tree.item(item)["values"]
+            if vals and len(vals) > 0 and vals[0] == filename:  # filename is now in column 0
+                self.file_tree.set(item, "status", status)
+                return
+
+    def process_single_file(self, file_path, density_df):
+        fname = os.path.basename(file_path)
+        try:
+            label = os.path.splitext(fname)[0]
+            for sep in (" ", "-", "_"):
+                prefix = f"{self.current_foam_type}{sep}"
+                if label.startswith(prefix):
+                    label = label[len(prefix):]
+                    break
+
+            # Decide engine by extension
+            engine = "openpyxl"
+            if fname.lower().endswith(".xls"):
+                import importlib.util
+                if importlib.util.find_spec("xlrd") is not None:
+                    engine = "xlrd"
+                else:
+                    raise ImportError("Missing optional dependency 'xlrd'. Please install xlrd>=2.0.1 to read .xls files.")
+
+            # Suppress xlrd warnings during Excel file reading
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                m_raw = pd.read_excel(file_path, header=None, usecols="B", skiprows=13, nrows=1, engine=engine).iloc[0, 0]
+                vpyc_raw = pd.read_excel(file_path, header=None, usecols="G", skiprows=40, nrows=1, engine=engine).iloc[0, 0]
+                comment_raw = pd.read_excel(file_path, header=None, usecols="A", skiprows=19, nrows=1, engine=engine).iloc[0, 0]
+
+            # Parse balls volume from comment
+            balls_volume, comment_analysis = self._parse_balls(comment_raw)
+            m = self.clean_numeric_value(m_raw)
+            vpyc_original = self.clean_numeric_value(vpyc_raw)
+            if m is None or vpyc_original is None:
+                return False, None
+            vpyc = vpyc_original - balls_volume
+
+            if label not in density_df.index:
+                return False, None
+            density_row = density_df.loc[label]
+            density = density_row['Av Exp ρ foam (g/cm3)']
+            rho_r = density_row['ρr']
+
+            # Override density and rho_r by fixed Excel columns (F and I)
+            try:
+                density = density_row.iloc[self._density_pos]
+            except Exception:
+                pass
+            try:
+                rho_r = density_row.iloc[self._rho_r_pos]
+            except Exception:
+                pass
+
+            result = {
+                "Label": label,
+                "Density (g/cm3)": density,
+                "m (g)": m,
+                "Vpyc unfixed (cm3)": vpyc_original,
+                "Vpyc (cm3)": vpyc,
+                "ρr": rho_r,
+                "Comment Analysis": comment_analysis,
+                # Additional data for review
+                "raw_comment": str(comment_raw),
+                "detected_balls_volume": balls_volume,
+            }
+            return True, result
+        except Exception as e:
+            print(f"ERROR processing {fname}: {e}")
+            return False, None
+
+    def _parse_balls(self, comment_raw):
+        """Parse comment and return (balls_volume, analysis)."""
+        # Defaults
+        balls_volume = 0.0
+        original = "" if comment_raw is None else str(comment_raw).strip()
+        analysis = f"Original: '{original}'"
+
+        if not original:
+            return balls_volume, analysis + " | No comment"
+
+        text = original.lower().replace(',', '.')
+        # Remove units artifacts like 'cm', 'cm3', 'cm^3'
+        text = re.sub(r"cm\^?\d*", "", text)
+
+        nums = [float(n) for n in re.findall(r"[-+]?\d*\.?\d+", text)]
+        
+        if not nums:
+            return balls_volume, analysis + " | No numbers found"
+        
+        # Strategy: Look for the largest decimal number as it's most likely the volume
+        # Volume is typically a precise decimal measurement, while counts are small integers
+        
+        # Separate decimals from integers
+        decimals = [n for n in nums if abs(n - round(n)) > 1e-9 and n > 0]
+        integers = [n for n in nums if abs(n - round(n)) <= 1e-9 and n > 0]
+        
+        if decimals:
+            # If we have decimal numbers, choose the largest one as volume
+            balls_volume = max(decimals)
+        elif integers:
+            # If only integers, look for larger ones (volume could be an integer)
+            # But prefer larger numbers over small counts
+            larger_ints = [n for n in integers if n > 10]  # Volumes are typically > 10 when integers
+            if larger_ints:
+                balls_volume = max(larger_ints)
+            else:
+                # If all are small integers, take the largest
+                balls_volume = max(integers)
+        
+        analysis += f" | Detected balls volume: {balls_volume:.6f} cm³"
+        return balls_volume, analysis
+
+    def clean_numeric_value(self, value):
+        if isinstance(value, str):
+            m = re.search(r"[-+]?\d+([.,]\d*)?|\d*[.,]\d+", value)
+            if m:
+                try:
+                    return float(m.group(0).replace(',', '.'))
+                except Exception:
+                    return None
+        elif isinstance(value, (int, float)):
+            return float(value)
+        return None
+
+    # ---------- Helpers: Excel column letters to iloc position ----------
+    def _excel_col_to_number(self, letters):
+        """Convert Excel column letters (e.g., 'A', 'F', 'AA') to 1-based number."""
+        if not letters:
+            raise ValueError("Empty Excel column letters")
+        letters = str(letters).strip().upper()
+        num = 0
+        for ch in letters:
+            if not ('A' <= ch <= 'Z'):
+                continue
+            num = num * 26 + (ord(ch) - ord('A') + 1)
+        if num <= 0:
+            raise ValueError(f"Invalid Excel column letters: {letters}")
+        return num
+
+    def _excel_letter_to_iloc_pos(self, letters, label_letter='B'):
+        """Return 0-based iloc position for Excel column `letters` after set_index('Label').
+
+        Uses the actual Label column letter to adjust the removal offset:
+        pos = (E-1) - 1 if E > L else (E-1), where E,L are 1-based Excel indices.
+        """
+        excel_num = self._excel_col_to_number(letters)
+        label_num = self._excel_col_to_number(label_letter) if label_letter else 1
+        base = excel_num - 1
+        pos = base - (1 if excel_num > label_num else 0)
+        if pos < 0:
+            raise IndexError(f"Computed negative iloc position for Excel column {letters}: {pos}")
+        return pos
+
+    def show_review_window(self):
+        """Show a window to review and edit processing results before saving"""
+        if self.review_window and self.review_window.winfo_exists():
+            self.review_window.destroy()
+        
+        self.review_window = tk.Toplevel(self.root)
+        self.review_window.title("Review Processing Results")
+        self.review_window.geometry("1000x600")
+        self.review_window.transient(self.root)
+        self.review_window.grab_set()
+        
+        main_frame = ttk.Frame(self.review_window, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Title
+        ttk.Label(main_frame, text="Review and Edit Processing Results", 
+                 font=("Arial", 12, "bold")).pack(pady=(0, 10))
+        
+        # Table frame
+        table_frame = ttk.Frame(main_frame)
+        table_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Create treeview for results
+        columns = ("filename", "comment", "volume")
+        self.review_tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=15)
+        
+        self.review_tree.heading("filename", text="File Name")
+        self.review_tree.heading("comment", text="Comment Analysis")
+        self.review_tree.heading("volume", text="Balls Volume (cm³)")
+        
+        self.review_tree.column("filename", width=250)
+        self.review_tree.column("comment", width=400)
+        self.review_tree.column("volume", width=150, anchor="center")
+        
+        # Scrollbars
+        v_scroll = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=self.review_tree.yview)
+        h_scroll = ttk.Scrollbar(table_frame, orient=tk.HORIZONTAL, command=self.review_tree.xview)
+        self.review_tree.configure(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
+        
+        self.review_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        v_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        h_scroll.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        # Populate table
+        self.review_data_vars = {}  # Store variables for editing
+        for i, data in enumerate(self.processed_data):
+            filename = data.get('filename', 'Unknown')
+            comment = data.get('raw_comment', '')
+            detected_volume = data.get('detected_balls_volume', 0.0)
+            
+            item_id = self.review_tree.insert("", "end", values=(
+                filename,
+                comment[:50] + "..." if len(comment) > 50 else comment,
+                f"{detected_volume:.6f}"
+            ))
+            
+            # Store variables for this row
+            self.review_data_vars[item_id] = {
+                'volume': tk.DoubleVar(value=detected_volume),
+                'data_index': i
+            }
+        
+        # Edit frame
+        edit_frame = ttk.LabelFrame(main_frame, text="Edit Selected Row", padding="10")
+        edit_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        edit_grid = ttk.Frame(edit_frame)
+        edit_grid.pack(fill=tk.X)
+        
+        ttk.Label(edit_grid, text="Balls volume (cm³):").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        self.edit_volume_var = tk.DoubleVar(value=0.0)
+        volume_entry = ttk.Entry(edit_grid, textvariable=self.edit_volume_var, width=15)
+        volume_entry.grid(row=0, column=1, padx=(0, 20))
+        
+        ttk.Button(edit_grid, text="Apply to Selected", 
+                  command=self.apply_edit_to_selected).grid(row=0, column=2, padx=(10, 0))
+        
+        # Bind selection event
+        self.review_tree.bind("<<TreeviewSelect>>", self.on_review_selection_change)
+        
+        # Buttons frame
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(pady=(10, 0))
+        
+        ttk.Button(btn_frame, text="Save to Excel", 
+                  command=self.save_reviewed_results).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btn_frame, text="Cancel", 
+                  command=self.review_window.destroy).pack(side=tk.LEFT)
+
+    def on_review_selection_change(self, event):
+        """Update edit fields when selection changes"""
+        selection = self.review_tree.selection()
+        if selection:
+            item_id = selection[0]
+            if item_id in self.review_data_vars:
+                vars_dict = self.review_data_vars[item_id]
+                self.edit_volume_var.set(vars_dict['volume'].get())
+
+    def apply_edit_to_selected(self):
+        """Apply edit values to selected row"""
+        selection = self.review_tree.selection()
+        if not selection:
+            messagebox.showwarning("No Selection", "Please select a row to edit.")
+            return
+        
+        item_id = selection[0]
+        if item_id in self.review_data_vars:
+            vars_dict = self.review_data_vars[item_id]
+            # Update variable
+            vars_dict['volume'].set(self.edit_volume_var.get())
+            
+            # Update tree display
+            current_values = list(self.review_tree.item(item_id, "values"))
+            current_values[2] = f"{self.edit_volume_var.get():.6f}"
+            self.review_tree.item(item_id, values=current_values)
+
+    def save_reviewed_results(self):
+        """Save the reviewed results to Excel"""
+        # Update processed_data with edited values
+        for item_id, vars_dict in self.review_data_vars.items():
+            data_index = vars_dict['data_index']
+            new_balls_volume = vars_dict['volume'].get()
+            
+            # Update the data
+            data = self.processed_data[data_index]
+            vpyc_original = data["Vpyc unfixed (cm3)"]
+            vpyc_corrected = vpyc_original - new_balls_volume
+            
+            # Determine if user actually changed the volume
+            detected_volume = data.get("detected_balls_volume", 0.0)
+            changed = abs(new_balls_volume - detected_volume) > 1e-9
+
+            # Always update Vpyc to reflect what is shown in the table
+            data["Vpyc (cm3)"] = vpyc_corrected
+            data["detected_balls_volume"] = new_balls_volume
+
+            # Update Comment Analysis only when edited; otherwise keep original parsed analysis
+            if changed:
+                raw_comment = data.get("raw_comment", "")
+                data["Comment Analysis"] = (
+                    f"Original: '{raw_comment}' | Manual: balls volume = {new_balls_volume:.6f} cm³"
+                )
+        
+        # Remove extra fields not needed for Excel
+        excel_data = []
+        for data in self.processed_data:
+            excel_row = {k: v for k, v in data.items() 
+                        if k not in ['filename', 'filepath', 'raw_comment', 'detected_balls_volume']}
+            excel_data.append(excel_row)
+        
+        try:
+            self.save_results(excel_data)
+            self.status_var.set(f"Saved {len(excel_data)} results to Excel")
+            self.review_window.destroy()
+            # Get the output file name for the success message
+            target_file = self.results_file_var.get() or os.path.join(self.output_folder or "", self.get_output_filename())
+            messagebox.showinfo("Success", f"Saved {len(excel_data)} results to {os.path.basename(target_file)}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error saving results: {e}")
+
+    def save_results(self, results_list):
+        # Determine results file path
+        output_file = self.results_file_var.get() or os.path.join(self.output_folder or "", self.get_output_filename())
+        new_df = pd.DataFrame(results_list)
+        if os.path.exists(output_file):
+            try:
+                existing = pd.read_excel(output_file, engine="openpyxl")
+                base_cols = [
+                    "Label",
+                    "Density (g/cm3)",
+                    "m (g)",
+                    "Vext (cm3)",
+                    "Vpyc unfixed (cm3)",
+                    "Vpyc (cm3)",
+                    "ρr",
+                    "Vext - Vpyc (cm3)",
+                    "1-ρr",
+                    "Vext(1-ρr) (cm3)",
+                    "%OC",
+                    "Comment Analysis",
+                ]
+                # Keep only existing columns that we recognize
+                existing_cols = [col for col in base_cols if col in existing.columns]
+                if existing_cols:
+                    existing = existing[existing_cols]
+                else:
+                    # minimal fallback
+                    existing = existing[["Label", "Density (g/cm3)", "m (g)", "Vpyc (cm3)", "ρr"]]
+                # Normalize and clean labels
+                existing['Label'] = existing['Label'].astype(str)
+                existing = existing.dropna(subset=['Label'])
+                new_df = new_df.dropna(subset=['Label'])
+
+                # Incremental append-only: add only samples not already present
+                existing_labels = set(existing['Label'].astype(str))
+                new_only = new_df[~new_df['Label'].astype(str).isin(existing_labels)]
+
+                final_df = (
+                    pd.concat([existing, new_only], ignore_index=True)
+                      .sort_values(by='Label')
+                      .reset_index(drop=True)
+                )
+            except Exception:
+                final_df = new_df.sort_values(by='Label').reset_index(drop=True)
+        else:
+            final_df = new_df.sort_values(by='Label').reset_index(drop=True)
+
+        # === NUEVO: Calcular las columnas derivadas en Python (sin fórmulas Excel) ===
+        df = final_df.copy()
+
+        # Asegurar tipos numéricos
+        num_cols = [
+            "Density (g/cm3)", "m (g)", "Vpyc unfixed (cm3)", "Vpyc (cm3)", "ρr"
+        ]
+        for c in num_cols:
+            if c in df.columns:
+                df[c] = pd.to_numeric(df[c], errors='coerce')
+
+        # Crear columnas si faltan
+        for col in ["Vext (cm3)", "Vext - Vpyc (cm3)", "1-ρr", "Vext(1-ρr) (cm3)", "%OC"]:
+            if col not in df.columns:
+                df[col] = pd.NA
+
+        # Calcular Vext = m / densidad
+        if all(c in df.columns for c in ["m (g)", "Density (g/cm3)"]):
+            df["Vext (cm3)"] = df.apply(
+                lambda r: (r["m (g)"] / r["Density (g/cm3)"])
+                if pd.notna(r["m (g)"]) and pd.notna(r["Density (g/cm3)"]) and r["Density (g/cm3)"] not in (0, 0.0)
+                else pd.NA,
+                axis=1,
+            )
+
+        # Calcular Vext - Vpyc
+        if all(c in df.columns for c in ["Vext (cm3)", "Vpyc (cm3)"]):
+            df["Vext - Vpyc (cm3)"] = df.apply(
+                lambda r: (r["Vext (cm3)"] - r["Vpyc (cm3)"])
+                if pd.notna(r["Vext (cm3)"]) and pd.notna(r["Vpyc (cm3)"])
+                else pd.NA,
+                axis=1,
+            )
+
+        # Calcular 1 - ρr
+        if "ρr" in df.columns:
+            df["1-ρr"] = df["ρr"].apply(lambda v: 1 - v if pd.notna(v) else pd.NA)
+
+        # Calcular Vext(1-ρr)
+        if all(c in df.columns for c in ["Vext (cm3)", "1-ρr"]):
+            df["Vext(1-ρr) (cm3)"] = df.apply(
+                lambda r: (r["Vext (cm3)"] * r["1-ρr"])
+                if pd.notna(r["Vext (cm3)"]) and pd.notna(r["1-ρr"])
+                else pd.NA,
+                axis=1,
+            )
+
+        # Calcular %OC = (Vext - Vpyc) / (Vext*(1-ρr)) * 100
+        if all(c in df.columns for c in ["Vext - Vpyc (cm3)", "Vext(1-ρr) (cm3)"]):
+            def _calc_oc(r):
+                num = r["Vext - Vpyc (cm3)"]
+                den = r["Vext(1-ρr) (cm3)"]
+                if pd.notna(num) and pd.notna(den) and den not in (0, 0.0):
+                    return (num / den) * 100
+                return pd.NA
+            df["%OC"] = df.apply(_calc_oc, axis=1)
+
+        # Debug detallado
+        print("DEBUG OC PY: Calculadas columnas derivadas")
+        for col in ["Vext (cm3)", "Vext - Vpyc (cm3)", "1-ρr", "Vext(1-ρr) (cm3)", "%OC"]:
+            if col in df.columns:
+                vals = df[col].head(5).tolist()
+                print(f"DEBUG OC PY: {col} -> {vals}")
+
+        order = [
+            "Label", "Density (g/cm3)", "m (g)", "Vext (cm3)", "Vpyc unfixed (cm3)", "Vpyc (cm3)",
+            "ρr", "Vext - Vpyc (cm3)", "1-ρr", "Vext(1-ρr) (cm3)", "%OC", "Comment Analysis",
+        ]
+        existing_order = [c for c in order if c in df.columns]
+        df = df[existing_order]
+
+        # Guardar valores numéricos (sin fórmulas) para que pandas los lea directamente
+        df.to_excel(output_file, index=False, engine="openpyxl")
+        print(f"Saved results (numeric) to {output_file}")
+
+
+def main():
+    root = tk.Tk()
+    app = OCModule(root)
+    root.mainloop()
+
+
+if __name__ == "__main__":
+    main()
+
+# ---- Override process_single_file to read density/ρr by position (F, I) ----
+def _oc_process_single_file_pos(self, file_path, density_df):
+    fname = os.path.basename(file_path)
+    try:
+        label = os.path.splitext(fname)[0]
+        for sep in (" ", "-", "_"):
+            prefix = f"{self.current_foam_type}{sep}"
+            if label.startswith(prefix):
+                label = label[len(prefix):]
+                break
+
+        engine = "openpyxl"
+        if fname.lower().endswith(".xls"):
+            import importlib.util
+            if importlib.util.find_spec("xlrd") is not None:
+                engine = "xlrd"
+            else:
+                raise ImportError("Missing optional dependency 'xlrd'. Please install xlrd>=2.0.1 to read .xls files.")
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            m_raw = pd.read_excel(file_path, header=None, usecols="B", skiprows=13, nrows=1, engine=engine).iloc[0, 0]
+            vpyc_raw = pd.read_excel(file_path, header=None, usecols="G", skiprows=40, nrows=1, engine=engine).iloc[0, 0]
+            comment_raw = pd.read_excel(file_path, header=None, usecols="A", skiprows=19, nrows=1, engine=engine).iloc[0, 0]
+
+        balls_volume, comment_analysis = self._parse_balls(comment_raw)
+        m = self.clean_numeric_value(m_raw)
+        vpyc_original = self.clean_numeric_value(vpyc_raw)
+        if m is None or vpyc_original is None:
+            return False, None
+        vpyc = vpyc_original - balls_volume
+
+        if label not in density_df.index:
+            return False, None
+
+        density_row = density_df.loc[label]
+        try:
+            density = density_row.iloc[self._density_pos]
+        except Exception:
+            density = None
+        try:
+            rho_r = density_row.iloc[self._rho_r_pos]
+        except Exception:
+            rho_r = None
+
+        # Fallback for ρr when Excel stores a formula without cached value
+        try:
+            if rho_r is None or (isinstance(rho_r, float) and pd.isna(rho_r)):
+                import openpyxl
+                wb = openpyxl.load_workbook(self.density_file, data_only=True, read_only=True)
+                if self.current_foam_type in wb.sheetnames:
+                    ws = wb[self.current_foam_type]
+                    excel_row = int(density_df.index.get_loc(label)) + 2  # header row is 1
+                    cell_val = ws[f"I{excel_row}"].value
+                    if cell_val is not None:
+                        rho_r = float(cell_val)
+        except Exception:
+            pass
+
+        result = {
+            "Label": label,
+            # Keep legacy keys here to remain compatible with current save_results
+            "Density (g/cm3)": density,
+            "m (g)": m,
+            "Vpyc unfixed (cm3)": vpyc_original,
+            "Vpyc (cm3)": vpyc,
+            "ρr": rho_r,
+            "Comment Analysis": comment_analysis,
+            "raw_comment": str(comment_raw),
+            "detected_balls_volume": balls_volume,
+        }
+        return True, result
+    except Exception as e:
+        print(f"ERROR processing {fname}: {e}")
+        return False, None
+
+# Activate the override
+OCModule.process_single_file = _oc_process_single_file_pos
+
+# ---- Override process_single_file to use position-based density/ρr reading ----
+def _oc_process_single_file_pos(self, file_path, density_df):
+    fname = os.path.basename(file_path)
+    try:
+        label = os.path.splitext(fname)[0]
+        for sep in (" ", "-", "_"):
+            prefix = f"{self.current_foam_type}{sep}"
+            if label.startswith(prefix):
+                label = label[len(prefix):]
+                break
+
+        engine = "openpyxl"
+        if fname.lower().endswith(".xls"):
+            import importlib.util
+            if importlib.util.find_spec("xlrd") is not None:
+                engine = "xlrd"
+            else:
+                raise ImportError("Missing optional dependency 'xlrd'. Please install xlrd>=2.0.1 to read .xls files.")
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            m_raw = pd.read_excel(file_path, header=None, usecols="B", skiprows=13, nrows=1, engine=engine).iloc[0, 0]
+            vpyc_raw = pd.read_excel(file_path, header=None, usecols="G", skiprows=40, nrows=1, engine=engine).iloc[0, 0]
+            comment_raw = pd.read_excel(file_path, header=None, usecols="A", skiprows=19, nrows=1, engine=engine).iloc[0, 0]
+
+        balls_volume, comment_analysis = self._parse_balls(comment_raw)
+        m = self.clean_numeric_value(m_raw)
+        vpyc_original = self.clean_numeric_value(vpyc_raw)
+        if m is None or vpyc_original is None:
+            return False, None
+        vpyc = vpyc_original - balls_volume
+
+        if label not in density_df.index:
+            return False, None
+
+        # Determine iloc positions (Label in B; density F; rho_r I)
+        density_pos = getattr(self, '_density_pos', None)
+        rho_r_pos = getattr(self, '_rho_r_pos', None)
+        if density_pos is None or rho_r_pos is None:
+            try:
+                density_pos = self._excel_letter_to_iloc_pos('F', label_letter='B')
+                rho_r_pos = self._excel_letter_to_iloc_pos('I', label_letter='B')
+            except Exception:
+                density_pos, rho_r_pos = 4, 7  # safe fallback
+
+        density_row = density_df.loc[label]
+        try:
+            density = density_row.iloc[density_pos]
+        except Exception:
+            density = None
+        try:
+            rho_r = density_row.iloc[rho_r_pos]
+        except Exception:
+            rho_r = None
+
+        result = {
+            "Label": label,
+            "Density (g/cm3)": density,
+            "m (g)": m,
+            "Vpyc unfixed (cm3)": vpyc_original,
+            "Vpyc (cm3)": vpyc,
+            "ρr": rho_r,
+            "Comment Analysis": comment_analysis,
+            "raw_comment": str(comment_raw),
+            "detected_balls_volume": balls_volume,
+        }
+        return True, result
+    except Exception as e:
+        print(f"ERROR processing {fname}: {e}")
+        return False, None
+
+# Monkey-patch the class method to the position-based version
+OCModule.process_single_file = _oc_process_single_file_pos
