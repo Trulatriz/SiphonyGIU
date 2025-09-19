@@ -249,7 +249,7 @@ class PlotModule:
 
         self.err_chk = ttk.Checkbutton(sel, text="Error bars", variable=self.errorbar_var, command=self._on_option_change)
         self.err_chk.grid(row=0, column=6, sticky=tk.W)
-        _Tooltip(self.err_chk, "Available only for Y in {��, N��, �? foam} and if deviation column exists.")
+        _Tooltip(self.err_chk, "Available only when Y is Ø, Nᵥ, or ρ foam and the matching deviation column exists.")
 
         self.mono_chk = ttk.Checkbutton(sel, text="Monochrome preview", variable=self.mono_var, command=self._on_option_change)
         self.mono_chk.grid(row=0, column=7, sticky=tk.W)
@@ -279,25 +279,45 @@ class PlotModule:
         actions = ttk.Frame(container)
         actions.grid(row=4, column=0, sticky=(tk.W, tk.E))
         ttk.Button(actions, text="Render Plot", command=self._render_plot).grid(row=0, column=0, padx=(0, 6))
-        ttk.Button(actions, text="Save Figure", command=self._save_figure).grid(row=0, column=1, padx=6)
-        ttk.Button(actions, text="Copy Figure", command=self._copy_figure).grid(row=0, column=2, padx=6)
-        ttk.Button(actions, text="Export Data", command=self._export_data).grid(row=0, column=3, padx=6)
-        ttk.Label(actions, text="DPI:").grid(row=0, column=4, padx=(12, 2))
-        ttk.Radiobutton(actions, text="300", variable=self.dpi_var, value=300, command=self._on_option_change).grid(row=0, column=4)
-        ttk.Radiobutton(actions, text="600", variable=self.dpi_var, value=600, command=self._on_option_change).grid(row=0, column=5)
+        ttk.Button(actions, text="Render Heatmap", command=self._render_heatmap).grid(row=0, column=1, padx=6)
+        ttk.Button(actions, text="Save Figure", command=self._save_figure).grid(row=0, column=2, padx=6)
+        ttk.Button(actions, text="Copy Figure", command=self._copy_figure).grid(row=0, column=3, padx=6)
+        ttk.Button(actions, text="Export Data", command=self._export_data).grid(row=0, column=4, padx=6)
+        ttk.Label(actions, text="DPI:").grid(row=0, column=5, padx=(12, 2))
+        ttk.Radiobutton(actions, text="300", variable=self.dpi_var, value=300, command=self._on_option_change).grid(row=0, column=6)
+        ttk.Radiobutton(actions, text="600", variable=self.dpi_var, value=600, command=self._on_option_change).grid(row=0, column=7)
 
-        # Canvas
+        # Canvas area with tabs
         canvas_frame = ttk.Frame(container)
         canvas_frame.grid(row=5, column=0, sticky=(tk.N, tk.S, tk.W, tk.E), pady=(10, 0))
         container.rowconfigure(5, weight=1)
         canvas_frame.rowconfigure(0, weight=1)
         canvas_frame.columnconfigure(0, weight=1)
 
-        self.fig = Figure(figsize=(8.5, 8.0), dpi=100)  # ~800+ px height
+        self.view_notebook = ttk.Notebook(canvas_frame)
+        self.view_notebook.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.W, tk.E))
+
+        self.scatter_frame = ttk.Frame(self.view_notebook)
+        self.scatter_frame.rowconfigure(0, weight=1)
+        self.scatter_frame.columnconfigure(0, weight=1)
+        self.view_notebook.add(self.scatter_frame, text="Scatter")
+        self.fig = Figure(figsize=(8.5, 8.0), dpi=100)
         self.ax = self.fig.add_subplot(111)
-        self.canvas = FigureCanvasTkAgg(self.fig, master=canvas_frame)
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.scatter_frame)
         self.canvas_widget = self.canvas.get_tk_widget()
         self.canvas_widget.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.W, tk.E))
+
+        self.heatmap_frame = ttk.Frame(self.view_notebook)
+        self.heatmap_frame.rowconfigure(0, weight=1)
+        self.heatmap_frame.columnconfigure(0, weight=1)
+        self.view_notebook.add(self.heatmap_frame, text="Heatmap")
+        self.heatmap_fig = Figure(figsize=(8.5, 8.0), dpi=100)
+        self.heatmap_ax = self.heatmap_fig.add_subplot(111)
+        self.heatmap_canvas = FigureCanvasTkAgg(self.heatmap_fig, master=self.heatmap_frame)
+        self.heatmap_widget = self.heatmap_canvas.get_tk_widget()
+        self.heatmap_widget.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.W, tk.E))
+        self.heatmap_colorbar = None
+
 
         # Annotations area (under-plot echo)
         self.info_var = tk.StringVar(value="")
@@ -763,43 +783,58 @@ class PlotModule:
             return x_vals + noise
         return x_vals
 
-    def _render_plot(self):
+    def _prepare_filtered_dataset(self):
         if self.df_all.empty:
-            messagebox.showwarning("No data", "Load an All_Results Excel first.")
-            return
+            raise RuntimeError("Load an All_Results Excel first.")
 
         x_name = self.x_var.get().strip()
         y_name = self.y_var.get().strip()
         grp = self.group_var.get().strip()
         group_name = None if grp == "<None>" else grp
 
-        # Collect and apply constraints
         constraints = self._collect_constraints()
-        # Persist last used constraints for export summary
         self.constraints.update(constraints)
         self._persist_current_state()
-        try:
-            filtered, remaining = self._apply_constancy_rule(self.df_all, x_name, group_name, constraints)
-        except ValueError as e:
-            messagebox.showerror("Constancy rule", str(e))
-            return
 
-        # Keep only relevant columns
-        cols = [x_name, y_name]
-        if group_name:
-            cols.append(group_name)
-        yerr_name = DEVIATIONS.get(y_name)
-        if self.errorbar_var.get() and yerr_name in filtered.columns:
-            cols.append(yerr_name)
-        # For export, we'll keep deviation columns even if not used
+        try:
+            filtered, _ = self._apply_constancy_rule(self.df_all, x_name, group_name, constraints)
+        except ValueError as exc:
+            raise ValueError(str(exc))
+
         self.df_filtered = filtered.copy()
 
-        # Guard for n
         try:
             self._ensure_n_requirements(filtered.dropna(subset=[x_name, y_name]), group_name)
-        except ValueError as e:
-            messagebox.showerror("Not enough points", str(e))
+        except ValueError as exc:
+            raise ValueError(str(exc))
+
+        yerr_name = DEVIATIONS.get(y_name)
+        return {
+            'filtered': filtered,
+            'x': x_name,
+            'y': y_name,
+            'group_name': group_name,
+            'constraints': constraints,
+            'yerr_name': yerr_name,
+        }
+
+
+    def _render_plot(self):
+        try:
+            data = self._prepare_filtered_dataset()
+        except RuntimeError as e:
+            messagebox.showwarning("No data", str(e))
             return
+        except ValueError as e:
+            messagebox.showerror("Cannot render plot", str(e))
+            return
+
+        filtered = data['filtered']
+        x_name = data['x']
+        y_name = data['y']
+        group_name = data['group_name']
+        constraints = data['constraints']
+        yerr_name = data['yerr_name']
 
         # Prepare plot
         self.ax.clear()
@@ -815,10 +850,8 @@ class PlotModule:
             y = _as_float_array(gdf[y_name])
             x = self._maybe_jitter(x)
 
-            # Connect with lines within each group in ascending X
             self.ax.plot(x, y, linestyle=linestyle, linewidth=1.5, color=color, alpha=1.0, antialiased=True)
 
-            # Scatter markers (edge black 0.6pt, size ~ 42pt^2)
             self.ax.scatter(
                 x,
                 y,
@@ -831,8 +864,7 @@ class PlotModule:
                 zorder=3,
             )
 
-            # Error bars (vertical only)
-            if self.errorbar_var.get() and (yerr_name in gdf.columns):
+            if self.errorbar_var.get() and yerr_name and (yerr_name in gdf.columns):
                 yerr = _as_float_array(gdf[yerr_name])
                 self.ax.errorbar(
                     x,
@@ -846,11 +878,9 @@ class PlotModule:
                     zorder=2,
                 )
 
-        # Labels (exact headers with units)
         self.ax.set_xlabel(x_name)
         self.ax.set_ylabel(y_name)
 
-        # Legend
         if group_name:
             handles, labels = [], []
             for (gidx, (gval, _)) in enumerate(groups):
@@ -859,7 +889,7 @@ class PlotModule:
                                             markerfacecolor=color, markeredgecolor="black", markeredgewidth=0.6)
                 handles.append(h)
                 labels.append(f"{group_name} = {gval}")
-            leg = self.ax.legend(
+            self.ax.legend(
                 handles, labels,
                 loc="upper left",
                 bbox_to_anchor=(1.02, 1.0),
@@ -867,20 +897,96 @@ class PlotModule:
                 handlelength=2.0,
                 borderaxespad=0.0,
             )
-        else:
-            # No legend when not grouped
-            pass
 
-        # Tight layout with room on right for legend
         self.fig.subplots_adjust(right=0.78)
 
-        # Under-plot annotations: n per group and fixed variables
         n_info = self._n_info_text(groups)
         fixed_info = self._fixed_info_text(group_name, constraints)
         sheet_label = self._sheet_labels.get(self.active_sheet_name, self.active_sheet_name or "<no sheet>")
         self.info_var.set(f"Sheet: {sheet_label}    |    {n_info}    |    Fixed: {fixed_info}")
 
+        if hasattr(self, 'scatter_frame'):
+            try:
+                self.view_notebook.select(self.scatter_frame)
+            except Exception:
+                pass
+
         self.canvas.draw_idle()
+
+
+    def _render_heatmap(self):
+        try:
+            data = self._prepare_filtered_dataset()
+        except RuntimeError as e:
+            messagebox.showwarning("No data", str(e))
+            return
+        except ValueError as e:
+            messagebox.showerror("Cannot build heatmap", str(e))
+            return
+
+        filtered = data['filtered']
+        if filtered.empty:
+            messagebox.showwarning("No data", "Render a plot first to compute the heatmap.")
+            return
+
+        numeric_df = filtered.select_dtypes(include=[np.number])
+        if numeric_df.shape[1] < 2:
+            messagebox.showwarning("Not enough columns", "At least two numeric columns are required for the heatmap.")
+            return
+
+        corr = numeric_df.corr(method='spearman')
+        if corr.isna().all().all():
+            messagebox.showwarning("Invalid correlation", "Spearman correlation could not be computed for the current selection.")
+            return
+
+        self.heatmap_ax.clear()
+        if self.heatmap_colorbar is not None:
+            try:
+                self.heatmap_colorbar.remove()
+            except Exception:
+                pass
+            self.heatmap_colorbar = None
+
+        im = self.heatmap_ax.imshow(corr, cmap='coolwarm', vmin=-1, vmax=1)
+        labels = list(corr.columns)
+        ticks = list(range(len(labels)))
+        self.heatmap_ax.set_xticks(ticks)
+        self.heatmap_ax.set_xticklabels(labels, rotation=45, ha='right')
+        self.heatmap_ax.set_yticks(ticks)
+        self.heatmap_ax.set_yticklabels(labels)
+        self.heatmap_ax.set_title('Spearman correlation heatmap')
+
+        for i, row_label in enumerate(labels):
+            for j, col_label in enumerate(labels):
+                value = corr.iat[i, j]
+                if pd.isna(value):
+                    display = '-'
+                else:
+                    display = f"{value:.2f}"
+                self.heatmap_ax.text(j, i, display, ha='center', va='center', color='black', fontsize=9)
+
+        self.heatmap_fig.tight_layout()
+        try:
+            self.heatmap_colorbar = self.heatmap_fig.colorbar(im, ax=self.heatmap_ax, fraction=0.046, pad=0.04)
+            self.heatmap_colorbar.set_label('Spearman $r_s$')
+        except Exception:
+            pass
+
+        self.heatmap_canvas.draw_idle()
+
+        sheet_label = self._sheet_labels.get(self.active_sheet_name, self.active_sheet_name or '<no sheet>')
+        preview = ', '.join(labels[:6])
+        if len(labels) > 6:
+            preview += ', ...'
+        info = f"Heatmap columns ({len(labels)}): {preview}"
+        self.info_var.set(f"Sheet: {sheet_label}    |    {info}")
+
+        if hasattr(self, 'heatmap_frame'):
+            try:
+                self.view_notebook.select(self.heatmap_frame)
+            except Exception:
+                pass
+
 
     def _n_info_text(self, groups):
         if len(groups) == 1 and groups[0][0] is None:
