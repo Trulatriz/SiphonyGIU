@@ -1,4 +1,4 @@
-﻿import os
+import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
@@ -91,18 +91,42 @@ class HeatmapModule:
         controls = ttk.Frame(body)
         controls.grid(row=0, column=0, sticky=(tk.N, tk.S), padx=(0, 12))
         controls.columnconfigure(0, weight=1)
-        ttk.Label(controls, text="Columns (independent + dependent):").grid(row=0, column=0, sticky=tk.W)
-        self.columns_list = tk.Listbox(controls, selectmode=tk.EXTENDED, exportselection=False, height=20, width=28, state='disabled')
-        self.columns_list.grid(row=1, column=0, sticky=(tk.N, tk.S, tk.W, tk.E), pady=(4, 4))
-        self.columns_list.bind("<<ListboxSelect>>", self._on_selection_change)
-        scroll = ttk.Scrollbar(controls, orient=tk.VERTICAL, command=self.columns_list.yview)
-        scroll.grid(row=1, column=1, sticky=(tk.N, tk.S))
-        self.columns_list.configure(yscrollcommand=scroll.set)
+        controls.columnconfigure(1, weight=1)
+        ttk.Label(controls, text='Independent columns:').grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(controls, text='Dependent columns:').grid(row=0, column=1, sticky=tk.W)
+
+        indep_container = ttk.Frame(controls)
+        indep_container.grid(row=1, column=0, sticky=(tk.N, tk.S, tk.W, tk.E), pady=(4, 4))
+        indep_container.columnconfigure(0, weight=1)
+        self.indep_list = tk.Listbox(indep_container, selectmode=tk.EXTENDED, exportselection=False, height=16, width=26, state='disabled')
+        self.indep_list.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.W, tk.E))
+        self.indep_list.bind('<<ListboxSelect>>', self._on_selection_change)
+        indep_scroll = ttk.Scrollbar(indep_container, orient=tk.VERTICAL, command=self.indep_list.yview)
+        indep_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        self.indep_list.configure(yscrollcommand=indep_scroll.set)
+
+        dep_container = ttk.Frame(controls)
+        dep_container.grid(row=1, column=1, sticky=(tk.N, tk.S, tk.W, tk.E), pady=(4, 4))
+        dep_container.columnconfigure(0, weight=1)
+        self.dep_list = tk.Listbox(dep_container, selectmode=tk.EXTENDED, exportselection=False, height=16, width=26, state='disabled')
+        self.dep_list.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.W, tk.E))
+        self.dep_list.bind('<<ListboxSelect>>', self._on_selection_change)
+        dep_scroll = ttk.Scrollbar(dep_container, orient=tk.VERTICAL, command=self.dep_list.yview)
+        dep_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        self.dep_list.configure(yscrollcommand=dep_scroll.set)
+
         controls.rowconfigure(1, weight=1)
-        self.select_all_btn = ttk.Button(controls, text="Select all", command=self._select_all, state='disabled')
-        self.select_all_btn.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(6, 2))
-        self.clear_btn = ttk.Button(controls, text="Clear selection", command=self._clear_selection, state='disabled')
-        self.clear_btn.grid(row=3, column=0, sticky=(tk.W, tk.E))
+        ttk.Label(controls, text='Correlation method:').grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=(6, 0))
+        self.method_var = tk.StringVar(value='Spearman')
+        self.method_combo = ttk.Combobox(controls, textvariable=self.method_var, values=['Spearman', 'Pearson', 'Distance (dCor)'], state='readonly')
+        self.method_combo.grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E))
+        self.method_combo.bind('<<ComboboxSelected>>', self._on_selection_change)
+
+        self.select_all_btn = ttk.Button(controls, text='Select all', command=self._select_all, state='disabled')
+        self.select_all_btn.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=(6, 2))
+        self.clear_btn = ttk.Button(controls, text='Clear selection', command=self._clear_selection, state='disabled')
+        self.clear_btn.grid(row=4, column=1, sticky=(tk.W, tk.E), pady=(6, 2))
+
 
         plot_frame = ttk.Frame(body)
         plot_frame.grid(row=0, column=1, sticky=(tk.N, tk.S, tk.W, tk.E))
@@ -209,71 +233,125 @@ class HeatmapModule:
 
     def _populate_columns(self):
         df = self.df_sheets.get(self.current_sheet)
-        self.columns_list.configure(state='normal')
-        self.columns_list.delete(0, tk.END)
+        self.dep_list.configure(state='normal')
+        self.dep_list.delete(0, tk.END)
         if df is None:
-            self.columns_list.configure(state='disabled')
+            self.dep_list.configure(state='disabled')
             self.select_all_btn.configure(state='disabled')
             self.clear_btn.configure(state='disabled')
             return
         cols = [c for c in df.columns if c in ALLOWED_COLUMNS]
         for col in cols:
-            self.columns_list.insert(tk.END, col)
-        self.columns_list.selection_set(0, tk.END)
-        self.columns_list.configure(state='normal')
+            self.dep_list.insert(tk.END, col)
+        self.dep_list.selection_set(0, tk.END)
+        self.dep_list.configure(state='normal')
         self.select_all_btn.configure(state='normal')
         self.clear_btn.configure(state='normal')
         self._on_selection_change()
 
     # ---------- Column selection helpers ----------
     def _select_all(self):
-        if self.columns_list['state'] == 'disabled':
-            return
-        self.columns_list.select_set(0, tk.END)
+        for lst in (self.indep_list, self.dep_list):
+            if lst['state'] != 'disabled':
+                lst.select_set(0, tk.END)
         self._on_selection_change()
 
     def _clear_selection(self):
-        if self.columns_list['state'] == 'disabled':
-            return
-        self.columns_list.selection_clear(0, tk.END)
+        for lst in (self.indep_list, self.dep_list):
+            if lst['state'] != 'disabled':
+                lst.selection_clear(0, tk.END)
         self._on_selection_change()
 
     def _on_selection_change(self, _event=None):
         self.heatmap_rendered = False
         self.save_btn.configure(state='disabled')
         self.copy_btn.configure(state='disabled')
+        self.status_var.set('Adjust column selection and render the heatmap.')
+
+    def _populate_columns(self):
+        df = self.df_sheets.get(self.current_sheet)
+        indep = [c for c in INDEPENDENTS if df is not None and c in df.columns]
+        dep = [c for c in DEPENDENTS if df is not None and c in df.columns]
+
+        def fill(listbox, columns):
+            if not columns:
+                listbox.delete(0, tk.END)
+                listbox.configure(state='disabled')
+                return False
+            listbox.configure(state='normal')
+            listbox.delete(0, tk.END)
+            for col in columns:
+                listbox.insert(tk.END, col)
+            listbox.selection_set(0, tk.END)
+            return True
+
+        has_indep = fill(self.indep_list, indep)
+        has_dep = fill(self.dep_list, dep)
+
+        if not (has_indep or has_dep):
+            self.select_all_btn.configure(state='disabled')
+            self.clear_btn.configure(state='disabled')
+            self._on_selection_change()
+            return
+
+        self.select_all_btn.configure(state='normal')
+        self.clear_btn.configure(state='normal')
+        self._on_selection_change()
+
+    def _get_selected_columns(self):
+        cols = []
+        for lst in (self.indep_list, self.dep_list):
+            if lst['state'] == 'disabled':
+                continue
+            selection = lst.curselection()
+            if selection:
+                for idx in selection:
+                    value = lst.get(idx)
+                    if value not in cols:
+                        cols.append(value)
+        if not cols:
+            for lst in (self.indep_list, self.dep_list):
+                if lst['state'] == 'disabled':
+                    continue
+                for idx in range(lst.size()):
+                    value = lst.get(idx)
+                    if value not in cols:
+                        cols.append(value)
+        return cols
 
     # ---------- Heatmap rendering ----------
+
     def _render_heatmap(self):
         if self.current_sheet is None:
-            messagebox.showwarning("No sheet", "Load a workbook and choose a sheet first.")
+            messagebox.showwarning('No sheet', 'Load a workbook and choose a sheet first.')
             return
         df = self.df_sheets.get(self.current_sheet)
         if df is None:
-            messagebox.showwarning("No data", "The selected sheet has no usable data.")
-            return
-        selection = self.columns_list.curselection() if self.columns_list['state'] == 'normal' else ()
-        if selection:
-            cols = [self.columns_list.get(i) for i in selection]
-        else:
-            cols = list(df.columns)
-        cols = [c for c in cols if c in df.columns]
-        unique_cols = []
-        for col in cols:
-            if col not in unique_cols:
-                unique_cols.append(col)
-        if len(unique_cols) < 2:
-            messagebox.showwarning("Not enough columns", "Select at least two columns for the heatmap.")
-            return
-        data = df[unique_cols].dropna(how='all')
-        data = data.loc[:, data.nunique(dropna=True) > 1]
-        if data.shape[1] < 2:
-            messagebox.showwarning("Not enough columns", "At least two non-constant columns are required for the heatmap.")
+            messagebox.showwarning('No data', 'The selected sheet has no usable data.')
             return
 
-        corr = data.corr(method='spearman')
+        cols = self._get_selected_columns()
+        available = [c for c in cols if c in df.columns]
+        if len(available) < 2:
+            messagebox.showwarning('Not enough columns', 'Select at least two columns for the heatmap.')
+            return
+
+        data = df[available].apply(pd.to_numeric, errors='coerce')
+        data = data.dropna(how='all')
+        data = data.loc[:, data.nunique(dropna=True) > 1]
+        if data.shape[1] < 2:
+            messagebox.showwarning('Not enough columns', 'At least two non-constant columns are required for the heatmap.')
+            return
+
+        method = self.method_var.get()
+        try:
+            corr = self._compute_correlation_matrix(data, method)
+        except Exception as exc:
+            messagebox.showerror('Correlation error', str(exc))
+            return
+
         if corr.isna().all().all():
-            messagebox.showwarning("Invalid correlation", "Unable to compute Spearman correlation for the current selection.")
+            messagebox.showwarning('Invalid correlation', 'Unable to compute the selected correlation for the current selection.')
             return
 
         self.ax.clear()
@@ -291,7 +369,7 @@ class HeatmapModule:
         self.ax.set_xticklabels(labels, rotation=45, ha='right')
         self.ax.set_yticks(ticks)
         self.ax.set_yticklabels(labels)
-        self.ax.set_title('Spearman correlation heatmap')
+        self.ax.set_title(f"{method} correlation heatmap")
 
         for i, row_label in enumerate(labels):
             for j, col_label in enumerate(labels):
@@ -302,7 +380,7 @@ class HeatmapModule:
         self.fig.tight_layout()
         try:
             self.heatmap_colorbar = self.fig.colorbar(im, ax=self.ax, fraction=0.046, pad=0.04)
-            self.heatmap_colorbar.set_label('Spearman $r_s$')
+            self.heatmap_colorbar.set_label('Correlation value')
         except Exception:
             pass
 
@@ -310,12 +388,54 @@ class HeatmapModule:
         preview = ', '.join(labels[:6])
         if len(labels) > 6:
             preview += ', ...'
-        self.status_var.set(f"Sheet: {self.current_sheet} | Heatmap columns ({len(labels)}): {preview}")
+        self.status_var.set(f"Sheet: {self.current_sheet} | {method} columns ({len(labels)}): {preview}")
         self.heatmap_rendered = True
         self.save_btn.configure(state='normal')
         self.copy_btn.configure(state='normal')
 
+    def _compute_correlation_matrix(self, data: pd.DataFrame, method: str) -> pd.DataFrame:
+        method_lower = method.lower()
+        if method_lower.startswith('pearson'):
+            return data.corr(method='pearson')
+        if method_lower.startswith('spearman'):
+            return data.corr(method='spearman')
+        if 'dcor' in method_lower:
+            labels = list(data.columns)
+            result = pd.DataFrame(np.eye(len(labels)), index=labels, columns=labels, dtype=float)
+            for i in range(len(labels)):
+                for j in range(i + 1, len(labels)):
+                    val = self._distance_correlation(data.iloc[:, i], data.iloc[:, j])
+                    result.iat[i, j] = result.iat[j, i] = val
+            return result
+        raise ValueError(f"Unknown correlation method: {method}")
+
+    @staticmethod
+    def _distance_correlation(series_a: pd.Series, series_b: pd.Series) -> float:
+        mask = series_a.notna() & series_b.notna()
+        x = series_a[mask].to_numpy(dtype=float)
+        y = series_b[mask].to_numpy(dtype=float)
+        if len(x) < 2 or len(y) < 2:
+            return float('nan')
+
+        def _centered_distance_matrix(vec):
+            vec = vec.reshape(-1, 1)
+            dist = np.abs(vec - vec.T)
+            row_mean = dist.mean(axis=1, keepdims=True)
+            col_mean = dist.mean(axis=0, keepdims=True)
+            grand_mean = dist.mean()
+            return dist - row_mean - col_mean + grand_mean
+
+        A = _centered_distance_matrix(x)
+        B = _centered_distance_matrix(y)
+        dcov = np.sqrt(np.mean(A * B))
+        dvar_x = np.sqrt(np.mean(A * A))
+        dvar_y = np.sqrt(np.mean(B * B))
+        if dvar_x <= 1e-12 or dvar_y <= 1e-12:
+            return float('nan')
+        return dcov / np.sqrt(dvar_x * dvar_y)
+
     # ---------- Export helpers ----------
+
     def _default_filename(self, prefix: str, ext: str) -> str:
         sheet = (self.current_sheet or 'sheet').replace(' ', '_')
         ts = pd.Timestamp.now().strftime('%Y%m%d-%H%M')
