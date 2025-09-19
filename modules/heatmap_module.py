@@ -189,7 +189,7 @@ class HeatmapModule:
         if not os.path.exists(path):
             messagebox.showerror("File not found", path)
             return
-        self.file_var.set(os.path.dirname(path))
+        self.file_var.set(path)
 
         try:
             sheets = pd.read_excel(path, sheet_name=None, engine="openpyxl")

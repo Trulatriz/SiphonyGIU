@@ -27,6 +27,7 @@ class PressTechGUI:
         # Apply saved geometry or default
         geometry = self.settings.get("window_geometry", "800x600")
         self.root.geometry(geometry)
+        self._set_window_icon()
         self.root.configure(bg='#f0f0f0')
 
         # Center the window
@@ -60,6 +61,16 @@ class PressTechGUI:
         y = (self.root.winfo_screenheight() // 2) - (600 // 2)
         self.root.geometry(f"800x600+{x}+{y}")
     
+    def _set_window_icon(self):
+        try:
+            icon_path = Path(__file__).with_name('icon.png')
+            if icon_path.exists():
+                icon = tk.PhotoImage(file=str(icon_path))
+                self.root.iconphoto(True, icon)
+                self._icon_image = icon
+        except Exception:
+            pass
+
     def create_title(self):
         """Create the main title"""
         title_frame = ttk.Frame(self.main_frame)
