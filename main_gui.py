@@ -96,70 +96,77 @@ class PressTechGUI:
     
     def create_buttons(self):
         """Create the main functionality buttons"""
-        buttons_frame = ttk.Frame(self.main_frame)
-        buttons_frame.grid(row=1, column=0, pady=20, sticky=(tk.W, tk.E))
-        for col in range(3):
-            buttons_frame.columnconfigure(col, weight=1)
+        buttons_frame = ttk.Frame(self.main_frame, padding=(0, 10))
+        buttons_frame.grid(row=1, column=0, sticky=(tk.W, tk.E))
+        buttons_frame.columnconfigure(0, weight=1)
 
-        # Button configuration (ttk.Button doesn't support font option)
         button_style = {
             'width': 25,
             'padding': 15
         }
 
-        # Row 1: Analysis and Combine (paper-level)
-        analysis_btn = ttk.Button(
-            buttons_frame,
-            text="Publication Plots (Scatter)",
-            command=self.open_publication_plots,
-            **button_style
-        )
-        analysis_btn.grid(row=0, column=0, padx=10, pady=10, sticky=(tk.W, tk.E))
+        extraction_frame = ttk.LabelFrame(buttons_frame, text='DATA EXTRACTION', padding=12)
+        extraction_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 12))
+        extraction_frame.columnconfigure((0, 1), weight=1)
 
         combine_btn = ttk.Button(
-            buttons_frame,
-            text="⚡ SMART COMBINE",
+            extraction_frame,
+            text='⚡ SMART COMBINE',
             command=self.open_combine,
             **button_style
         )
-        combine_btn.grid(row=0, column=1, padx=10, pady=10, sticky=(tk.W, tk.E))
+        combine_btn.grid(row=0, column=0, padx=10, pady=6, sticky=(tk.W, tk.E))
 
         specific_btn = ttk.Button(
-            buttons_frame,
-            text="🔬 FOAM-SPECIFIC ANALYSIS",
+            extraction_frame,
+            text='🔬 FOAM-SPECIFIC ANALYSIS',
             command=self.show_foam_specific_dialog,
             **button_style
         )
-        specific_btn.grid(row=0, column=2, padx=10, pady=10, sticky=(tk.W, tk.E))
+        specific_btn.grid(row=0, column=1, padx=10, pady=6, sticky=(tk.W, tk.E))
 
-        # Row 2: Management shortcuts
-        manage_papers_btn = ttk.Button(
-            buttons_frame,
-            text="📁 MANAGE PAPERS",
-            command=self.manage_papers,
+        analysis_frame = ttk.LabelFrame(buttons_frame, text='DATA ANALYSIS', padding=12)
+        analysis_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 12))
+        analysis_frame.columnconfigure((0, 1), weight=1)
+
+        analysis_btn = ttk.Button(
+            analysis_frame,
+            text='Publication Plots (Scatter)',
+            command=self.open_publication_plots,
             **button_style
         )
-        manage_papers_btn.grid(row=1, column=0, padx=10, pady=10, sticky=(tk.W, tk.E))
-
-        manage_foams_btn = ttk.Button(
-            buttons_frame,
-            text="🧶 MANAGE FOAMS",
-            command=self.manage_foams,
-            **button_style
-        )
-        manage_foams_btn.grid(row=1, column=1, padx=10, pady=10, sticky=(tk.W, tk.E))
+        analysis_btn.grid(row=0, column=0, padx=10, pady=6, sticky=(tk.W, tk.E))
 
         heatmap_btn = ttk.Button(
-            buttons_frame,
-            text="🔥 HEATMAPS",
+            analysis_frame,
+            text='🔥 HEATMAPS',
             command=self.open_heatmap,
             **button_style
         )
-        heatmap_btn.grid(row=1, column=2, padx=10, pady=10, sticky=(tk.W, tk.E))
+        heatmap_btn.grid(row=0, column=1, padx=10, pady=6, sticky=(tk.W, tk.E))
 
-        # Add tooltips
+        org_frame = ttk.LabelFrame(buttons_frame, text='ORGANIZATION', padding=12)
+        org_frame.grid(row=2, column=0, sticky=(tk.W, tk.E))
+        org_frame.columnconfigure((0, 1), weight=1)
+
+        manage_papers_btn = ttk.Button(
+            org_frame,
+            text='📁 MANAGE PAPERS',
+            command=self.manage_papers,
+            **button_style
+        )
+        manage_papers_btn.grid(row=0, column=0, padx=10, pady=6, sticky=(tk.W, tk.E))
+
+        manage_foams_btn = ttk.Button(
+            org_frame,
+            text='🧶 MANAGE FOAMS',
+            command=self.manage_foams,
+            **button_style
+        )
+        manage_foams_btn.grid(row=0, column=1, padx=10, pady=6, sticky=(tk.W, tk.E))
+
         self.add_tooltips(analysis_btn, combine_btn, specific_btn, manage_papers_btn, manage_foams_btn, heatmap_btn)
-    
+
     def add_tooltips(self, *buttons):
         """Add tooltips to buttons"""
         tooltip_map = {}

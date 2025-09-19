@@ -46,10 +46,19 @@ class HeatmapModule:
         self.sheet_var = tk.StringVar()
 
         self._build_ui()
+        default_file = ''
         if self.settings is not None:
-            last_file = self.settings.get("last_heatmap_file", "")
-            if last_file and os.path.exists(last_file):
-                self.file_var.set(last_file)
+            last_file = str(self.settings.get('last_heatmap_file', '') or '')
+            if last_file:
+                default_file = last_file
+            else:
+                fallback = str(self.settings.get('last_output_file', '') or '')
+                if fallback:
+                    default_file = fallback
+        if default_file:
+            self.file_var.set(default_file)
+
+
 
     def _build_ui(self):
         container = ttk.Frame(self.root, padding=12)
