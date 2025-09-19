@@ -1,195 +1,123 @@
-# Ayuda de PressTech – Siphony GUI
+﻿# PressTech – Siphony GUI Help
 
-Esta guía recoge todo lo necesario para usar la aplicación sin errores: cómo crear un paper, gestionar tipos de espuma y usar cada módulo, incluyendo los formatos de archivo esperados.
+This document explains how to work with the application: folder layout, required file formats, and how to use every module from the main dashboard. Follow it to avoid missing data or validation errors.
 
-## Visión general
-- Todo se hace dentro de la aplicación (sin editar JSON a mano).
-- Estructura minimalista por carpeta: solo Input y Output.
-- Flujo de trabajo en dos niveles:
-  1) Nivel paper (global): Smart Combine y Analysis Results.
-  2) Nivel espuma (específico): PDR, OC (Picnometry), DSC y SEM.
+## 1. Workflow Overview
+- Everything is driven from the GUI; you do not need to edit JSON files manually.
+- Each paper has a clean tree: per-module **Input** and **Output** folders.
+- Typical order of operations:
+  1. **Data Extraction** (collect and consolidate raw measurements).
+  2. **Data Analysis** (publication plots and exploratory heatmaps).
+  3. **Organization** (keep papers and foam types tidy).
 
-## Estructura de carpetas por paper
-Al crear un paper desde la app se generará automáticamente:
-- Paper root
-  - DoE.xlsx y Density.xlsx (plantillas o ficheros base)
-  - Por cada polímero/tipo de espuma (p.ej., HDPE, LDPE, PP, PET, PS):
-    - PDR/
-      - Input/
-      - Output/
-    - Picnometry/ (para OC)
-      - Input/
-      - Output/
-    - DSC/
-      - Input/
-      - Output/
-    - SEM/
-      - Input/
-      - Output/
+The main window is split accordingly:
+- **DATA EXTRACTION**
+  - ⚡ **SMART COMBINE** – merges DoE, density, PDR, DSC, SEM, and OC outputs into `All_Results.xlsx`.
+  - 🔬 **FOAM-SPECIFIC ANALYSIS** – quick access to polymer-specific tools (PDR, OC/Pycnometry, DSC, SEM editor).
+- **DATA ANALYSIS**
+  - 📈 **SCATTER PLOTS** – publication plots with constancy-rule filters, groups, and error bars.
+  - 🔥 **HEATMAPS** – Spearman/Pearson/distance-correlation matrices with column multi-select.
+- **ORGANIZATION**
+  - 📁 **MANAGE PAPERS** – add/remove papers, change root directories, relocate paths.
+  - 🧶 **MANAGE FOAMS** – add/delete foam types globally or per paper.
 
-Notas:
-- Coloca siempre tus datos de entrada en la subcarpeta Input del módulo correspondiente.
-- Los resultados se guardan en Output.
+## 2. Paper Folder Structure
+When you create a paper via **Manage Papers > New Paper**, the application builds:
+```
+Paper/
+├─ DoE.xlsx
+├─ Density.xlsx
+├─ Results/
+└─ <FoamType>/
+   ├─ PDR/ Input, Output
+   ├─ Open-cell content/ Input, Output
+   ├─ DSC/ Input, Output
+   └─ SEM/ Input, Output
+```
+Guidelines:
+- Place raw inputs in the corresponding `Input` folder; the GUI writes outputs beside them.
+- Do not rename subfolders created by the wizard; modules assume these names.
 
-## Gestión de papers y espumas
-- Nuevo paper: Menú File > Select Paper… > botón “New Paper” en el selector. Define nombre y tipos de espuma a usar.
-- Cambiar paper: File > Select Paper…
-- Cambiar tipo de espuma activo: File > Select Foam Type…
-- Gestionar espumas del paper: desde el selector de paper/espumas (puedes añadir o borrar espumas que no estén usadas en ningún paper).
+## 3. Managing Papers & Foams
+- **New paper**: File → *Select Paper…* → *New Paper*. Choose the name and associated foams.
+- **Switch paper**: File → *Select Paper…*.
+- **Switch foam type**: File → *Select Foam Type…*.
+- **Update foams for a paper**: use *Manage Foams* from the selector.
 
-## Reglas generales de etiquetas (“Label”)
-- Usa la misma etiqueta Label para la misma muestra en todos los ficheros (DoE, PDR, Density, OC, SEM, DSC).
-- Evita espacios finales y caracteres raros. La app normaliza mínimamente, pero la coincidencia exacta ayuda a evitar huecos.
+## 4. Column & File Requirements
+Respect headings exactly (including case, units, spaces). Key expectations:
 
-## Formatos de archivo requeridos
-Asegúrate de respetar nombres de columnas, hojas y formatos para evitar errores.
+### DoE.xlsx (paper level)
+- One workbook with one sheet per foam type (sheet name = foam type).
+- Required columns: `Label`, `m(g)`, `Water (g)`, `T (°C)`, `P CO2 (bar)`, `t (min)`.
 
-### 1) DoE.xlsx (nivel paper)
-- Un único libro Excel con los DoE de todas las espumas.
-- Hoja por polímero/tipo de espuma, con nombre igual al polímero (p. ej., HDPE, LDPE, PP, PET, PS).
-- Columnas mínimas por hoja:
-  - Label
-  - m(g)
-  - Water (g)
-  - T (ºC)
-  - P CO2 (bar)
-  - t (min)
+### Density.xlsx (paper level)
+- One sheet per foam type.
+- Recommended columns (used by Combine/OC modules):
+  - `Label`, `Av Exp ρ foam (g/cm3)`, `Desvest Exp ρ foam (g/cm3)`, `%DER Exp ρ foam (g/cm3)`, `ρr`, `X`, `Porosity (%)`.
+  - For OC, ensure `Density (g/cm3)` is present.
 
-### 2) Density.xlsx (nivel paper)
-- Un único libro Excel con densidades por polímero.
-- Hoja por polímero (nombre de hoja = nombre del polímero).
-- Para Combine (resultados globales): se usan, si existen, las columnas siguientes:
-  - Label
-  - Av Exp ρ foam (g/cm3)
-  - Desvest Exp ρ foam (g/cm3)
-  - %DER Exp ρ foam (g/cm3)
-  - ρr
-  - X
-  - Porosity (%)
-- Para OC (picnometría): como mínimo debe existir por hoja:
-  - Label
-  - Density (g/cm3)
+### PDR CSV (foam level)
+- Columns: `Time`, `T1 (°C)`, `T2 (°C)`, `P (bar)`.
+- Output workbook: `PDR/Output/registros_promedios.xlsx` with sheet `Registros`.
 
-Sugerencia: si necesitas ambos usos, incluye todas las columnas anteriores en la hoja del polímero.
+### OC / Picnometry (foam level)
+- Original Excel files live in `Open-cell content/Input`.
+- Module output (recommended): `Open-cell content/Output/<Foam>_OC.xlsx` containing `%OC` column for Combine.
 
-### 3) PDR – archivos CSV (nivel espuma)
-- Coloca los CSV en Paper/Polymer/PDR/Input.
-- Formato CSV requerido (cabeceras exactas):
-  - Time
-  - T1 (ºC)
-  - T2 (ºC)
-  - P (bar)
-- Notas:
-  - El separador decimal en P puede ser coma o punto (la app lo gestiona).
-  - La app genera/actualiza un Excel “registros_promedios.xlsx” en Output con hoja “Registros” y cabeceras:
-    - Filename | Pi (MPa) | Pf (MPa) | PDR (MPa/s) | Chart
+### DSC TXT (foam level)
+- Place `.txt` files in `DSC/Input`.
+- Output: `DSC/Output/DSC_<Foam>.xlsx` with Tg, Tm, Xc columns.
 
-### 4) OC – Picnometry (nivel espuma)
-- Coloca los ficheros originales de picnometría (.xls o .xlsx) en Paper/Polymer/Picnometry/Input.
-- El módulo permite:
-  - Selección múltiple tipo Ctrl+Click, con “Select All” y “Select None”.
-  - Tabla de revisión: muestra Label, masa, densidad, Vpyc calculado, análisis de comentarios, etc.
-  - Corrección manual del volumen de bola si la lectura automática del comentario no es correcta.
-- Salida recomendada para compatibilidad con Combine:
-  - Archivo Excel en Paper/Polymer/Picnometry/Output
-  - Nombre recomendado: Polymer_OC.xlsx (por ejemplo, HDPE_OC.xlsx)
-- Columnas que escribe el módulo (pueden variar según datos presentes):
-  - Label
-  - Density (g/cm3)
-  - m (g)
-  - Vext (cm3)
-  - Vpyc unfixed (cm3)
-  - Vpyc (cm3)
-  - ρr
-  - Vext - Vpyc (cm3)
-  - 1-ρr
-  - Vext(1-ρr) (cm3)
-  - %OC
-  - Comment Analysis
-- Importante sobre “Comment Analysis”:
-  - Si no editas manualmente, se guarda “Original | Calculated” (o “No comment”).
-  - Solo se marca “Manual” si haces una edición manual del volumen/bolas en la tabla de revisión.
-- Combine leerá la columna “%OC” y la renombrará a “OC (%)”.
+### SEM (foam level)
+- Images or histogram summary Excel go into `SEM/Input`.
+- Use the SEM Image Editor for annotations or histogram combiner as needed.
 
-### 5) DSC – ficheros de texto (nivel espuma)
-- Coloca los .txt en Paper/Polymer/DSC/Input.
-- Requisitos mínimos en cada .txt:
-  - Debe contener secciones tipo “Sample:” y “Results:” (la app extrae Tg, Tm, Xc según el tipo de polímero y script).
-- Salida típica: DSC_[Polymer].xlsx en Paper/Polymer/DSC/Output con, al menos, columnas:
-  - Sample
-  - Mass (mg)
-  - 1st Heat Tg (°C)
-  - 1st Heat Δcp (J/gK)
-  - 2nd Heat Tg (°C)
-  - 2nd Heat Δcp (J/gK)
+### All_Results.xlsx
+- Produced by Smart Combine in `Results/`.
+- Contains all canonical columns (`m(g)`, `Water (g)`, `T (°C)`, … `DSC Tg (°C)`). This file feeds scatter plots and heatmaps.
 
-### 6) SEM – imágenes y/o histogramas (nivel espuma)
-- Editor de imágenes SEM en Paper/Polymer/SEM.
-- Para Combine, si usas un Excel de histograma, mantén en el archivo de resumen las celdas con estas referencias (si aplica a tu plantilla):
-  - L3: Av S3D (µm)
-  - M3: Desvest S3D
-  - AG3: Av Cell density Nv (cells·cm^3 foamed)
-  - AH3: Desvest Cell density Nv
+## 5. Modules
 
-### 7) All_Results.xlsx (nivel paper)
-- Salida de Combine. Úsala directamente en Analysis Results.
-- Orden de columnas objetivo (resumen):
-  - Polymer, Label, m(g), Water (g), T (ºC), P CO2 (bar), t (min)
-  - Pi (MPa), Pf (MPa), PDR (MPa/s)
-  - n, Av S3D (µm), Desvest S3D, DER S3D (%)
-  - Av Cell density Nv (cells·cm^3 foamed), Desvest Cell density Nv
-  - Av Exp ρ foam (g/cm3), Desvest Exp ρ foam (g/cm3), %DER Exp ρ foam (g/cm3), ρr, X, Porosity (%)
-  - OC (%)
-  - DSC Tm (°C), DSC Xc (%)
-  - DSC Tg (°C)
+### 5.1 Smart Combine (⚡)
+1. Open **SMART COMBINE**.
+2. Select the paper base folder; missing paths are hinted from template structure.
+3. Review detected files (DoE, Density, PDR, DSC, SEM, OC). Fill gaps if needed.
+4. Run combine. Output: `Results/All_Results_YYYYMMDD.xlsx` plus logs.
 
-## Uso de los módulos (paso a paso)
+### 5.2 Foam-Specific Tools (🔬)
+- **PDR**: computes Pi, Pf, and PDR per experiment. Appends rows only for new CSVs.
+- **OC / Picnometry**: parses comments, lets you override ball counts, outputs `%OC` for Combine.
+- **DSC**: extracts Tg/Tm/Xc based on polymer settings.
+- **SEM**: image editor and optional histogram combiner.
 
-### A) Smart Combine (global)
-1) Abre “⚡ SMART COMBINE”.
-2) Selecciona el directorio base del paper (la app detecta subcarpetas por polímero).
-3) Revisa/indica rutas de DoE.xlsx, Density.xlsx y, si procede, archivos de PDR/DSC/SEM/OC.
-4) Ejecuta la combinación. Se generará/actualizará All_Results.xlsx en el paper.
+### 5.3 Scatter Plots (📈)
+1. Load the desired `All_Results` workbook (any sheet containing the required columns).
+2. Select sheet, X/Y axes, grouping column (optional) and constancy filters. Error bars auto-enable when matching deviation columns exist.
+3. Render scatter to visualize trends with the constancy rule enforced.
+4. Actions:
+   - *Render Plot* refreshes the scatter tab.
+   - *Save Scatter* / *Copy Scatter* export the current figure.
+   - *Export Data* writes filtered data + JSON config for reproduction.
 
-### B) Analysis Results (global)
-1) Abre “📊 ANALYSIS RESULTS”.
-2) Selecciona All_Results.xlsx del paper.
-3) El módulo realiza limpiezas, análisis y genera un Excel de análisis y gráficos en subcarpetas (con fecha).
+### 5.4 Heatmaps (🔥) – separate module
+1. Launch **HEATMAPS** (button or Tools menu).
+2. Default path uses the last heatmap file or the last Combine output.
+3. Load workbook → choose sheet. Independent and dependent variables appear in dedicated lists.
+4. Select columns (multi-select with Ctrl/Shift). *Select all* and *Clear selection* apply to both lists.
+5. Choose correlation method:
+   - **Spearman** (default): robust to monotonic but nonlinear relationships.
+   - **Pearson**: classic linear correlation; use when relationships are known to be linear.
+   - **Distance (dCor)**: captures general dependence patterns (recommended when nonlinear effects dominate). Slightly heavier computationally.
+6. Render heatmap → copy or save figure. The status bar summarizes sheet and variables used.
 
-### C) PDR (por espuma)
-1) Abre “📊 Pressure Drop Rate”.
-2) Asegúrate de tener CSV en PDR/Input.
-3) Elige o crea “registros_promedios.xlsx” en PDR/Output (hoja “Registros”).
-4) Procesa; el módulo añadirá filas nuevas para archivos no procesados aún.
-
-### D) OC – Picnometry (por espuma)
-1) Abre “🔓 Open-Cell Content”.
-2) Selecciona archivos en Picnometry/Input (Ctrl+Click, Select All/None disponible).
-3) Revisa resultados en la tabla:
-   - Comprueba “Comment Analysis”. Si el comentario fue mal interpretado, edita manualmente el número/tamaño de bolas.
-4) Guarda resultados en Picnometry/Output con nombre recomendado Polymer_OC.xlsx.
-
-### E) DSC (por espuma)
-1) Abre “🌡️ DSC Analysis”.
-2) Coloca .txt en DSC/Input.
-3) Procesa; se generará/actualizará DSC_[Polymer].xlsx en DSC/Output; si ya existe, se añaden solo muestras nuevas.
-
-### F) SEM (por espuma)
-1) Abre “🔬 SEM Image Editor”.
-2) Sigue las instrucciones en pantalla para editar la foto
-
-## Errores comunes y cómo evitarlos
-- Nombres de hojas de Excel: deben coincidir con el nombre del polímero (HDPE, LDPE, PP, PET, PS).
-- Nombres de columnas: respeta mayúsculas, paréntesis y unidades EXACTAS.
-- Etiquetas Label: deben ser coherentes entre DoE, PDR, Density, OC, SEM, DSC.
-- Separadores decimales: en CSV de PDR se admite coma o punto; en Excel usa punto decimal de forma consistente.
-- Archivos de salida recomendados:
-  - PDR/Output/registros_promedios.xlsx (hoja “Registros”).
-  - Picnometry/Output/Polymer_OC.xlsx (uno por polímero) para que Combine lo detecte.
-  - DSC/Output/DSC_[Polymer].xlsx.
-
-## Dónde encontrar ejemplos/plantillas
-- Carpeta templates/ contiene ejemplos mínimos y recomendaciones de estructura.
+## 6. Frequent Issues & Tips
+- **Column mismatch**: errors always list missing columns; adjust Excel headers accordingly.
+- **Constancy rule (scatter)**: you must pin all independent variables except X and Group; the app guides you via combobox filters.
+- **Heatmap selection**: requires ≥2 numeric columns after removing constant/empty ones; the module reports if selection is insufficient.
+- **Clipboard copy on Windows**: requires `pywin32`. Install via `pip install pywin32` if copy buttons show errors.
+- **State persistence**: scatter plots remember settings per sheet & file; if a workbook moves, reset selections as needed.
+- **Git-friendly exports**: outputs are stored under `Results/` or module-specific `Output/` folders so you can version control only what matters.
 
 ---
-Si algo no encaja con tus datos reales, ajusta las plantillas para mantener los nombres de columnas y hojas indicados aquí. Así evitarás errores y la app combinará/análisisará todo correctamente.
+With these guidelines you can manage papers, keep foams organized, extract raw metrics, and generate both scatter plots and correlation heatmaps ready for publication. Document unusual workflows in `Results/` notes so future combines remain reproducible.
