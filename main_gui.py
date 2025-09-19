@@ -131,7 +131,7 @@ class PressTechGUI:
 
         analysis_btn = ttk.Button(
             analysis_frame,
-            text='Publication Plots (Scatter)',
+            text='📈 SCATTER PLOTS',
             command=self.open_publication_plots,
             **button_style
         )

@@ -92,8 +92,8 @@ class HeatmapModule:
         controls.grid(row=0, column=0, sticky=(tk.N, tk.S), padx=(0, 12))
         controls.columnconfigure(0, weight=1)
         controls.columnconfigure(1, weight=1)
-        ttk.Label(controls, text='Independent columns:').grid(row=0, column=0, sticky=tk.W)
-        ttk.Label(controls, text='Dependent columns:').grid(row=0, column=1, sticky=tk.W)
+        ttk.Label(controls, text='Independent variables:').grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(controls, text='Dependent variables:').grid(row=0, column=1, sticky=tk.W)
 
         indep_container = ttk.Frame(controls)
         indep_container.grid(row=1, column=0, sticky=(tk.N, tk.S, tk.W, tk.E), pady=(4, 4))
@@ -392,6 +392,10 @@ class HeatmapModule:
         self.heatmap_rendered = True
         self.save_btn.configure(state='normal')
         self.copy_btn.configure(state='normal')
+        try:
+            self.canvas_widget.update_idletasks()
+        except Exception:
+            pass
 
     def _compute_correlation_matrix(self, data: pd.DataFrame, method: str) -> pd.DataFrame:
         method_lower = method.lower()
