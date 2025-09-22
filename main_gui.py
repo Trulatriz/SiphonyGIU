@@ -54,6 +54,35 @@ class PressTechGUI:
         # Bind close event to save settings
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         
+    def _set_window_icon(self):
+        try:
+            icon_path = Path(__file__).with_name('icon.png')
+            icon_image = None
+            if icon_path.exists():
+                try:
+                    icon_image = tk.PhotoImage(file=str(icon_path))
+                    self.root.iconphoto(True, icon_image)
+                except Exception:
+                    icon_image = None
+                if sys.platform.startswith('win'):
+                    ico_path = icon_path.with_suffix('.ico')
+                    if not ico_path.exists():
+                        try:
+                            from PIL import Image
+                            Image.open(icon_path).save(ico_path)
+                        except Exception:
+                            ico_path = None
+                    if ico_path and ico_path.exists():
+                        try:
+                            self.root.iconbitmap(default=str(ico_path))
+                        except Exception:
+                            pass
+                self._icon_image = icon_image
+            else:
+                self._icon_image = None
+        except Exception:
+            self._icon_image = None
+
     def center_window(self):
         """Center the window on the screen"""
         self.root.update_idletasks()
@@ -61,16 +90,6 @@ class PressTechGUI:
         y = (self.root.winfo_screenheight() // 2) - (600 // 2)
         self.root.geometry(f"800x600+{x}+{y}")
     
-    def _set_window_icon(self):
-        try:
-            icon_path = Path(__file__).with_name('icon.png')
-            if icon_path.exists():
-                icon = tk.PhotoImage(file=str(icon_path))
-                self.root.iconphoto(True, icon)
-                self._icon_image = icon
-        except Exception:
-            pass
-
     def create_title(self):
         """Create the main title"""
         title_frame = ttk.Frame(self.main_frame)

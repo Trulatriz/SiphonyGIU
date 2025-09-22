@@ -46,18 +46,19 @@ class HeatmapModule:
         self.sheet_var = tk.StringVar()
 
         self._build_ui()
-
-        default_entry = ''
+        default_file = ''
         if self.settings is not None:
             last_file = str(self.settings.get('last_heatmap_file', '') or '')
             if last_file:
-                default_entry = last_file if os.path.isdir(last_file) else os.path.dirname(last_file)
+                default_file = last_file
             else:
                 fallback = str(self.settings.get('last_output_file', '') or '')
                 if fallback:
-                    default_entry = fallback if os.path.isdir(fallback) else os.path.dirname(fallback)
-        if default_entry:
-            self.file_var.set(default_entry)
+                    default_file = fallback
+        if default_file:
+            self.file_var.set(default_file)
+
+
 
     def _build_ui(self):
         container = ttk.Frame(self.root, padding=12)
@@ -179,17 +180,10 @@ class HeatmapModule:
                 messagebox.showwarning("Not found", "No All_Results_*.xlsx in the selected folder.")
                 return
             path = candidates[-1]
-        elif '*' in path or '?' in path:
-            import glob
-            matches = sorted(glob.glob(path))
-            if not matches:
-                messagebox.showwarning("Not found", f"No files match pattern:\n{path}")
-                return
-            path = matches[-1]
+            self.file_var.set(path)
         if not os.path.exists(path):
             messagebox.showerror("File not found", path)
             return
-        self.file_var.set(path)
 
         try:
             sheets = pd.read_excel(path, sheet_name=None, engine="openpyxl")
@@ -236,6 +230,24 @@ class HeatmapModule:
         self.save_btn.configure(state='disabled')
         self.copy_btn.configure(state='disabled')
         self.status_var.set(f"Sheet set to {new_sheet}. Select columns and render.")
+
+    def _populate_columns(self):
+        df = self.df_sheets.get(self.current_sheet)
+        self.dep_list.configure(state='normal')
+        self.dep_list.delete(0, tk.END)
+        if df is None:
+            self.dep_list.configure(state='disabled')
+            self.select_all_btn.configure(state='disabled')
+            self.clear_btn.configure(state='disabled')
+            return
+        cols = [c for c in df.columns if c in ALLOWED_COLUMNS]
+        for col in cols:
+            self.dep_list.insert(tk.END, col)
+        self.dep_list.selection_set(0, tk.END)
+        self.dep_list.configure(state='normal')
+        self.select_all_btn.configure(state='normal')
+        self.clear_btn.configure(state='normal')
+        self._on_selection_change()
 
     # ---------- Column selection helpers ----------
     def _select_all(self):
@@ -310,11 +322,6 @@ class HeatmapModule:
     # ---------- Heatmap rendering ----------
 
     def _render_heatmap(self):
-        geom = None
-        try:
-            geom = self.root.geometry()
-        except Exception:
-            pass
         if self.current_sheet is None:
             messagebox.showwarning('No sheet', 'Load a workbook and choose a sheet first.')
             return
@@ -389,11 +396,6 @@ class HeatmapModule:
             self.canvas_widget.update_idletasks()
         except Exception:
             pass
-        if geom is not None:
-            try:
-                self.root.geometry(geom)
-            except Exception:
-                pass
 
     def _compute_correlation_matrix(self, data: pd.DataFrame, method: str) -> pd.DataFrame:
         method_lower = method.lower()
