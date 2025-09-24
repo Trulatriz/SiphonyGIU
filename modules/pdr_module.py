@@ -5,6 +5,7 @@ import os
 from openpyxl import load_workbook, Workbook
 import win32com.client as win32
 from .foam_type_manager import FoamTypeManager, FoamTypeSelector
+import re
 
 class PDRModule:
     def __init__(self, root):
@@ -149,6 +150,24 @@ class PDRModule:
         
         if suggested and hasattr(self, 'status_var'):
             self.status_var.set(f"Default paths loaded for {self.current_foam_type}")
+
+    def _extract_label_from_filename(self, filename):
+        """Extract label from filename.
+
+        If filename has form "foamtype label.csv" and self.current_foam_type matches
+        the foamtype prefix, returns only "label". Otherwise returns base filename
+        without extension.
+        Supports separators: space, underscore, hyphen, dot.
+        """
+        base = os.path.splitext(filename)[0]
+        foam = (self.current_foam_type or "").strip()
+        if foam:
+            # Match foam at start followed by separator(s) then the label
+            pattern = r'^' + re.escape(foam) + r'[\s_\-\.]+(.+)$'
+            m = re.match(pattern, base, flags=re.I)
+            if m:
+                return m.group(1).strip()
+        return base
     
     def on_foam_type_changed(self, new_foam_type):
         """Handle foam type change"""
@@ -650,25 +669,39 @@ class PDRModule:
         
     def update_registros_file(self, filename, output_path):
         """Update registros file with new data (from original code)"""
+        # Try to use Excel COM automation, but be tolerant: if any COM operation
+        # fails (including setting Excel.Visible), fall back to an openpyxl-based
+        # approach that writes the key formulas (but won't copy the chart).
+        excel = None
         try:
-            excel = win32.Dispatch("Excel.Application")
-            excel.Visible = False
+            try:
+                excel = win32.Dispatch("Excel.Application")
+            except Exception as e:
+                # COM not available: fall back
+                print(f"Excel COM not available, using openpyxl fallback: {e}")
+                return self._fallback_update_registros_file(filename, output_path)
+
+            # Setting Visible can fail in restricted environments; ignore errors
+            try:
+                excel.Visible = False
+            except Exception:
+                # Non-fatal: continue without changing visibility
+                pass
+
             wb_registros = excel.Workbooks.Open(self.registros_file)
             wb_calculado = excel.Workbooks.Open(output_path)
-            
+
             sheet_registros = wb_registros.Sheets["Registros"]
             sheet_calculado = wb_calculado.Sheets["Datos Procesados"]
-            
+
             # Determine the last filled row in column A (header at row 1)
             last_filled = sheet_registros.Cells(sheet_registros.Rows.Count, 1).End(3).Row
 
             # Incremental behavior: append only if not already present by base filename
-            # Collect existing labels in column A (rows 2..last_filled)
             try:
                 existing_names = set()
                 if last_filled >= 2:
                     rng = sheet_registros.Range(f"A2:A{last_filled}").Value
-                    # rng can be a tuple of tuples or a single value
                     if isinstance(rng, tuple):
                         for item in rng:
                             val = item[0] if isinstance(item, tuple) else item
@@ -677,12 +710,16 @@ class PDRModule:
                     else:
                         if rng is not None:
                             existing_names.add(str(rng).strip().lower())
-                base_name = os.path.splitext(filename)[0].strip().lower()
+                # Use extracted label for duplicate detection (so 'foamtype label' -> 'label')
+                base_name = self._extract_label_from_filename(filename).strip().lower()
                 if base_name in existing_names:
                     # Duplicate found: close and skip appending
                     wb_calculado.Close(SaveChanges=False)
                     wb_registros.Close(SaveChanges=True)
-                    excel.Quit()
+                    try:
+                        excel.Quit()
+                    except Exception:
+                        pass
                     print(f"Skipped duplicate entry for '{base_name}' in Registros.")
                     return True
             except Exception:
@@ -691,43 +728,162 @@ class PDRModule:
 
             # Next row to write
             last_row = last_filled + 1
-            sheet_registros.Rows(last_row).RowHeight = 218 
-            sheet_registros.Columns("E").ColumnWidth = 65
+            try:
+                sheet_registros.Rows(last_row).RowHeight = 218
+                sheet_registros.Columns("E").ColumnWidth = 65
+            except Exception:
+                # Non-fatal formatting error
+                pass
 
-            # Copy chart
-            chart_object = sheet_calculado.ChartObjects(3)
-            chart_object.Copy()
+            # Try to copy chart; if it fails, continue and only write formulas
+            try:
+                chart_object = sheet_calculado.ChartObjects(3)
+                chart_object.Copy()
 
-            cell_for_graph = sheet_registros.Cells(last_row, 5)
-            sheet_registros.Paste(cell_for_graph)
+                cell_for_graph = sheet_registros.Cells(last_row, 5)
+                sheet_registros.Paste(cell_for_graph)
 
-            pasted_chart = sheet_registros.ChartObjects(sheet_registros.ChartObjects().Count)
-            pasted_chart.Width = 360 
-            pasted_chart.Height = 217.5 
+                pasted_chart = sheet_registros.ChartObjects(sheet_registros.ChartObjects().Count)
+                pasted_chart.Width = 360
+                pasted_chart.Height = 217.5
+            except Exception:
+                # Chart copy failed: continue without chart
+                print("Warning: Could not copy chart to Registros (continuing without chart)")
 
-            # Add data
-            sheet_registros.Cells(last_row, 1).Value = filename.replace('.csv', '')
-            
+            # Add data (filename and formulas referencing the processed workbook)
+            try:
+                # Write label: if filename is 'foamtype label.csv' and current foam type matches,
+                # write only 'label'
+                label = self._extract_label_from_filename(filename)
+                sheet_registros.Cells(last_row, 1).Value = label
+
+                archivo_procesado_sin_ruta = os.path.basename(output_path)
+                formula_u2 = f"='[{archivo_procesado_sin_ruta}]Datos Procesados'!$U$2"
+                formula_v2 = f"='[{archivo_procesado_sin_ruta}]Datos Procesados'!$V$2"
+                formula_w2 = f"='[{archivo_procesado_sin_ruta}]Datos Procesados'!$W$2"
+
+                sheet_registros.Cells(last_row, 2).Formula = formula_u2
+                sheet_registros.Cells(last_row, 3).Formula = formula_v2
+                sheet_registros.Cells(last_row, 4).Formula = formula_w2
+
+                try:
+                    sheet_registros.Columns("A:D").AutoFit()
+                except Exception:
+                    pass
+            except Exception:
+                print("Warning: Could not write formulas into Registros via COM. Trying fallback.")
+                # Close COM workbooks before fallback
+                try:
+                    wb_calculado.Close(SaveChanges=False)
+                except Exception:
+                    pass
+                try:
+                    wb_registros.Close(SaveChanges=True)
+                except Exception:
+                    pass
+                try:
+                    excel.Quit()
+                except Exception:
+                    pass
+                return self._fallback_update_registros_file(filename, output_path)
+
+            # Save and close
+            wb_registros.Save()
+            try:
+                wb_calculado.Close(SaveChanges=False)
+            except Exception:
+                pass
+            try:
+                wb_registros.Close(SaveChanges=True)
+            except Exception:
+                pass
+            try:
+                excel.Quit()
+            except Exception:
+                pass
+            print(f"Gráfico copiado al archivo de registros en la fila {last_row}.")
+            return True
+
+        except Exception as e:
+            # Any unexpected COM error: try fallback instead of raising
+            print(f"Error al actualizar el archivo de registros via COM: {e}\nFalling back to openpyxl method.")
+            try:
+                if excel is not None:
+                    try:
+                        excel.Quit()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            return self._fallback_update_registros_file(filename, output_path)
+
+    def _fallback_update_registros_file(self, filename, output_path):
+        """Fallback method that uses openpyxl to append a row with formulas.
+        This will NOT copy charts but will add formulas referencing the processed file
+        so Excel can evaluate them when the user opens the workbook.
+        """
+        try:
+            from openpyxl import load_workbook
+
+            wb = load_workbook(self.registros_file)
+            if "Registros" not in wb.sheetnames:
+                ws = wb.active
+                ws.title = "Registros"
+            else:
+                ws = wb["Registros"]
+
+            # Find last filled row in column A
+            # Find last filled row in column A and collect existing names for dedup
+            last_row = 1
+            existing_names = set()
+            for row in range(1, ws.max_row + 1):
+                val = ws.cell(row=row, column=1).value
+                if val is not None:
+                    last_row = row
+                    try:
+                        existing_names.add(str(val).strip().lower())
+                    except Exception:
+                        pass
+
+            next_row = last_row + 1
+
+            # Set row height / column width where possible
+            try:
+                ws.row_dimensions[next_row].height = 218
+            except Exception:
+                pass
+            try:
+                ws.column_dimensions['E'].width = 65
+            except Exception:
+                pass
+
+            # Determine label and skip duplicates
+            label = self._extract_label_from_filename(filename)
+            if label.strip().lower() in existing_names:
+                print(f"Skipped duplicate entry for '{label}' in Registros (fallback).")
+                wb.save(self.registros_file)
+                return True
+
+            # Write label
+            ws.cell(row=next_row, column=1, value=label)
+
             archivo_procesado_sin_ruta = os.path.basename(output_path)
             formula_u2 = f"='[{archivo_procesado_sin_ruta}]Datos Procesados'!$U$2"
             formula_v2 = f"='[{archivo_procesado_sin_ruta}]Datos Procesados'!$V$2"
             formula_w2 = f"='[{archivo_procesado_sin_ruta}]Datos Procesados'!$W$2"
 
-            sheet_registros.Cells(last_row, 2).Formula = formula_u2
-            sheet_registros.Cells(last_row, 3).Formula = formula_v2
-            sheet_registros.Cells(last_row, 4).Formula = formula_w2
-            
-            sheet_registros.Columns("A:D").AutoFit()
+            ws.cell(row=next_row, column=2, value=formula_u2)
+            ws.cell(row=next_row, column=3, value=formula_v2)
+            ws.cell(row=next_row, column=4, value=formula_w2)
 
-            wb_registros.Save()
-            wb_calculado.Close(SaveChanges=False)
-            wb_registros.Close(SaveChanges=True)
-            excel.Quit()
-            print(f"Gráfico copiado al archivo de registros en la fila {last_row}.")
+            # Save workbook
+            wb.save(self.registros_file)
+            print(f"Registros actualizado (fallback) en la fila {next_row} (sin gráfico).")
+            return True
 
         except Exception as e:
-            print(f"Error al actualizar el archivo de registros: {e}")
-            raise e
+            print(f"Error en fallback al actualizar registros: {e}")
+            return False
             
     def open_or_create_registros_file(self):
         """Open existing or create new registros file with smart logic"""

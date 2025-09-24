@@ -11,7 +11,7 @@
 ## 3. Record the GitHub token securely
 - Set an environment variable (PowerShell example):
   `powershell
-   = "<REPLACE_WITH_TOKEN>"
+   = "<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>"
   `
 - Or create/update a credential helper (git config credential.helper manager) so you can paste the token once when prompted.
 

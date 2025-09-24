@@ -55,33 +55,37 @@ class PressTechGUI:
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         
     def _set_window_icon(self):
-        try:
-            icon_path = Path(__file__).with_name('icon.png')
-            icon_image = None
-            if icon_path.exists():
-                try:
-                    icon_image = tk.PhotoImage(file=str(icon_path))
-                    self.root.iconphoto(True, icon_image)
-                except Exception:
-                    icon_image = None
-                if sys.platform.startswith('win'):
-                    ico_path = icon_path.with_suffix('.ico')
-                    if not ico_path.exists():
-                        try:
-                            from PIL import Image
-                            Image.open(icon_path).save(ico_path)
-                        except Exception:
-                            ico_path = None
-                    if ico_path and ico_path.exists():
-                        try:
-                            self.root.iconbitmap(default=str(ico_path))
-                        except Exception:
-                            pass
-                self._icon_image = icon_image
-            else:
-                self._icon_image = None
-        except Exception:
-            self._icon_image = None
+        icon_png = Path(__file__).with_name('icon.png')
+        icon_ico = Path(__file__).with_name('icon.ico')
+        images: list[tk.PhotoImage] = []
+
+        if icon_png.exists():
+            try:
+                img = tk.PhotoImage(file=str(icon_png))
+                self.root.iconphoto(True, img)
+                images.append(img)
+            except Exception:
+                images = []
+
+        if not icon_ico.exists() and icon_png.exists():
+            try:
+                from PIL import Image
+                Image.open(icon_png).save(icon_ico)
+            except Exception:
+                icon_ico = None
+
+        if icon_ico and icon_ico.exists():
+            try:
+                self.root.iconbitmap(default=str(icon_ico))
+            except Exception:
+                pass
+        elif icon_png.exists():
+            try:
+                self.root.iconbitmap(default=str(icon_png))
+            except Exception:
+                pass
+
+        self._icon_images = images
 
     def center_window(self):
         """Center the window on the screen"""
