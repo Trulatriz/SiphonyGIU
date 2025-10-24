@@ -6,14 +6,14 @@
   "last_histogram_folder": "",
   "last_dsc_folder": "",
   "last_oc_folder": "",
-  "last_heatmap_file": "C:/Users/usuario/OneDrive - UVa/Tesis doctoral/PressTech/Upcycling of plastics/HDPE_TW/Results/All_Results_20250919.xlsx",
+  "last_heatmap_file": "C:/Users/usuario/OneDrive - UVa/Tesis doctoral/PressTech/Upcycling of plastics/HDPE_TW/Results/All_Results_20250925.xlsx",
   "auto_save_enabled": true,
   "auto_save_interval": 10,
   "backup_enabled": true,
   "validation_enabled": true,
   "parallel_processing": false,
   "theme": "light",
-  "window_geometry": "800x600+880+420",
+  "window_geometry": "900x780+830+330",
   "recent_files": [],
   "max_recent_files": 10,
   "plot_last_state": {
@@ -45,6 +45,96 @@
         "T (\u00b0C)": "",
         "P CO2 (bar)": "200.0",
         "t (min)": "30.0"
+      }
+    },
+    "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\Results\\All_Results_20250924.xlsx::All_Results": {
+      "x": "T (\u00b0C)",
+      "y": "\u03c1 foam (g/cm^3)",
+      "group": "Water (g)",
+      "errorbars": false,
+      "monochrome": false,
+      "dpi": 300,
+      "constraints": {
+        "m(g)": "",
+        "Water (g)": "",
+        "T (\u00b0C)": "",
+        "P CO2 (bar)": "",
+        "t (min)": "30"
+      }
+    },
+    "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\Results\\All_Results_20250924.xlsx::HDPE": {
+      "x": "T (\u00b0C)",
+      "y": "\u00f8 (\u00b5m)",
+      "group": "Water (g)",
+      "errorbars": false,
+      "monochrome": false,
+      "dpi": 300,
+      "constraints": {
+        "m(g)": "1",
+        "Water (g)": "",
+        "T (\u00b0C)": "",
+        "P CO2 (bar)": "200",
+        "t (min)": "30"
+      }
+    },
+    "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\Results\\All_Results_20250925.xlsx::All_Results": {
+      "x": "m(g)",
+      "y": "\u03c1 foam (g/cm^3)",
+      "group": "<None>",
+      "errorbars": false,
+      "monochrome": false,
+      "dpi": 300,
+      "constraints": {
+        "m(g)": "",
+        "Water (g)": "",
+        "T (\u00b0C)": "",
+        "P CO2 (bar)": "",
+        "t (min)": ""
+      }
+    },
+    "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\Results\\All_Results_20250925.xlsx::HDPE": {
+      "x": "T (\u00b0C)",
+      "y": "DSC Xc (%)",
+      "group": "Water (g)",
+      "errorbars": false,
+      "monochrome": false,
+      "dpi": 300,
+      "constraints": {
+        "m(g)": "",
+        "Water (g)": "",
+        "T (\u00b0C)": "",
+        "P CO2 (bar)": "",
+        "t (min)": ""
+      }
+    },
+    "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\Results\\All_Results_20250925 - copia corregida.xlsx::All_Results": {
+      "x": "m(g)",
+      "y": "\u00f8 (\u00b5m)",
+      "group": "<None>",
+      "errorbars": false,
+      "monochrome": false,
+      "dpi": 300,
+      "constraints": {
+        "m(g)": "",
+        "Water (g)": "",
+        "T (\u00b0C)": "",
+        "P CO2 (bar)": "",
+        "t (min)": ""
+      }
+    },
+    "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\Results\\All_Results_20250925 - copia corregida.xlsx::HDPE": {
+      "x": "T (\u00b0C)",
+      "y": "DSC Xc (%)",
+      "group": "Water (g)",
+      "errorbars": false,
+      "monochrome": false,
+      "dpi": 300,
+      "constraints": {
+        "m(g)": "",
+        "Water (g)": "",
+        "T (\u00b0C)": "",
+        "P CO2 (bar)": "200",
+        "t (min)": "30"
       }
     }
   }
