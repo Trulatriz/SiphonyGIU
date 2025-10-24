@@ -32,6 +32,28 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 from datetime import datetime
 from .foam_type_manager import FoamTypeManager, FoamTypeSelector
 
+# Canonical column names used throughout Combine + downstream modules
+RHO_FOAM_G = "\u03C1 foam (g/cm^3)"
+RHO_FOAM_KG = "\u03C1 foam (kg/m^3)"
+DESV_RHO_FOAM_G = "Desvest \u03C1 foam (g/cm^3)"
+DESV_RHO_FOAM_KG = "Desvest \u03C1 foam (kg/m^3)"
+PDER_RHO_FOAM = "%DER \u03C1 foam (g/cm^3)"
+RHO_REL = "\u03C1\u1D63"  # ρ with subscript r
+EXPANSION_COL = "X"
+POROSITY_COL = "Porosity (%)"
+
+BASE_NEW_COLUMN_ORDER = [
+    'Polymer', 'Label', 'm(g)', 'Water (g)', 'T (\u00B0C)', 'P CO2 (bar)', 't (min)',
+    'Pi (MPa)', 'Pf (MPa)', 'PDR (MPa/s)',
+    'n SEM images', '\u00F8 (\u00B5m)', 'Desvest \u00F8 (\u00B5m)', 'RSD \u00F8 (%)',
+    'N\u1D65 (cells\u00B7cm^3)', 'Desvest N\u1D65 (cells\u00B7cm^3)', 'RSD N\u1D65 (%)',
+    RHO_FOAM_G, RHO_FOAM_KG, DESV_RHO_FOAM_G, DESV_RHO_FOAM_KG, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL, POROSITY_COL,
+    'OC (%)',
+    'DSC Tm (\u00B0C)', 'DSC Xc (%)', 'DSC Tg (\u00B0C)'
+]
+
+DENSITY_DATA_COLUMNS = [RHO_FOAM_G, RHO_FOAM_KG, DESV_RHO_FOAM_G, DESV_RHO_FOAM_KG, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL, POROSITY_COL]
+
 class CombineModule:
     def __init__(self, root, paper_path=None):
         self.root = root
@@ -72,30 +94,14 @@ class CombineModule:
         self.foam_types = self.foam_manager.get_foam_types()  # Dynamic foam types
 
         # Column configuration
-        self.new_column_order = [
-            'Polymer', 'Label', 'm(g)', 'Water (g)', 'T (°C)', 'P CO2 (bar)', 't (min)',
-            'Pi (MPa)', 'Pf (MPa)', 'PDR (MPa/s)',
-            'n SEM images', 'ø (µm)', 'Desvest ø (µm)', 'RSD ø (%)',
-            'Nᵥ (cells·cm^3)', 'Desvest Nᵥ (cells·cm^3)', 'RSD Nᵥ (%)',
-            '? foam (g/cm^3)', 'Desvest ? foam (g/cm^3)', '%DER ? foam (g/cm^3)', 'ρr', 'X', 'Porosity (%)',
-            'OC (%)',
-            'DSC Tm (°C)', 'DSC Xc (%)', 'DSC Tg (°C)'
-        ]
+        self.new_column_order = list(BASE_NEW_COLUMN_ORDER)
 
         self.create_widgets()
 
         # Set default paths after widgets are created
         self.load_suggested_paths()
         # Normalize final column order to canonical names (avoid encoding issues)
-        self.new_column_order = [
-            'Polymer', 'Label', 'm(g)', 'Water (g)', 'T (\u00B0C)', 'P CO2 (bar)', 't (min)',
-            'Pi (MPa)', 'Pf (MPa)', 'PDR (MPa/s)',
-            'n SEM images', '\u00F8 (\u00B5m)', 'Desvest \u00F8 (\u00B5m)', 'RSD \u00F8 (%)',
-            'N\u1D65 (cells\u00B7cm^3)', 'Desvest N\u1D65 (cells\u00B7cm^3)', 'RSD N\u1D65 (%)',
-            '\u03C1 foam (g/cm^3)', 'Desvest \u03C1 foam (g/cm^3)', '%DER \u03C1 foam (g/cm^3)', '\u03C1r', 'X', 'Porosity (%)',
-            'OC (%)',
-            'DSC Tm (\u00B0C)', 'DSC Xc (%)', 'DSC Tg (\u00B0C)'
-        ]
+        self.new_column_order = list(BASE_NEW_COLUMN_ORDER)
         
     def normalize_label(self, s):
         if s is None:
@@ -817,6 +823,10 @@ class CombineModule:
                 
                 # Write the combined data to All_Results sheet
                 # Ensure all columns exist and order them
+                if RHO_FOAM_G in all_data.columns:
+                    all_data[RHO_FOAM_KG] = pd.to_numeric(all_data[RHO_FOAM_G], errors='coerce') * 1000
+                if DESV_RHO_FOAM_G in all_data.columns:
+                    all_data[DESV_RHO_FOAM_KG] = pd.to_numeric(all_data[DESV_RHO_FOAM_G], errors='coerce') * 1000
                 for col in self.new_column_order:
                     if col not in all_data.columns:
                         all_data[col] = pd.NA
@@ -871,27 +881,61 @@ class CombineModule:
             return pd.DataFrame(columns=['Label','m(g)','Water (g)','T (Â°C)','P CO2 (bar)','t (min)'])
 
     def _read_density(self, path, foam):
+        fallback_cols = ['Label'] + DENSITY_DATA_COLUMNS
         if not path or not os.path.exists(path):
-            return pd.DataFrame(columns=['Label','? foam (g/cm^3)','Desvest ? foam (g/cm^3)','%DER ? foam (g/cm^3)','ρr','X','Porosity (%)'])
+            return pd.DataFrame(columns=fallback_cols)
         try:
             df = pd.read_excel(path, sheet_name=foam)
             colmap = {}
             for c in df.columns:
                 cn = str(c).strip()
-                if cn.lower().startswith('label'): colmap[c]='Label'
-                elif '? foam' in cn: colmap[c]='? foam (g/cm^3)'
-                elif 'Desvest ? foam' in cn: colmap[c]='Desvest ? foam (g/cm^3)'
-                elif '%DER ? foam' in cn: colmap[c]='%DER ? foam (g/cm^3)'
-                elif cn=='ρr' or 'ρr' in cn: colmap[c]='ρr'
-                elif cn=='X': colmap[c]='X'
-                elif 'Porosity' in cn: colmap[c]='Porosity (%)'
+                cn_lower = cn.lower()
+                if cn_lower.startswith('label'):
+                    colmap[c] = 'Label'
+                elif 'foam' in cn_lower and 'g/cm' in cn_lower and 'desvest' not in cn_lower and '%der' not in cn_lower:
+                    colmap[c] = RHO_FOAM_G
+                elif 'desvest' in cn_lower and 'foam' in cn_lower and 'g/cm' in cn_lower:
+                    colmap[c] = DESV_RHO_FOAM_G
+                elif '%der' in cn_lower and 'foam' in cn_lower and 'g/cm' in cn_lower:
+                    colmap[c] = PDER_RHO_FOAM
+                elif 'ρr' in cn or 'ρr' in cn or 'ρᵣ' in cn or 'rho_r' in cn_lower.replace(' ', ''):
+                    colmap[c] = RHO_REL
+                elif cn.strip() == 'X':
+                    colmap[c] = EXPANSION_COL
+                elif 'porosity' in cn_lower:
+                    colmap[c] = POROSITY_COL
             df = df.rename(columns=colmap)
-            keep = ['Label','? foam (g/cm^3)','Desvest ? foam (g/cm^3)','%DER ? foam (g/cm^3)','ρr','X','Porosity (%)']
+
+            legacy_rel_cols = [c for c in df.columns if str(c).strip().replace(' ', '') in ('ρr', 'ρᵣ', 'ρr', 'rho_r')]
+            if legacy_rel_cols and RHO_REL not in df.columns:
+                df[RHO_REL] = df[legacy_rel_cols[0]]
+            for legacy in legacy_rel_cols:
+                if legacy != RHO_REL and legacy in df.columns:
+                    df = df.drop(columns=[legacy])
+
+            for k in [RHO_FOAM_G, DESV_RHO_FOAM_G, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL, POROSITY_COL]:
+                if k not in df.columns:
+                    df[k] = pd.NA
+
+            if RHO_FOAM_G in df.columns:
+                rho_g = pd.to_numeric(df[RHO_FOAM_G], errors='coerce')
+            else:
+                rho_g = pd.Series([pd.NA] * len(df))
+            df[RHO_FOAM_KG] = rho_g * 1000
+
+            if DESV_RHO_FOAM_G in df.columns:
+                desv_g = pd.to_numeric(df[DESV_RHO_FOAM_G], errors='coerce')
+            else:
+                desv_g = pd.Series([pd.NA] * len(df))
+            df[DESV_RHO_FOAM_KG] = desv_g * 1000
+
+            keep = ['Label'] + DENSITY_DATA_COLUMNS
             for k in keep:
-                if k not in df.columns: df[k]=pd.NA
+                if k not in df.columns:
+                    df[k] = pd.NA
             return df[keep].dropna(subset=['Label'])
         except Exception:
-            return pd.DataFrame(columns=['Label','? foam (g/cm^3)','Desvest ? foam (g/cm^3)','%DER ? foam (g/cm^3)','ρr','X','Porosity (%)'])
+            return pd.DataFrame(columns=fallback_cols)
 
     def _read_pdr(self, path):
         if not path or not os.path.exists(path):
@@ -1021,7 +1065,8 @@ class CombineModule:
             if lbl in i_sem.index:
                 row.update(i_sem.loc[lbl][['n SEM images','ø (µm)','Desvest ø (µm)','RSD ø (%)','Nᵥ (cells·cm^3)','Desvest Nᵥ (cells·cm^3)','RSD Nᵥ (%)']].to_dict())
             if lbl in i_den.index:
-                row.update(i_den.loc[lbl][['ρ foam (g/cm^3)','Desvest ρ foam (g/cm^3)','%DER ρ foam (g/cm^3)','ρr','X','Porosity (%)']].to_dict())
+                density_cols = [RHO_FOAM_G, RHO_FOAM_KG, DESV_RHO_FOAM_G, DESV_RHO_FOAM_KG, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL, POROSITY_COL]
+                row.update(i_den.loc[lbl][density_cols].to_dict())
             if lbl in i_oc.index:
                 row.update(i_oc.loc[lbl][['OC (%)']].to_dict())
             if lbl in i_dsc.index:
@@ -1030,6 +1075,10 @@ class CombineModule:
                         row[k]=i_dsc.loc[lbl][k]
             rows.append(row)
         df = pd.DataFrame(rows)
+        if RHO_FOAM_G in df.columns:
+            df[RHO_FOAM_KG] = pd.to_numeric(df[RHO_FOAM_G], errors='coerce') * 1000
+        if DESV_RHO_FOAM_G in df.columns:
+            df[DESV_RHO_FOAM_KG] = pd.to_numeric(df[DESV_RHO_FOAM_G], errors='coerce') * 1000
         # Ensure all final columns exist and order
         for col in self.new_column_order:
             if col not in df.columns:
@@ -1081,22 +1130,25 @@ def _cm_read_doe_pos(self, path, foam):
         return pd.DataFrame(columns=['Label','m(g)','Water (g)','T (\u00B0C)','P CO2 (bar)','t (min)'])
 
 def _cm_read_density_pos(self, path, foam):
+    fallback = ['Label'] + DENSITY_DATA_COLUMNS
     if not path or not os.path.exists(path):
-        return pd.DataFrame(columns=['Label','\u03C1 foam (g/cm^3)','Desvest \u03C1 foam (g/cm^3)','%DER \u03C1 foam (g/cm^3)','\u03C1r','X','Porosity (%)'])
+        return pd.DataFrame(columns=fallback)
     try:
         df = pd.read_excel(path, sheet_name=foam, engine='openpyxl')
         out = pd.DataFrame({
             'Label': _cm_col(df, 'B').map(self.normalize_label),
-            '\u03C1 foam (g/cm^3)': _cm_col(df, 'F'),
-            'Desvest \u03C1 foam (g/cm^3)': _cm_col(df, 'G'),
-            '%DER \u03C1 foam (g/cm^3)': _cm_col(df, 'H'),
-            '\u03C1r': _cm_col(df, 'I'),
-            'X': _cm_col(df, 'J'),
-            'Porosity (%)': _cm_col(df, 'K'),
+            RHO_FOAM_G: _cm_col(df, 'F'),
+            RHO_FOAM_KG: _cm_col(df, 'G'),
+            DESV_RHO_FOAM_G: _cm_col(df, 'H'),
+            DESV_RHO_FOAM_KG: _cm_col(df, 'I'),
+            PDER_RHO_FOAM: _cm_col(df, 'J'),
+            RHO_REL: _cm_col(df, 'K'),
+            EXPANSION_COL: _cm_col(df, 'L'),
+            POROSITY_COL: _cm_col(df, 'M'),
         })
         return out.dropna(subset=['Label'])
     except Exception:
-        return pd.DataFrame(columns=['Label','\u03C1 foam (g/cm^3)','Desvest \u03C1 foam (g/cm^3)','%DER \u03C1 foam (g/cm^3)','\u03C1r','X','Porosity (%)'])
+        return pd.DataFrame(columns=fallback)
 
 def _cm_read_pdr_pos(self, path):
     if not path or not os.path.exists(path):
@@ -1276,7 +1328,7 @@ def _cm_merge_for_foam_pos(self, foam, files_map):
                 if c in i_sem.columns:
                     row[c] = i_sem.loc[lbl][c]
         if not density.empty and lbl in i_den.index:
-            for c in ['\u03C1 foam (g/cm^3)','Desvest \u03C1 foam (g/cm^3)','%DER \u03C1 foam (g/cm^3)','\u03C1r','X','Porosity (%)']:
+            for c in [RHO_FOAM_G, DESV_RHO_FOAM_G, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL, POROSITY_COL]:
                 if c in i_den.columns:
                     row[c] = i_den.loc[lbl][c]
         if not oc.empty and lbl in i_oc.index:

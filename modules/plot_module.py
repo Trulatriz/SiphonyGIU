@@ -31,6 +31,12 @@ OKABE_ITO = [
     "#CC79A7",  # reddish purple
 ]
 
+RHO_FOAM_G = "\u03C1 foam (g/cm^3)"
+RHO_FOAM_KG = "\u03C1 foam (kg/m^3)"
+RHO_REL = "\u03C1\u1D63"
+DESV_RHO_FOAM_G = "Desvest \u03C1 foam (g/cm^3)"
+DESV_RHO_FOAM_KG = "Desvest \u03C1 foam (kg/m^3)"
+
 
 # Exact canonical column names from CombineModule.new_column_order
 INDEPENDENTS = [
@@ -43,9 +49,12 @@ INDEPENDENTS = [
 ]
 
 DEPENDENTS = [
-    "\u00F8 (\u00B5m)",        # ø (µm)
+    "\u00F8 (\u00B5m)",        # Ø (µm)
     "N\u1D65 (cells\u00B7cm^3)",  # Nᵥ (cells·cm^3)
-    "\u03C1 foam (g/cm^3)",   # ρ foam (g/cm^3)
+    RHO_FOAM_G,   # ρ foam (g/cm^3)
+    RHO_FOAM_KG,
+    RHO_REL,
+    "X",
     "OC (%)",
     "DSC Tm (\u00B0C)",
     "DSC Tg (\u00B0C)",
@@ -55,8 +64,13 @@ DEPENDENTS = [
 DEVIATIONS = {
     "\u00F8 (\u00B5m)": "Desvest \u00F8 (\u00B5m)",
     "N\u1D65 (cells\u00B7cm^3)": "Desvest N\u1D65 (cells\u00B7cm^3)",
-    "\u03C1 foam (g/cm^3)": "Desvest \u03C1 foam (g/cm^3)",
+    RHO_FOAM_G: DESV_RHO_FOAM_G,
+    RHO_FOAM_KG: DESV_RHO_FOAM_KG,
 }
+
+
+
+
 
 
 def _is_number_series(s: pd.Series) -> bool:
@@ -568,6 +582,7 @@ class PlotModule:
                 continue
             if 'Water (g)' not in df.columns and 'Water' in df.columns:
                 df = df.rename(columns={'Water': 'Water (g)'})
+            df = self._augment_density_columns(df)
             missing = [c for c in required if c not in df.columns]
             if missing:
                 skipped.append((sheet_name, missing))
@@ -633,7 +648,7 @@ class PlotModule:
         self.err_chk.configure(state=state)
         if not can_err:
             self.errorbar_var.set(False)
-            _Tooltip(self.err_chk, "Enable only for Y in {ø, Nᵥ, ρ foam} with deviation column present.")
+            _Tooltip(self.err_chk, "Enable only for Y in {\u00F8, N\u1D65, \u03C1 foam (g/cm^3), \u03C1 foam (kg/m^3)} with deviation column present.")
 
     def _populate_constraint_options(self):
         # Fill combobox options with unique values from data for each independent (except PDR)
@@ -952,6 +967,26 @@ class PlotModule:
             messagebox.showerror("Copy error", str(e))
         finally:
             buffer.close()
+    def _augment_density_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Ensure derived density columns exist for plotting."""
+        result = df.copy()
+
+        if RHO_REL not in result.columns:
+            for legacy in ("ρᵣ", "ρr", "rho_r"):
+                if legacy in result.columns:
+                    result[RHO_REL] = result[legacy]
+                    break
+        for legacy in ("ρr", "rho_r"):
+            if legacy in result.columns and legacy != RHO_REL:
+                result = result.drop(columns=[legacy])
+
+        if RHO_FOAM_G in result.columns and RHO_FOAM_KG not in result.columns:
+            result[RHO_FOAM_KG] = pd.to_numeric(result[RHO_FOAM_G], errors="coerce") * 1000
+        if DESV_RHO_FOAM_G in result.columns and DESV_RHO_FOAM_KG not in result.columns:
+            result[DESV_RHO_FOAM_KG] = pd.to_numeric(result[DESV_RHO_FOAM_G], errors="coerce") * 1000
+
+        return result
+
     def _save_figure(self):
         if self.df_all.empty:
             messagebox.showwarning("No plot", "Render a plot before saving.")
