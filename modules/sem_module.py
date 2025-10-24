@@ -499,14 +499,16 @@ class SEMImageEditor:
         self.color_display.pack(side=tk.LEFT, padx=(0, 10))
 
         self.color_hex_var = tk.StringVar(value=self.border_color.upper())
-        ttk.Label(color_frame, textvariable=self.color_hex_var).pack(side=tk.LEFT, padx=(0, 10))
+        hex_entry = ttk.Entry(color_frame, textvariable=self.color_hex_var, width=10)
+        hex_entry.pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(color_frame, text="Aplicar HEX", command=self.apply_hex_color).pack(side=tk.LEFT, padx=(0, 10))
         
         ttk.Button(color_frame, text="Elegir Color", command=self.choose_color).pack(side=tk.LEFT)
 
         palette_frame = ttk.Frame(color_frame)
         palette_frame.pack(fill=tk.X, pady=(10, 0))
         ttk.Label(palette_frame, text="Paleta rápida:").pack(side=tk.LEFT, padx=(0, 10))
-        self.quick_palette_colors = ["#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7"]
+        self.quick_palette_colors = ["#0072B2", "#E69F00", "#009E73", "#F0E442", "#56B4E9", "#CC79A7"]
         for color_hex in self.quick_palette_colors:
             btn = tk.Button(
                 palette_frame,
@@ -649,6 +651,22 @@ class SEMImageEditor:
         color = colorchooser.askcolor(initialcolor=self.border_color)
         if color[1]:
             self.set_border_color(color[1])
+    
+    def apply_hex_color(self):
+        raw = self.color_hex_var.get().strip()
+        if not raw:
+            return
+        if not raw.startswith("#"):
+            raw = f"#{raw}"
+        if len(raw) != 7:
+            messagebox.showerror("Error", "El código HEX debe tener 6 dígitos (por ejemplo, #E69F00).")
+            return
+        try:
+            int(raw[1:], 16)
+        except ValueError:
+            messagebox.showerror("Error", "El código HEX contiene caracteres no válidos.")
+            return
+        self.set_border_color(raw)
 
     def set_border_color(self, color_hex):
         if not color_hex:
