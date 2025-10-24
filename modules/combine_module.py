@@ -47,12 +47,12 @@ BASE_NEW_COLUMN_ORDER = [
     'Pi (MPa)', 'Pf (MPa)', 'PDR (MPa/s)',
     'n SEM images', '\u00F8 (\u00B5m)', 'Desvest \u00F8 (\u00B5m)', 'RSD \u00F8 (%)',
     'N\u1D65 (cells\u00B7cm^3)', 'Desvest N\u1D65 (cells\u00B7cm^3)', 'RSD N\u1D65 (%)',
-    RHO_FOAM_G, RHO_FOAM_KG, DESV_RHO_FOAM_G, DESV_RHO_FOAM_KG, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL, POROSITY_COL,
+    RHO_FOAM_KG, DESV_RHO_FOAM_KG, RHO_FOAM_G, DESV_RHO_FOAM_G, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL, POROSITY_COL,
     'OC (%)',
     'DSC Tm (\u00B0C)', 'DSC Xc (%)', 'DSC Tg (\u00B0C)'
 ]
 
-DENSITY_DATA_COLUMNS = [RHO_FOAM_G, RHO_FOAM_KG, DESV_RHO_FOAM_G, DESV_RHO_FOAM_KG, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL, POROSITY_COL]
+DENSITY_DATA_COLUMNS = [RHO_FOAM_KG, DESV_RHO_FOAM_KG, RHO_FOAM_G, DESV_RHO_FOAM_G, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL, POROSITY_COL]
 
 class CombineModule:
     def __init__(self, root, paper_path=None):
@@ -1065,7 +1065,7 @@ class CombineModule:
             if lbl in i_sem.index:
                 row.update(i_sem.loc[lbl][['n SEM images','ø (µm)','Desvest ø (µm)','RSD ø (%)','Nᵥ (cells·cm^3)','Desvest Nᵥ (cells·cm^3)','RSD Nᵥ (%)']].to_dict())
             if lbl in i_den.index:
-                density_cols = [RHO_FOAM_G, RHO_FOAM_KG, DESV_RHO_FOAM_G, DESV_RHO_FOAM_KG, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL, POROSITY_COL]
+                density_cols = [RHO_FOAM_KG, DESV_RHO_FOAM_KG, RHO_FOAM_G, DESV_RHO_FOAM_G, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL, POROSITY_COL]
                 row.update(i_den.loc[lbl][density_cols].to_dict())
             if lbl in i_oc.index:
                 row.update(i_oc.loc[lbl][['OC (%)']].to_dict())
@@ -1138,15 +1138,15 @@ def _cm_read_density_pos(self, path, foam):
         out = pd.DataFrame({
             'Label': _cm_col(df, 'B').map(self.normalize_label),
             RHO_FOAM_G: _cm_col(df, 'F'),
-            RHO_FOAM_KG: _cm_col(df, 'G'),
-            DESV_RHO_FOAM_G: _cm_col(df, 'H'),
-            DESV_RHO_FOAM_KG: _cm_col(df, 'I'),
-            PDER_RHO_FOAM: _cm_col(df, 'J'),
-            RHO_REL: _cm_col(df, 'K'),
-            EXPANSION_COL: _cm_col(df, 'L'),
-            POROSITY_COL: _cm_col(df, 'M'),
+            DESV_RHO_FOAM_G: _cm_col(df, 'G'),
+            PDER_RHO_FOAM: _cm_col(df, 'H'),
+            RHO_REL: _cm_col(df, 'I'),
+            EXPANSION_COL: _cm_col(df, 'J'),
+            POROSITY_COL: _cm_col(df, 'K'),
         })
-        return out.dropna(subset=['Label'])
+        out[RHO_FOAM_KG] = pd.to_numeric(out[RHO_FOAM_G], errors='coerce') * 1000
+        out[DESV_RHO_FOAM_KG] = pd.to_numeric(out[DESV_RHO_FOAM_G], errors='coerce') * 1000
+        return out[['Label'] + DENSITY_DATA_COLUMNS].dropna(subset=['Label'])
     except Exception:
         return pd.DataFrame(columns=fallback)
 
