@@ -1250,12 +1250,14 @@ class ManagePapersDialog:
 
         btns = ttk.Frame(main)
         btns.grid(row=1, column=1, sticky=tk.E, padx=(15, 0), pady=(12, 0))
+        self.foams_btn = ttk.Button(btns, text="Manage Foams...", command=self.manage_foams)
+        self.foams_btn.grid(row=0, column=0, padx=(0, 6))
         self.change_btn = ttk.Button(btns, text="Change Directory...", command=self.change_directory)
-        self.change_btn.grid(row=0, column=0, padx=(0, 6))
+        self.change_btn.grid(row=0, column=1, padx=(0, 6))
         self.open_btn = ttk.Button(btns, text="Open Folder", command=self.open_folder)
-        self.open_btn.grid(row=0, column=1, padx=(0, 6))
+        self.open_btn.grid(row=0, column=2, padx=(0, 6))
         self.delete_btn = ttk.Button(btns, text="Delete Paper", command=self.delete_paper)
-        self.delete_btn.grid(row=0, column=2)
+        self.delete_btn.grid(row=0, column=3)
 
         close_frame = ttk.Frame(main)
         close_frame.grid(row=2, column=0, columnspan=2, sticky=tk.E, pady=(12, 0))
@@ -1329,7 +1331,7 @@ class ManagePapersDialog:
 
     def _update_buttons_state(self, enabled: bool):
         state = "normal" if enabled else "disabled"
-        for btn in (self.change_btn, self.open_btn, self.delete_btn):
+        for btn in (self.foams_btn, self.change_btn, self.open_btn, self.delete_btn):
             btn.configure(state=state)
 
     def change_directory(self):
@@ -1390,6 +1392,26 @@ class ManagePapersDialog:
         self._populate_tree()
         self._update_buttons_state(bool(self.paper_items))
 
+    def manage_foams(self):
+        from tkinter import messagebox
+        _item, paper = self._current_selection()
+        if not paper:
+            return
+        try:
+            dialog = ManageFoamsDialog(self.top, self.foam_manager, paper)
+            self.top.wait_window(dialog.top)
+            previous_paper = paper if paper in self.foam_manager.get_papers() else None
+            self._populate_tree()
+            if previous_paper:
+                for node, value in self.paper_items.items():
+                    if value == previous_paper:
+                        self.tree.selection_set(node)
+                        self.tree.focus(node)
+                        self._update_details(previous_paper)
+                        break
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to manage foams: {e}")
+
     def close(self):
         try:
             self.top.grab_release()
@@ -1431,6 +1453,7 @@ class ManageFoamsDialog:
         
         self.current_foam_vars = {}
         current_foams = self.foam_manager.get_foam_types_for_paper(paper_name)
+        self.original_foams = list(current_foams)
         
         for i, foam in enumerate(current_foams):
             var = tk.BooleanVar(value=True)
@@ -1442,6 +1465,8 @@ class ManageFoamsDialog:
         
         available_frame = ttk.LabelFrame(main_frame, text="Available to Add", padding=10)
         available_frame.grid(row=2, column=1, sticky=(tk.W, tk.E), padx=(10, 0), pady=(15, 5))
+        self.available_frame = available_frame
+        self.no_available_label = None
         
         self.available_foam_vars = {}
         all_foams = self.foam_manager.get_foam_types()
@@ -1453,7 +1478,8 @@ class ManageFoamsDialog:
                 self.available_foam_vars[foam] = var
                 ttk.Checkbutton(available_frame, text=foam, variable=var).grid(row=i//2, column=i%2, sticky=tk.W, padx=(0, 15), pady=2)
         else:
-            ttk.Label(available_frame, text="No additional foams available", foreground='gray').grid(row=0, column=0)
+            self.no_available_label = ttk.Label(available_frame, text="No additional foams available", foreground='gray')
+            self.no_available_label.grid(row=0, column=0)
         
         # Add custom foam type
         custom_frame = ttk.Frame(available_frame)
@@ -1520,17 +1546,14 @@ class ManageFoamsDialog:
             self.foam_manager.add_foam_type(custom)
             
             # Add checkbox to available section
-            available_frame = None
-            for widget in self.top.winfo_children():
-                if isinstance(widget, ttk.Frame):
-                    for child in widget.winfo_children():
-                        if isinstance(child, ttk.LabelFrame) and "Available to Add" in str(child.cget('text')):
-                            available_frame = child
-                            break
-            
+            available_frame = getattr(self, "available_frame", None)
             if available_frame:
-                row = len(self.available_foam_vars) // 2
-                col = len(self.available_foam_vars) % 2
+                if getattr(self, "no_available_label", None):
+                    self.no_available_label.destroy()
+                    self.no_available_label = None
+                count = len(self.available_foam_vars)
+                row = count // 2
+                col = count % 2
                 var = tk.BooleanVar(value=True)  # Default selected for new custom
                 self.available_foam_vars[custom] = var
                 ttk.Checkbutton(available_frame, text=custom, variable=var).grid(row=row, column=col, sticky=tk.W, padx=(0, 15), pady=2)
@@ -1560,21 +1583,40 @@ class ManageFoamsDialog:
                 messagebox.showerror("Error", "Please select at least one foam type")
                 return
             
-            # Handle permanent deletion of unused foam types
+            added_foams = [foam for foam in final_foams if foam not in self.original_foams]
+            removed_foams = [foam for foam in self.original_foams if foam not in final_foams]
+
             foams_to_delete = []
             for foam, var in self.unused_foam_vars.items():
                 if var.get():
                     foams_to_delete.append(foam)
-            
+
+            if not added_foams and not removed_foams and not foams_to_delete:
+                messagebox.showinfo("No Changes", "No foam assignments were modified.")
+                return
+
+            if added_foams or removed_foams:
+                change_lines = []
+                if added_foams:
+                    change_lines.append(f"Add to '{self.paper_name}': {', '.join(added_foams)}")
+                if removed_foams:
+                    change_lines.append(f"Remove from '{self.paper_name}': {', '.join(removed_foams)}")
+                confirm_message = "Apply these changes?\n\n" + "\n".join(change_lines)
+                confirm_message += "\n\nThis will update the foam list for the paper."
+                if not messagebox.askyesno("Confirm Foam Changes", confirm_message):
+                    return
+
             if foams_to_delete:
                 result = messagebox.askyesno(
-                    "Confirm Deletion", 
+                    "Confirm Deletion",
                     f"Permanently delete these unused foam types from the application?\n\n{', '.join(foams_to_delete)}\n\nThis action cannot be undone."
                 )
                 if result:
                     for foam in foams_to_delete:
                         if self.foam_manager.remove_foam_type(foam):
                             print(f"Permanently deleted foam type: {foam}")
+                else:
+                    foams_to_delete = []
             
             # Update foam types for this paper
             self.foam_manager.set_foam_types_for_paper(self.paper_name, final_foams)
