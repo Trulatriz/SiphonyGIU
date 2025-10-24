@@ -7,7 +7,8 @@ import os
 class SEMImageEditor:
     def __init__(self, root):
         self.root = root
-        self.root.title("Editor de Imágenes SEM")
+        self.base_title = "Editor de Imágenes SEM"
+        self.root.title(self.base_title)
         # Tamaño optimizado para imágenes SEM de 1280x960
         # Ventana ligeramente más grande para incluir controles y márgenes
         self.root.geometry("1480x1100")
@@ -258,6 +259,11 @@ class SEMImageEditor:
                     self.last_open_dir = os.path.dirname(file_path)
                 except Exception:
                     pass
+                try:
+                    filename = os.path.basename(file_path)
+                    self.root.title(f"{self.base_title} - {filename}")
+                except Exception:
+                    self.root.title(self.base_title)
                 if self.original_image.mode != 'RGB':
                     self.original_image = self.original_image.convert('RGB')
                 
@@ -491,8 +497,25 @@ class SEMImageEditor:
         
         self.color_display = tk.Label(color_frame, bg=self.border_color, width=10, height=2)
         self.color_display.pack(side=tk.LEFT, padx=(0, 10))
+
+        self.color_hex_var = tk.StringVar(value=self.border_color.upper())
+        ttk.Label(color_frame, textvariable=self.color_hex_var).pack(side=tk.LEFT, padx=(0, 10))
         
         ttk.Button(color_frame, text="Elegir Color", command=self.choose_color).pack(side=tk.LEFT)
+
+        palette_frame = ttk.Frame(color_frame)
+        palette_frame.pack(fill=tk.X, pady=(10, 0))
+        ttk.Label(palette_frame, text="Paleta rápida:").pack(side=tk.LEFT, padx=(0, 10))
+        self.quick_palette_colors = ["#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7"]
+        for color_hex in self.quick_palette_colors:
+            btn = tk.Button(
+                palette_frame,
+                bg=color_hex,
+                activebackground=color_hex,
+                width=3,
+                command=lambda c=color_hex: self.set_border_color(c)
+            )
+            btn.pack(side=tk.LEFT, padx=3)
         
         # Grosor del borde
         border_frame = ttk.Frame(color_frame)
@@ -625,8 +648,16 @@ class SEMImageEditor:
     def choose_color(self):
         color = colorchooser.askcolor(initialcolor=self.border_color)
         if color[1]:
-            self.border_color = color[1]
+            self.set_border_color(color[1])
+
+    def set_border_color(self, color_hex):
+        if not color_hex:
+            return
+        self.border_color = color_hex
+        if hasattr(self, "color_display"):
             self.color_display.config(bg=self.border_color)
+        if hasattr(self, "color_hex_var"):
+            self.color_hex_var.set(self.border_color.upper())
     
     def toggle_cellsize(self):
         if self.cellsize_var.get():
