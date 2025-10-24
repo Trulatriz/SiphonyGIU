@@ -25,7 +25,7 @@ class PressTechGUI:
         self.foam_manager = FoamTypeManager()
 
         # Apply saved geometry or default
-        geometry = self.settings.get("window_geometry", "800x600")
+        geometry = self.settings.get("window_geometry", "900x780")
         self.root.geometry(geometry)
         self._set_window_icon()
         self.root.configure(bg='#f0f0f0')
@@ -90,9 +90,10 @@ class PressTechGUI:
     def center_window(self):
         """Center the window on the screen"""
         self.root.update_idletasks()
-        x = (self.root.winfo_screenwidth() // 2) - (800 // 2)
-        y = (self.root.winfo_screenheight() // 2) - (600 // 2)
-        self.root.geometry(f"800x600+{x}+{y}")
+        width, height = 900, 780
+        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.root.winfo_screenheight() // 2) - (height // 2)
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
     
     def create_title(self):
         """Create the main title"""

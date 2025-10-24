@@ -10,8 +10,8 @@ class SEMImageEditor:
         self.root.title("Editor de Imágenes SEM")
         # Tamaño optimizado para imágenes SEM de 1280x960
         # Ventana ligeramente más grande para incluir controles y márgenes
-        self.root.geometry("1480x1250")
-        self.root.minsize(1280, 1050)
+        self.root.geometry("1480x1100")
+        self.root.minsize(1280, 960)
 
         # Variables de estado
         self.original_image = None
@@ -683,13 +683,15 @@ class SEMImageEditor:
         padding_x = 10
         padding_y = 8
         sub_extra = int(font_size * 0.35) if sub_char else 0
+        base_extra = int(font_size * 0.25)
+        extra_bottom = base_extra + sub_extra
 
         text_bbox = draw.textbbox((0, 0), measurement_text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
 
         bg_width = text_width + padding_x * 2
-        bg_height = text_height + padding_y * 2 + sub_extra
+        bg_height = text_height + padding_y * 2 + extra_bottom
         bg_x = self.border_width
         bg_y = self.border_width
 
