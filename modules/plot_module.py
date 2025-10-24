@@ -55,24 +55,30 @@ INDEPENDENTS = [
     "PDR (MPa/s)",
 ]
 
-DEPENDENTS = [
-    "\u00F8 (\u00B5m)",        # Ø (µm)
-    "N\u1D65 (cells\u00B7cm^3)",  # Nᵥ (cells·cm^3)
-    RHO_FOAM_G,   # ρ foam (g/cm^3)
-    RHO_FOAM_KG,
-    RHO_REL,
-    "X",
-    "OC (%)",
-    "DSC Tm (\u00B0C)",
-    "DSC Tg (\u00B0C)",
-    "DSC Xc (%)",
+DEPENDENT_OPTIONS = [
+    ("\u00F8 (\u00B5m)", "\u00F8 (\u00B5m)"),  # Ø (µm)
+    ("N\u1D65 (cells\u00B7cm^3)", "N\u1D65 (cells\u00B7cm^3)"),  # Nᵥ (cells·cm^3)
+    ("\u03C1\u208Df\u208E (g/cm^3)", RHO_FOAM_G),
+    ("\u03C1\u208Df\u208E (kg/m^3)", RHO_FOAM_KG),
+    ("\u03C1\u1D63", RHO_REL),
+    ("X", "X"),
+    ("O\u1D65 (%)", "OC (%)"),
+    ("T\u2098 (\u00B0C)", "DSC Tm (\u00B0C)"),
+    ("T\u208Dg\u208E (\u00B0C)", "DSC Tg (\u00B0C)"),
+    ("\u03C7\u208Dc\u208E (%)", "DSC Xc (%)"),
 ]
+
+DEPENDENT_LABELS = [label for label, _ in DEPENDENT_OPTIONS]
+DEPENDENT_MAP = {label: column for label, column in DEPENDENT_OPTIONS}
+DEPENDENT_COLUMN_TO_LABEL = {column: label for label, column in DEPENDENT_OPTIONS}
+DEPENDENT_COLUMNS = [column for _, column in DEPENDENT_OPTIONS]
+DEPENDENTS = DEPENDENT_LABELS
 
 DEVIATIONS = {
     "\u00F8 (\u00B5m)": "Desvest \u00F8 (\u00B5m)",
     "N\u1D65 (cells\u00B7cm^3)": "Desvest N\u1D65 (cells\u00B7cm^3)",
-    RHO_FOAM_G: DESV_RHO_FOAM_G,
-    RHO_FOAM_KG: DESV_RHO_FOAM_KG,
+    "\u03C1\u208Df\u208E (g/cm^3)": DESV_RHO_FOAM_G,
+    "\u03C1\u208Df\u208E (kg/m^3)": DESV_RHO_FOAM_KG,
 }
 
 
@@ -254,7 +260,7 @@ class PlotModule:
         for i in range(8):
             sel.columnconfigure(i, weight=1)
         ttk.Label(sel, text="Y:").grid(row=0, column=0, sticky=tk.W)
-        self.y_combo = ttk.Combobox(sel, textvariable=self.y_var, values=DEPENDENTS, state="readonly")
+        self.y_combo = ttk.Combobox(sel, textvariable=self.y_var, values=DEPENDENT_LABELS, state="readonly")
         self.y_combo.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=6)
         self.y_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_y_change())
 
@@ -405,7 +411,7 @@ class PlotModule:
         if self.active_sheet_name == sheet_name and not reset_axes:
             return
         self.active_sheet_name = sheet_name
-        self.df_all = self.df_sheets[sheet_name].copy()
+        self.df_all = self._augment_density_columns(self.df_sheets[sheet_name].copy())
         self.df_filtered = pd.DataFrame()
         self.constraints = {name: Constraint() for name in INDEPENDENTS}
         self._suspend_state_events = True
@@ -415,7 +421,7 @@ class PlotModule:
             self._populate_constraint_options()
             if reset_axes:
                 self.x_var.set(INDEPENDENTS[0])
-                self.y_var.set(DEPENDENTS[0])
+                self.y_var.set(DEPENDENT_LABELS[0])
                 self.group_var.set('<None>')
                 self.errorbar_var.set(False)
                 self.mono_var.set(False)
@@ -494,8 +500,11 @@ class PlotModule:
             if x_val and x_val in INDEPENDENTS:
                 self.x_var.set(x_val)
             y_val = state.get('y')
-            if y_val and y_val in DEPENDENTS:
-                self.y_var.set(y_val)
+            if y_val:
+                if y_val in DEPENDENT_LABELS:
+                    self.y_var.set(y_val)
+                elif y_val in DEPENDENT_COLUMN_TO_LABEL:
+                    self.y_var.set(DEPENDENT_COLUMN_TO_LABEL[y_val])
             group_val = state.get('group')
             valid_groups = ["<None>"] + INDEPENDENTS
             if group_val in valid_groups:
@@ -581,7 +590,7 @@ class PlotModule:
             messagebox.showerror("Read error", f"Failed to read workbook: {e}")
             return
 
-        required = set(INDEPENDENTS + DEPENDENTS)
+        required = set(INDEPENDENTS + DEPENDENT_COLUMNS)
         valid_sheets = {}
         skipped = []
         for sheet_name, df in sheets_raw.items():
@@ -597,7 +606,7 @@ class PlotModule:
             valid_sheets[sheet_name] = df.copy()
 
         if not valid_sheets:
-            expected = "\n- ".join(sorted(required))
+            expected = "\n- ".join(sorted(DEPENDENT_COLUMN_TO_LABEL.get(col, col) for col in required))
             messagebox.showerror(
                 "Invalid workbook",
                 f"No sheet contains the required columns. Expected:\n- {expected}",
@@ -617,7 +626,7 @@ class PlotModule:
             default_sheet = next(iter(sorted(valid_sheets.keys(), key=lambda n: n.lower())))
 
         self.x_combo.configure(values=INDEPENDENTS)
-        self.y_combo.configure(values=DEPENDENTS)
+        self.y_combo.configure(values=DEPENDENT_LABELS)
         self.group_combo.configure(values=["<None>"] + INDEPENDENTS)
 
         self._build_sheet_tabs()
@@ -649,13 +658,14 @@ class PlotModule:
         self._persist_current_state()
 
     def _update_errorbar_state(self):
-        y = self.y_var.get()
-        can_err = y in DEVIATIONS and DEVIATIONS[y] in getattr(self.df_all, "columns", [])
+        y_label = self.y_var.get().strip()
+        yerr_col = DEVIATIONS.get(y_label)
+        can_err = bool(yerr_col and yerr_col in getattr(self.df_all, "columns", []))
         state = "normal" if can_err else "disabled"
         self.err_chk.configure(state=state)
         if not can_err:
             self.errorbar_var.set(False)
-            _Tooltip(self.err_chk, "Enable only for Y in {\u00F8, N\u1D65, \u03C1 foam (g/cm^3), \u03C1 foam (kg/m^3)} with deviation column present.")
+            _Tooltip(self.err_chk, "Enable only for Y in {\u00F8, N\u1D65, \u03C1\u208Df\u208E (g/cm^3), \u03C1\u208Df\u208E (kg/m^3)} with deviation column present.")
 
     def _populate_constraint_options(self):
         # Fill combobox options with unique values from data for each independent (except PDR)
@@ -791,7 +801,8 @@ class PlotModule:
             return
 
         x_name = self.x_var.get().strip()
-        y_name = self.y_var.get().strip()
+        y_label = self.y_var.get().strip()
+        y_column = DEPENDENT_MAP.get(y_label, y_label)
         grp = self.group_var.get().strip()
         group_name = None if grp == "<None>" else grp
 
@@ -807,10 +818,10 @@ class PlotModule:
             return
 
         # Keep only relevant columns
-        cols = [x_name, y_name]
+        cols = [x_name, y_column]
         if group_name:
             cols.append(group_name)
-        yerr_name = DEVIATIONS.get(y_name)
+        yerr_name = DEVIATIONS.get(y_label)
         if self.errorbar_var.get() and yerr_name in filtered.columns:
             cols.append(yerr_name)
         # For export, we'll keep deviation columns even if not used
@@ -818,7 +829,7 @@ class PlotModule:
 
         # Guard for n
         try:
-            self._ensure_n_requirements(filtered.dropna(subset=[x_name, y_name]), group_name)
+            self._ensure_n_requirements(filtered.dropna(subset=[x_name, y_column]), group_name)
         except ValueError as e:
             messagebox.showerror("Not enough points", str(e))
             return
@@ -827,14 +838,14 @@ class PlotModule:
         self.ax.clear()
         self._style_axes(self.ax)
 
-        groups = self._prepare_plot_data(filtered, x_name, y_name, group_name)
+        groups = self._prepare_plot_data(filtered, x_name, y_column, group_name)
         styles = self._group_styles(len(groups), self.mono_var.get())
 
         for (gidx, (gval, gdf)) in enumerate(groups):
             color, marker, linestyle = styles[gidx]
 
             x = _as_float_array(gdf[x_name])
-            y = _as_float_array(gdf[y_name])
+            y = _as_float_array(gdf[y_column])
             x = self._maybe_jitter(x)
 
             # Connect with lines within each group in ascending X
@@ -870,7 +881,7 @@ class PlotModule:
 
         # Labels (exact headers with units)
         self.ax.set_xlabel(x_name)
-        self.ax.set_ylabel(y_name)
+        self.ax.set_ylabel(y_label)
 
         # Legend
         if group_name:
@@ -1034,9 +1045,10 @@ class PlotModule:
             return
         try:
             # Determine if deviation column used
-            y_name = self.y_var.get()
-            yerr_name = DEVIATIONS.get(y_name)
-            used_cols = [self.x_var.get(), y_name]
+            y_label = self.y_var.get().strip()
+            y_column = DEPENDENT_MAP.get(y_label, y_label)
+            yerr_name = DEVIATIONS.get(y_label)
+            used_cols = [self.x_var.get(), y_column]
             if self.group_var.get() and self.group_var.get() != "<None>":
                 used_cols.append(self.group_var.get())
             # Always include deviation columns if present
@@ -1053,7 +1065,7 @@ class PlotModule:
             settings = {
                 "file": self.file_var.get(),
                 "x": self.x_var.get(),
-                "y": y_name,
+                "y": y_label,
                 "group": None if self.group_var.get() == "<None>" else self.group_var.get(),
                 "error_bars": bool(self.errorbar_var.get()),
                 "yerr_column": yerr_name if yerr_name in self.df_filtered.columns else None,
