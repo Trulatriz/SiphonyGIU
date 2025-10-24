@@ -56,29 +56,45 @@ INDEPENDENTS = [
 ]
 
 DEPENDENT_OPTIONS = [
-    ("\u00F8 (\u00B5m)", "\u00F8 (\u00B5m)"),  # Ø (µm)
-    ("N\u1D65 (cells\u00B7cm^3)", "N\u1D65 (cells\u00B7cm^3)"),  # Nᵥ (cells·cm^3)
-    ("\u03C1\u208Df\u208E (g/cm^3)", RHO_FOAM_G),
-    ("\u03C1\u208Df\u208E (kg/m^3)", RHO_FOAM_KG),
-    ("\u03C1\u1D63", RHO_REL),
-    ("X", "X"),
-    ("O\u1D65 (%)", "OC (%)"),
-    ("T\u2098 (\u00B0C)", "DSC Tm (\u00B0C)"),
-    ("T\u208Dg\u208E (\u00B0C)", "DSC Tg (\u00B0C)"),
-    ("\u03C7\u208Dc\u208E (%)", "DSC Xc (%)"),
+    ("\u00F8 (\u00B5m)", "\u00F8 (\u00B5m)", r"$\varnothing\,(\mu\mathrm{m})$"),
+    ("N\u1D65 (cells\u00B7cm^3)", "N\u1D65 (cells\u00B7cm^3)", r"{v}\,(\mathrm{cells}/\mathrm{cm}^3)$"),
+    ("\u03C1f (g/cm^3)", RHO_FOAM_G, r"$\rho_{f}\,(\mathrm{g}/\mathrm{cm}^3)$"),
+    ("\u03C1f (kg/m^3)", RHO_FOAM_KG, r"$\rho_{f}\,(\mathrm{kg}/\mathrm{m}^3)$"),
+    ("\u03C1\u1D63", RHO_REL, r"$\rho_{r}$"),
+    ("X", "X", r"$"),
+    ("Ov (%)", "OC (%)", r"{v}\,(%)$"),
+    ("Tm (\u00B0C)", "DSC Tm (\u00B0C)", r"{m}\,({^\circ}\mathrm{C})$"),
+    ("Tg (\u00B0C)", "DSC Tg (\u00B0C)", r"{g}\,({^\circ}\mathrm{C})$"),
+    ("\u03C7c (%)", "DSC Xc (%)", r"$\chi_{c}\,(%)$"),
 ]
 
-DEPENDENT_LABELS = [label for label, _ in DEPENDENT_OPTIONS]
-DEPENDENT_MAP = {label: column for label, column in DEPENDENT_OPTIONS}
-DEPENDENT_COLUMN_TO_LABEL = {column: label for label, column in DEPENDENT_OPTIONS}
-DEPENDENT_COLUMNS = [column for _, column in DEPENDENT_OPTIONS]
+
+DEPENDENT_LABELS = [label for label, _, _ in DEPENDENT_OPTIONS]
+DEPENDENT_MAP = {label: column for label, column, _ in DEPENDENT_OPTIONS}
+DEPENDENT_COLUMN_TO_LABEL = {column: label for label, column, _ in DEPENDENT_OPTIONS}
+DEPENDENT_LATEX = {label: latex for label, _, latex in DEPENDENT_OPTIONS}
+DEPENDENT_COLUMNS = [column for _, column, _ in DEPENDENT_OPTIONS]
 DEPENDENTS = DEPENDENT_LABELS
+
+
+def _dependent_latex(label: str) -> str:
+    return DEPENDENT_LATEX.get(label, label)
 
 DEVIATIONS = {
     "\u00F8 (\u00B5m)": "Desvest \u00F8 (\u00B5m)",
     "N\u1D65 (cells\u00B7cm^3)": "Desvest N\u1D65 (cells\u00B7cm^3)",
-    "\u03C1\u208Df\u208E (g/cm^3)": DESV_RHO_FOAM_G,
-    "\u03C1\u208Df\u208E (kg/m^3)": DESV_RHO_FOAM_KG,
+    "\u03C1f (g/cm^3)": DESV_RHO_FOAM_G,
+    "\u03C1f (kg/m^3)": DESV_RHO_FOAM_KG,
+}
+
+LEGACY_DEPENDENT_LABELS = {
+    "\u03C1 foam (g/cm^3)": "\u03C1f (g/cm^3)",
+    "\u03C1 foam (kg/m^3)": "\u03C1f (kg/m^3)",
+    "OC (%)": "Ov (%)",
+    "DSC Tm (\u00B0C)": "Tm (\u00B0C)",
+    "DSC Tg (\u00B0C)": "Tg (\u00B0C)",
+    "DSC Xc (\u00B0C)": "\u03C7c (%)",
+    "DSC Xc (%)": "\u03C7c (%)",
 }
 
 
@@ -665,7 +681,7 @@ class PlotModule:
         self.err_chk.configure(state=state)
         if not can_err:
             self.errorbar_var.set(False)
-            _Tooltip(self.err_chk, "Enable only for Y in {\u00F8, N\u1D65, \u03C1\u208Df\u208E (g/cm^3), \u03C1\u208Df\u208E (kg/m^3)} with deviation column present.")
+            _Tooltip(self.err_chk, "Enable only for Y in {\u00F8, N\u1D65, \u03C1f (g/cm^3), \u03C1f (kg/m^3)} with deviation column present.")
 
     def _populate_constraint_options(self):
         # Fill combobox options with unique values from data for each independent (except PDR)
@@ -881,7 +897,7 @@ class PlotModule:
 
         # Labels (exact headers with units)
         self.ax.set_xlabel(x_name)
-        self.ax.set_ylabel(y_label)
+        self.ax.set_ylabel(_dependent_latex(y_label))
 
         # Legend
         if group_name:
