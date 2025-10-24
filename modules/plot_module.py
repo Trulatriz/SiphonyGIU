@@ -38,6 +38,13 @@ DESV_RHO_FOAM_G = "Desvest \u03C1 foam (g/cm^3)"
 DESV_RHO_FOAM_KG = "Desvest \u03C1 foam (kg/m^3)"
 
 
+def _normalize_numeric_series(series: pd.Series) -> pd.Series:
+    if series is None:
+        return pd.Series(dtype=float)
+    cleaned = series.astype(str).str.replace(r"\s", "", regex=True).str.replace(",", ".", regex=False)
+    return pd.to_numeric(cleaned, errors="coerce")
+
+
 # Exact canonical column names from CombineModule.new_column_order
 INDEPENDENTS = [
     "m(g)",
@@ -981,9 +988,9 @@ class PlotModule:
                 result = result.drop(columns=[legacy])
 
         if RHO_FOAM_G in result.columns and RHO_FOAM_KG not in result.columns:
-            result[RHO_FOAM_KG] = pd.to_numeric(result[RHO_FOAM_G], errors="coerce") * 1000
+            result[RHO_FOAM_KG] = _normalize_numeric_series(result[RHO_FOAM_G]) * 1000
         if DESV_RHO_FOAM_G in result.columns and DESV_RHO_FOAM_KG not in result.columns:
-            result[DESV_RHO_FOAM_KG] = pd.to_numeric(result[DESV_RHO_FOAM_G], errors="coerce") * 1000
+            result[DESV_RHO_FOAM_KG] = _normalize_numeric_series(result[DESV_RHO_FOAM_G]) * 1000
 
         return result
 

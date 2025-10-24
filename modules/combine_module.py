@@ -54,6 +54,13 @@ BASE_NEW_COLUMN_ORDER = [
 
 DENSITY_DATA_COLUMNS = [RHO_FOAM_KG, DESV_RHO_FOAM_KG, RHO_FOAM_G, DESV_RHO_FOAM_G, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL, POROSITY_COL]
 
+
+def _normalize_numeric_series(series: pd.Series) -> pd.Series:
+    if series is None:
+        return pd.Series(dtype=float)
+    cleaned = series.astype(str).str.replace(r"\s", "", regex=True).str.replace(',', '.', regex=False)
+    return pd.to_numeric(cleaned, errors='coerce')
+
 class CombineModule:
     def __init__(self, root, paper_path=None):
         self.root = root
@@ -918,13 +925,13 @@ class CombineModule:
                     df[k] = pd.NA
 
             if RHO_FOAM_G in df.columns:
-                rho_g = pd.to_numeric(df[RHO_FOAM_G], errors='coerce')
+                rho_g = _normalize_numeric_series(df[RHO_FOAM_G])
             else:
                 rho_g = pd.Series([pd.NA] * len(df))
             df[RHO_FOAM_KG] = rho_g * 1000
 
             if DESV_RHO_FOAM_G in df.columns:
-                desv_g = pd.to_numeric(df[DESV_RHO_FOAM_G], errors='coerce')
+                desv_g = _normalize_numeric_series(df[DESV_RHO_FOAM_G])
             else:
                 desv_g = pd.Series([pd.NA] * len(df))
             df[DESV_RHO_FOAM_KG] = desv_g * 1000
@@ -1076,9 +1083,9 @@ class CombineModule:
             rows.append(row)
         df = pd.DataFrame(rows)
         if RHO_FOAM_G in df.columns:
-            df[RHO_FOAM_KG] = pd.to_numeric(df[RHO_FOAM_G], errors='coerce') * 1000
+            df[RHO_FOAM_KG] = _normalize_numeric_series(df[RHO_FOAM_G]) * 1000
         if DESV_RHO_FOAM_G in df.columns:
-            df[DESV_RHO_FOAM_KG] = pd.to_numeric(df[DESV_RHO_FOAM_G], errors='coerce') * 1000
+            df[DESV_RHO_FOAM_KG] = _normalize_numeric_series(df[DESV_RHO_FOAM_G]) * 1000
         # Ensure all final columns exist and order
         for col in self.new_column_order:
             if col not in df.columns:
@@ -1144,8 +1151,8 @@ def _cm_read_density_pos(self, path, foam):
             EXPANSION_COL: _cm_col(df, 'J'),
             POROSITY_COL: _cm_col(df, 'K'),
         })
-        out[RHO_FOAM_KG] = pd.to_numeric(out[RHO_FOAM_G], errors='coerce') * 1000
-        out[DESV_RHO_FOAM_KG] = pd.to_numeric(out[DESV_RHO_FOAM_G], errors='coerce') * 1000
+        out[RHO_FOAM_KG] = _normalize_numeric_series(out[RHO_FOAM_G]) * 1000
+        out[DESV_RHO_FOAM_KG] = _normalize_numeric_series(out[DESV_RHO_FOAM_G]) * 1000
         return out[['Label'] + DENSITY_DATA_COLUMNS].dropna(subset=['Label'])
     except Exception:
         return pd.DataFrame(columns=fallback)

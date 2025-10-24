@@ -784,8 +784,13 @@ class SEMImageEditor:
 
         padding_x = 10
         padding_y = 8
-        sub_extra = int(font_size * 0.35) if sub_char else 0
-        base_extra = int(font_size * 0.25)
+        mode = getattr(self, "density_mode", "rho_f")
+        if mode == "expansion":
+            base_extra = int(font_size * 0.25)
+            sub_extra = 0
+        else:
+            base_extra = int(font_size * 0.12)
+            sub_extra = int(font_size * 0.22) if sub_char else 0
         extra_bottom = base_extra + sub_extra
 
         text_bbox = draw.textbbox((0, 0), measurement_text, font=font)
