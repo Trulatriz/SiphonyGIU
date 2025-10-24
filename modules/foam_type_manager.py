@@ -1780,71 +1780,208 @@ class ManageFoamsDialog:
                 folder.mkdir(parents=True, exist_ok=True)
     
     def update_templates(self, paper_path, foam_types):
-        """Update DoE.xlsx and Density.xlsx templates with new foam types"""
-        import pandas as pd
-        
+        """Ensure DoE.xlsx and Density.xlsx pick up new foam types without losing existing data."""
         try:
-            # Update DoE.xlsx at paper root
+            from openpyxl import load_workbook
+            from openpyxl.utils import get_column_letter
+        except Exception as exc:
+            print(f"openpyxl is required to update templates: {exc}")
+            return
+
+        import unicodedata
+
+        def normalize_header(value):
+            if value is None:
+                return ""
+            normalized = "".join(
+                c for c in unicodedata.normalize("NFKD", str(value))
+                if not unicodedata.combining(c)
+            )
+            return "".join(ch for ch in normalized.lower() if ch.isalnum())
+
+        def build_header_map(headers):
+            header_map = {}
+            for idx, header in enumerate(headers, start=1):
+                key = normalize_header(header)
+                if key and key not in header_map:
+                    header_map[key] = idx
+            return header_map
+
+        def assign_row_values(headers, header_map, defaults):
+            row = [None] * len(headers)
+            for keys, value in defaults:
+                for key in keys:
+                    idx = header_map.get(normalize_header(key))
+                    if idx:
+                        row[idx - 1] = value
+                        break
+            return row
+
+        try:
+            # --- DoE workbook ---
             doe_path = paper_path / "DoE.xlsx"
             if doe_path.exists():
-                # Read existing data
-                df = pd.read_excel(doe_path, sheet_name='DoE')
-                existing_polymers = set(df['Polymer'].values) if 'Polymer' in df.columns else set()
-                
-                # Add missing foam types
-                new_rows = []
-                for foam in foam_types:
-                    if foam not in existing_polymers:
-                        new_rows.append({
-                            'Label': f'{foam}_001',
-                            'm(g)': 2.0,
-                            'Water (g)': 0.0,
-                            'T (ºC)': 140,
-                            'P CO2 (bar)': 200,
-                            't (min)': 3,
-                            'Polymer': foam
-                        })
-                
-                if new_rows:
-                    new_df = pd.DataFrame(new_rows)
-                    df = pd.concat([df, new_df], ignore_index=True)
-                    
-                    with pd.ExcelWriter(doe_path, engine='openpyxl') as writer:
-                        df.to_excel(writer, sheet_name='DoE', index=False)
-            
-            # Update Density.xlsx at paper root
+                try:
+                    doe_wb = load_workbook(doe_path)
+                except Exception as exc:
+                    print(f"Could not open DoE.xlsx: {exc}")
+                else:
+                    doe_changed = False
+                    if "DoE" in doe_wb.sheetnames and len(doe_wb.sheetnames) == 1:
+                        ws = doe_wb["DoE"]
+                        headers = [cell.value for cell in ws[1]]
+                        header_map = build_header_map(headers)
+                        polymer_idx = None
+                        for key in ("polymer", "plasticname"):
+                            polymer_idx = header_map.get(key)
+                            if polymer_idx:
+                                break
+                        existing = set()
+                        if polymer_idx:
+                            for row in ws.iter_rows(min_row=2, values_only=True):
+                                val = row[polymer_idx - 1]
+                                if val:
+                                    existing.add(str(val))
+                        for foam in foam_types:
+                            if polymer_idx and foam in existing:
+                                continue
+                            defaults = [
+                                (["Label"], f"{foam}_001"),
+                                (["Polymer", "Plastic name"], foam),
+                                (["m(g)", "m (g)"], 2.0),
+                                (["Water (g)"], 0.0),
+                                (["T (C)", "TC", "Temperature"], 140),
+                                (["P CO2 (bar)"], 200),
+                                (["t (min)"], 3),
+                            ]
+                            new_row = assign_row_values(headers, header_map, defaults)
+                            if any(value is not None for value in new_row):
+                                ws.append(new_row)
+                                doe_changed = True
+                    else:
+                        template_sheet = doe_wb[doe_wb.sheetnames[0]] if doe_wb.sheetnames else None
+                        template_headers = [cell.value for cell in template_sheet[1]] if template_sheet else []
+                        column_widths = {}
+                        if template_sheet:
+                            for col_letter, dim in template_sheet.column_dimensions.items():
+                                column_widths[col_letter] = dim.width
+                        default_headers = ['Label', 'm (g)', 'Water (g)', 'T (C)', 'P CO2 (bar)', 't (min)']
+                        for foam in foam_types:
+                            sheet_title = foam[:31]
+                            if sheet_title in doe_wb.sheetnames:
+                                continue
+                            ws = doe_wb.create_sheet(title=sheet_title)
+                            headers = template_headers or default_headers
+                            for col_idx, header in enumerate(headers, start=1):
+                                ws.cell(row=1, column=col_idx, value=header)
+                                letter = get_column_letter(col_idx)
+                                width = column_widths.get(letter)
+                                if width:
+                                    ws.column_dimensions[letter].width = width
+                            header_map = build_header_map(headers)
+                            def set_cell(keys, value):
+                                for key in keys:
+                                    idx = header_map.get(normalize_header(key))
+                                    if idx:
+                                        ws.cell(row=2, column=idx, value=value)
+                                        return
+                            set_cell(["Label"], f"{foam}_001")
+                            set_cell(["Polymer", "Plastic name"], foam)
+                            doe_changed = True
+                    if doe_changed:
+                        doe_wb.save(doe_path)
+
+            # --- Density workbook ---
             density_path = paper_path / "Density.xlsx"
             if density_path.exists():
-                # Read existing data
-                df = pd.read_excel(density_path, sheet_name='Density')
-                existing_polymers = set(df['Polymer'].values) if 'Polymer' in df.columns else set()
-                
-                # Add missing foam types
-                new_rows = []
-                for foam in foam_types:
-                    if foam not in existing_polymers:
-                        new_rows.append({
-                            'Label': f'{foam}_001',
-                            'Av Exp ρ foam (g/cm3)': 0.100,
-                            'Desvest Exp ρ foam (g/cm3)': 0.005,
-                            '%DER Exp ρ foam (g/cm3)': 5.0,
-                            'ρr': 0.10,
-                            'X': 10.0,
-                            'Porosity (%)': 90.0,
-                            'OC (%)': 85.0,
-                            'Polymer': foam
-                        })
-                
-                if new_rows:
-                    new_df = pd.DataFrame(new_rows)
-                    df = pd.concat([df, new_df], ignore_index=True)
-                    
-                    with pd.ExcelWriter(density_path, engine='openpyxl') as writer:
-                        df.to_excel(writer, sheet_name='Density', index=False)
-        
+                try:
+                    density_wb = load_workbook(density_path)
+                except Exception as exc:
+                    print(f"Could not open Density.xlsx: {exc}")
+                else:
+                    density_changed = False
+                    if "Density" in density_wb.sheetnames and len(density_wb.sheetnames) == 1:
+                        ws = density_wb["Density"]
+                        headers = [cell.value for cell in ws[1]]
+                        header_map = build_header_map(headers)
+                        polymer_idx = header_map.get("polymer")
+                        existing = set()
+                        if polymer_idx:
+                            for row in ws.iter_rows(min_row=2, values_only=True):
+                                val = row[polymer_idx - 1]
+                                if val:
+                                    existing.add(str(val))
+                        for foam in foam_types:
+                            if polymer_idx and foam in existing:
+                                continue
+                            defaults = [
+                                (["Label"], f"{foam}_001"),
+                                (["Polymer"], foam),
+                                (["Av Exp rho foam (g/cm3)", "rho foam (g/cm3)", "rhofoam"], 0.100),
+                                (["Desvest Exp rho foam (g/cm3)", "Desvest rho foam (g/cm3)"], 0.005),
+                                (["%DER Exp rho foam (g/cm3)", "%DER rho foam (g/cm3)"], 5.0),
+                                (["ρr", "rho r", "Rho r", "Rr"], 0.10),
+                                (["X"], 10.0),
+                                (["Porosity (%)", "Porosity"], 90.0),
+                                (["OC (%)", "OC"], 85.0),
+                            ]
+                            new_row = assign_row_values(headers, header_map, defaults)
+                            if any(value is not None for value in new_row):
+                                ws.append(new_row)
+                                density_changed = True
+                    else:
+                        template_sheet = density_wb[density_wb.sheetnames[0]] if density_wb.sheetnames else None
+                        template_headers = [cell.value for cell in template_sheet[1]] if template_sheet else []
+                        column_widths = {}
+                        if template_sheet:
+                            for col_letter, dim in template_sheet.column_dimensions.items():
+                                column_widths[col_letter] = dim.width
+                        default_headers = [
+                            'Polymer', 'Label', 'Measure 1', 'Measure 2', 'Measure 3',
+            'rho foam (g/cm^3)', 'Desvest rho foam (g/cm^3)', '%DER rho foam (g/cm^3)',
+            'ρr', 'X', 'Porosity (%)', '', 'ρ solid polymer (g/cm^3)',
+                            'Measure 1', 'Measure 2', 'Measure 3'
+                        ]
+                        for foam in foam_types:
+                            sheet_title = foam[:31]
+                            if sheet_title in density_wb.sheetnames:
+                                continue
+                            ws = density_wb.create_sheet(title=sheet_title)
+                            headers = template_headers or default_headers
+                            for col_idx, header in enumerate(headers, start=1):
+                                ws.cell(row=1, column=col_idx, value=header)
+                                letter = get_column_letter(col_idx)
+                                width = column_widths.get(letter)
+                                if width:
+                                    ws.column_dimensions[letter].width = width
+                            if template_sheet:
+                                max_cols = template_sheet.max_column
+                                for col_idx in range(1, max_cols + 1):
+                                    value = template_sheet.cell(row=2, column=col_idx).value
+                                    if isinstance(value, str) and value.startswith("="):
+                                        ws.cell(row=2, column=col_idx, value=value)
+                            else:
+                                ws.cell(row=2, column=6, value="=AVERAGE(C2:E2)")
+                                ws.cell(row=2, column=7, value="=STDEV(C2:E2)")
+                                ws.cell(row=2, column=8, value="=IF(F2=0,0,G2/F2*100)")
+                                ws.cell(row=2, column=12, value="=AVERAGE(M2:O2)")
+                                ws.cell(row=2, column=16, value="=STDEV(M2:O2)")
+                            header_map = build_header_map(headers)
+                            def set_cell(keys, value):
+                                for key in keys:
+                                    idx = header_map.get(normalize_header(key))
+                                    if idx:
+                                        ws.cell(row=2, column=idx, value=value)
+                                        return
+                            set_cell(["Polymer"], foam)
+                            set_cell(["Label"], f"{foam}_001")
+                            density_changed = True
+                    if density_changed:
+                        density_wb.save(density_path)
+
         except Exception as e:
             print(f"Could not update templates: {e}")
-    
+
     def cancel(self):
         self.result = None
         self.top.grab_release()
