@@ -199,7 +199,19 @@ class PressTechGUI:
         )
         manage_foams_btn.grid(row=0, column=1, padx=10, pady=6, sticky=(tk.W, tk.E))
 
-        self.add_tooltips(analysis_btn, combine_btn, specific_btn, manage_papers_btn, manage_foams_btn, heatmap_btn)
+        images_frame = ttk.LabelFrame(buttons_frame, text='PAPER IMAGES', padding=12)
+        images_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(12, 0))
+        images_frame.columnconfigure(0, weight=1)
+
+        sem_images_btn = ttk.Button(
+            images_frame,
+            text='�Y"� SEM IMAGE EDITOR',
+            command=self.open_sem_with_foam_check,
+            **button_style
+        )
+        sem_images_btn.grid(row=0, column=0, padx=10, pady=6, sticky=(tk.W, tk.E))
+
+        self.add_tooltips(analysis_btn, combine_btn, specific_btn, manage_papers_btn, manage_foams_btn, heatmap_btn, sem_images_btn)
 
     def add_tooltips(self, *buttons):
         """Add tooltips to buttons"""
@@ -208,17 +220,20 @@ class PressTechGUI:
             txt = b.cget('text') if hasattr(b, 'cget') else None
             if not txt:
                 continue
-            if 'Publication Plots' in txt:
+            upper_txt = txt.upper()
+            if 'PUBLICATION PLOTS' in upper_txt:
                 tooltip_map[b] = "Plot All_Results_* with grouping and error bars"
-            elif 'SMART COMBINE' in txt:
+            elif 'SMART COMBINE' in upper_txt:
                 tooltip_map[b] = "Smart combine with tracking and incremental updates"
-            elif 'FOAM-SPECIFIC' in txt:
+            elif 'FOAM-SPECIFIC' in upper_txt:
                 tooltip_map[b] = "Open foam-specific analysis (DSC, SEM, OC, PDR)"
-            elif 'MANAGE PAPERS' in txt:
+            elif 'MANAGE PAPERS' in upper_txt:
                 tooltip_map[b] = "Review papers, base folders, and delete or relocate"
-            elif 'MANAGE FOAMS' in txt:
+            elif 'MANAGE FOAMS' in upper_txt:
                 tooltip_map[b] = "Edit foam types per paper and global list"
-            elif 'HEATMAPS' in txt:
+            elif 'SEM IMAGE' in upper_txt:
+                tooltip_map[b] = "Edit SEM images and ROIs for the selected paper"
+            elif 'HEATMAPS' in upper_txt:
                 tooltip_map[b] = "Spearman heatmaps with column selection"
 
         for button, text in tooltip_map.items():
@@ -359,17 +374,15 @@ class PressTechGUI:
 
         dsc_btn = ttk.Button(frame, text="🌡️ DSC Analysis", command=lambda: (dialog.destroy(), self.open_dsc_with_foam_check()), width=25)
         dsc_btn.grid(row=1, column=0, padx=10, pady=5, sticky=(tk.W, tk.E))
-        sem_btn = ttk.Button(frame, text="🔬 SEM Image Editor", command=lambda: (dialog.destroy(), self.open_sem_with_foam_check()), width=25)
-        sem_btn.grid(row=1, column=1, padx=10, pady=5, sticky=(tk.W, tk.E))
         oc_btn = ttk.Button(frame, text="🔓 Open-Cell Content", command=lambda: (dialog.destroy(), self.open_oc_with_foam_check()), width=25)
-        oc_btn.grid(row=2, column=0, padx=10, pady=5, sticky=(tk.W, tk.E))
+        oc_btn.grid(row=1, column=1, padx=10, pady=5, sticky=(tk.W, tk.E))
         pdr_btn = ttk.Button(frame, text="📉 Pressure Drop Rate", command=lambda: (dialog.destroy(), self.open_pdr_with_foam_check()), width=25)
-        pdr_btn.grid(row=2, column=1, padx=10, pady=5, sticky=(tk.W, tk.E))
+        pdr_btn.grid(row=2, column=0, padx=10, pady=5, sticky=(tk.W, tk.E))
         # SEM results workflow (direct access)
         obtain_hist_btn = ttk.Button(frame, text="Obtain SEM results", command=lambda: (dialog.destroy(), self.show_cell_analysis_instructions()), width=25)
-        obtain_hist_btn.grid(row=3, column=0, padx=10, pady=5, sticky=(tk.W, tk.E))
+        obtain_hist_btn.grid(row=2, column=1, padx=10, pady=5, sticky=(tk.W, tk.E))
         combine_hist_btn = ttk.Button(frame, text="Combine SEM results", command=lambda: (dialog.destroy(), self.open_histogram_combiner()), width=25)
-        combine_hist_btn.grid(row=3, column=1, padx=10, pady=5, sticky=(tk.W, tk.E))
+        combine_hist_btn.grid(row=3, column=0, columnspan=2, padx=10, pady=5, sticky=(tk.W, tk.E))
 
         back_btn = ttk.Button(frame, text="⬅️ Back", command=dialog.destroy)
         back_btn.grid(row=4, column=0, columnspan=2, pady=(12, 0))
