@@ -499,11 +499,9 @@ class SEMImageEditor:
         self.color_display.pack(side=tk.LEFT, padx=(0, 10))
 
         self.color_hex_var = tk.StringVar(value=self.border_color.upper())
-        hex_entry = ttk.Entry(color_frame, textvariable=self.color_hex_var, width=10)
-        hex_entry.pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(color_frame, text="Aplicar HEX", command=self.apply_hex_color).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Label(color_frame, textvariable=self.color_hex_var).pack(side=tk.LEFT, padx=(0, 10))
         
-        ttk.Button(color_frame, text="Elegir Color", command=self.choose_color).pack(side=tk.LEFT)
+        ttk.Button(color_frame, text="Elegir Color...", command=lambda: self.open_color_dialog(config_window)).pack(side=tk.LEFT)
 
         palette_frame = ttk.Frame(color_frame)
         palette_frame.pack(fill=tk.X, pady=(10, 0))
@@ -647,35 +645,90 @@ class SEMImageEditor:
         ttk.Button(button_frame, text="Aplicar", command=apply_config).pack(side=tk.RIGHT, padx=(5, 0))
         ttk.Button(button_frame, text="Cancelar", command=config_window.destroy).pack(side=tk.RIGHT)
     
-    def choose_color(self):
-        color = colorchooser.askcolor(initialcolor=self.border_color)
-        if color[1]:
-            self.set_border_color(color[1])
-    
-    def apply_hex_color(self):
-        raw = self.color_hex_var.get().strip()
+    def open_color_dialog(self, parent):
+        dialog = tk.Toplevel(parent)
+        dialog.title("Seleccionar color")
+        dialog.transient(parent)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+
+        hex_var = tk.StringVar(value=self.border_color.upper())
+
+        preview = tk.Label(dialog, bg=self.border_color, width=14, height=2)
+        preview.grid(row=0, column=0, columnspan=3, padx=12, pady=(12, 8))
+
+        ttk.Label(dialog, text="HEX:").grid(row=1, column=0, padx=(12, 4), pady=(0, 12), sticky=tk.W)
+        hex_entry = ttk.Entry(dialog, textvariable=hex_var, width=12)
+        hex_entry.grid(row=1, column=1, padx=(0, 8), pady=(0, 12))
+
+        def set_preview(color_hex):
+            try:
+                normalized = self._normalize_hex(color_hex)
+            except ValueError:
+                return
+            preview.config(bg=normalized)
+            hex_var.set(normalized)
+
+        def pick_from_dialog():
+            color = colorchooser.askcolor(initialcolor=self.border_color)
+            if color[1]:
+                set_preview(color[1])
+
+        ttk.Button(dialog, text="Selector…", command=pick_from_dialog).grid(row=1, column=2, padx=(0, 12), pady=(0, 12))
+
+        palette_frame = ttk.LabelFrame(dialog, text="Paleta rápida", padding=10)
+        palette_frame.grid(row=2, column=0, columnspan=3, padx=12, pady=(0, 12), sticky=tk.W)
+        for idx, color_hex in enumerate(self.quick_palette_colors):
+            btn = tk.Button(
+                palette_frame,
+                bg=color_hex,
+                activebackground=color_hex,
+                width=3,
+                command=lambda c=color_hex: set_preview(c)
+            )
+            btn.grid(row=0, column=idx, padx=3)
+
+        button_frame = ttk.Frame(dialog)
+        button_frame.grid(row=3, column=0, columnspan=3, padx=12, pady=(0, 12), sticky=tk.E)
+
+        def apply_color():
+            try:
+                normalized = self._normalize_hex(hex_var.get())
+            except ValueError as e:
+                messagebox.showerror("Error", str(e))
+                return
+            self.set_border_color(normalized)
+            dialog.destroy()
+
+        ttk.Button(button_frame, text="Cancelar", command=dialog.destroy).pack(side=tk.RIGHT, padx=(8, 0))
+        ttk.Button(button_frame, text="Aplicar", command=apply_color).pack(side=tk.RIGHT)
+
+        hex_entry.focus()
+
+    def _normalize_hex(self, raw_value):
+        raw = (raw_value or "").strip()
         if not raw:
-            return
+            raise ValueError("El código HEX no puede estar vacío.")
         if not raw.startswith("#"):
             raw = f"#{raw}"
         if len(raw) != 7:
-            messagebox.showerror("Error", "El código HEX debe tener 6 dígitos (por ejemplo, #E69F00).")
-            return
+            raise ValueError("El código HEX debe tener el formato #RRGGBB.")
         try:
             int(raw[1:], 16)
         except ValueError:
-            messagebox.showerror("Error", "El código HEX contiene caracteres no válidos.")
-            return
-        self.set_border_color(raw)
+            raise ValueError("El código HEX contiene caracteres no válidos.")
+        return raw.upper()
 
     def set_border_color(self, color_hex):
-        if not color_hex:
+        try:
+            normalized = self._normalize_hex(color_hex)
+        except ValueError:
             return
-        self.border_color = color_hex
+        self.border_color = normalized
         if hasattr(self, "color_display"):
-            self.color_display.config(bg=self.border_color)
+            self.color_display.config(bg=normalized)
         if hasattr(self, "color_hex_var"):
-            self.color_hex_var.set(self.border_color.upper())
+            self.color_hex_var.set(normalized)
     
     def toggle_cellsize(self):
         if self.cellsize_var.get():
