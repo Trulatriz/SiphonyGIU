@@ -1450,40 +1450,44 @@ class ManageFoamsDialog:
         
         current_frame = ttk.LabelFrame(main_frame, text="Currently Assigned", padding=10)
         current_frame.grid(row=1, column=1, sticky=(tk.W, tk.E), padx=(10, 0), pady=(0, 5))
+        current_frame.columnconfigure(0, weight=1)
+        self.current_frame = current_frame
+        self.current_checks_frame = ttk.Frame(current_frame)
+        self.current_checks_frame.grid(row=0, column=0, sticky=(tk.W, tk.E))
         
         self.current_foam_vars = {}
         current_foams = self.foam_manager.get_foam_types_for_paper(paper_name)
         self.original_foams = list(current_foams)
         
-        for i, foam in enumerate(current_foams):
+        for foam in current_foams:
             var = tk.BooleanVar(value=True)
             self.current_foam_vars[foam] = var
-            ttk.Checkbutton(current_frame, text=foam, variable=var).grid(row=i//2, column=i%2, sticky=tk.W, padx=(0, 15), pady=2)
+        self._render_current_foams()
         
         # Available foam types to add
         ttk.Label(main_frame, text="Add More:").grid(row=2, column=0, sticky=(tk.W, tk.N), pady=(15, 5))
         
         available_frame = ttk.LabelFrame(main_frame, text="Available to Add", padding=10)
         available_frame.grid(row=2, column=1, sticky=(tk.W, tk.E), padx=(10, 0), pady=(15, 5))
+        available_frame.columnconfigure(0, weight=1)
         self.available_frame = available_frame
-        self.no_available_label = None
+        self.available_checks_frame = ttk.Frame(available_frame)
+        self.available_checks_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E))
         
         self.available_foam_vars = {}
         all_foams = self.foam_manager.get_foam_types()
         available_foams = [foam for foam in all_foams if foam not in current_foams]
         
-        if available_foams:
-            for i, foam in enumerate(available_foams):
-                var = tk.BooleanVar(value=False)
-                self.available_foam_vars[foam] = var
-                ttk.Checkbutton(available_frame, text=foam, variable=var).grid(row=i//2, column=i%2, sticky=tk.W, padx=(0, 15), pady=2)
-        else:
-            self.no_available_label = ttk.Label(available_frame, text="No additional foams available", foreground='gray')
-            self.no_available_label.grid(row=0, column=0)
+        for foam in available_foams:
+            self.available_foam_vars[foam] = tk.BooleanVar(value=False)
+        self._render_available_foams()
+        
+        self.add_selected_button = ttk.Button(available_frame, text="Add to the paper", command=self.add_selected_foams_to_paper)
+        self.add_selected_button.grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=(8, 0))
         
         # Add custom foam type
         custom_frame = ttk.Frame(available_frame)
-        custom_frame.grid(row=(len(available_foams)//2) + 1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(10, 0))
+        custom_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(10, 0))
         custom_frame.columnconfigure(0, weight=1)
         
         ttk.Label(custom_frame, text="Add Custom:").grid(row=0, column=0, sticky=tk.W)
@@ -1499,27 +1503,33 @@ class ManageFoamsDialog:
             unused_frame = ttk.LabelFrame(main_frame, text="Unused Foam Types", padding=10)
             unused_frame.grid(row=3, column=1, sticky=(tk.W, tk.E), padx=(10, 0), pady=(15, 5))
             
+            self.unused_frame = unused_frame
+            self.unused_checks_frame = ttk.Frame(unused_frame)
+            self.unused_checks_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E))
             self.unused_foam_vars = {}
-            for i, foam in enumerate(unused_foams):
-                var = tk.BooleanVar(value=False)
-                self.unused_foam_vars[foam] = var
-                chk = ttk.Checkbutton(unused_frame, text=f"{foam} (unused)", variable=var)
-                chk.grid(row=i//2, column=i%2, sticky=tk.W, padx=(0, 15), pady=2)
-                # Configure text color using style
-                style = ttk.Style()
-                style.configure(f"Red{foam}.TCheckbutton", foreground='red')
+            for foam in unused_foams:
+                self.unused_foam_vars[foam] = tk.BooleanVar(value=False)
+            self._render_unused_foams()
+            
+            self.delete_unused_button = ttk.Button(unused_frame, text="Delete Selected", command=self.delete_selected_unused_foams)
+            self.delete_unused_button.grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=(8, 0))
         else:
             self.unused_foam_vars = {}
+            self.unused_frame = None
+            self.unused_checks_frame = None
+            self.delete_unused_button = None
         
         # Information
         info_frame = ttk.LabelFrame(main_frame, text="Actions", padding=10)
         info_frame.grid(row=4, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(15, 0))
         
-        info_text = """• Uncheck foams to remove from this paper
-• Check additional foams to add to this paper
-• New foam folder structures will be created if they don't exist
-• Templates (DoE.xlsx, Density.xlsx) will be updated with new foams
-• Red-marked unused foams can be permanently deleted from the application"""
+        info_text = (
+            "* Uncheck foams to remove from this paper\n"
+            "* Select foams under 'Available to Add' and click 'Add to the paper'\n"
+            "* New foam folder structures will be created if they don't exist\n"
+            "* Templates (DoE.xlsx, Density.xlsx) will be updated with new foams\n"
+            "* Use 'Delete Selected' to remove unused foams from the application"
+        )
         
         ttk.Label(info_frame, text=info_text, justify=tk.LEFT).grid(row=0, column=0, sticky=tk.W)
         
@@ -1536,29 +1546,123 @@ class ManageFoamsDialog:
         y = parent.winfo_rooty() + (parent.winfo_height() // 2) - (self.top.winfo_height() // 2)
         self.top.geometry(f"+{x}+{y}")
     
-    def add_custom_foam(self):
+    def _render_current_foams(self):
         import tkinter as tk
         from tkinter import ttk
+        for widget in self.current_checks_frame.winfo_children():
+            widget.destroy()
+        for i, (foam, var) in enumerate(self.current_foam_vars.items()):
+            ttk.Checkbutton(self.current_checks_frame, text=foam, variable=var).grid(
+                row=i // 2, column=i % 2, sticky=tk.W, padx=(0, 15), pady=2
+            )
+
+    def _render_available_foams(self):
+        import tkinter as tk
+        from tkinter import ttk
+        for widget in self.available_checks_frame.winfo_children():
+            widget.destroy()
+        if not self.available_foam_vars:
+            ttk.Label(self.available_checks_frame, text="No additional foams available", foreground="gray").grid(row=0, column=0, sticky=tk.W)
+            if hasattr(self, "add_selected_button") and self.add_selected_button:
+                self.add_selected_button.configure(state="disabled")
+            return
+        for i, (foam, var) in enumerate(self.available_foam_vars.items()):
+            ttk.Checkbutton(self.available_checks_frame, text=foam, variable=var).grid(
+                row=i // 2, column=i % 2, sticky=tk.W, padx=(0, 15), pady=2
+            )
+        if hasattr(self, "add_selected_button") and self.add_selected_button:
+            self.add_selected_button.configure(state="normal")
+
+    def _render_unused_foams(self):
+        import tkinter as tk
+        from tkinter import ttk
+        if not getattr(self, "unused_checks_frame", None):
+            return
+        for widget in self.unused_checks_frame.winfo_children():
+            widget.destroy()
+        if not self.unused_foam_vars:
+            ttk.Label(self.unused_checks_frame, text="No unused foams", foreground="gray").grid(row=0, column=0, sticky=tk.W)
+            if getattr(self, "delete_unused_button", None):
+                self.delete_unused_button.configure(state="disabled")
+            return
+        style = ttk.Style()
+        style.configure("RedFoam.TCheckbutton", foreground="red")
+        for i, (foam, var) in enumerate(self.unused_foam_vars.items()):
+            ttk.Checkbutton(
+                self.unused_checks_frame,
+                text=f"{foam} (unused)",
+                variable=var,
+                style="RedFoam.TCheckbutton",
+            ).grid(row=i // 2, column=i % 2, sticky=tk.W, padx=(0, 15), pady=2)
+        if getattr(self, "delete_unused_button", None):
+            self.delete_unused_button.configure(state="normal")
+
+    def add_selected_foams_to_paper(self):
+        import tkinter as tk
+        from tkinter import messagebox
+
+        selected = [foam for foam, var in self.available_foam_vars.items() if var.get()]
+        if not selected:
+            messagebox.showinfo("No Selection", "Select at least one foam to add.")
+            return
+
+        for foam in selected:
+            if foam not in self.current_foam_vars:
+                self.current_foam_vars[foam] = tk.BooleanVar(value=True)
+        for foam in selected:
+            self.available_foam_vars.pop(foam, None)
+
+        self._render_current_foams()
+        self._render_available_foams()
+
+    def delete_selected_unused_foams(self):
+        from tkinter import messagebox
+
+        selected = [foam for foam, var in self.unused_foam_vars.items() if var.get()]
+        if not selected:
+            messagebox.showinfo("No Selection", "Select at least one foam to delete.")
+            return
+
+        if not messagebox.askyesno(
+            "Confirm Deletion",
+            "Permanently delete these unused foam types from the application?\n\n"
+            + ", ".join(selected)
+            + "\n\nThis action cannot be undone.",
+        ):
+            return
+
+        deleted = []
+        for foam in selected:
+            if self.foam_manager.remove_foam_type(foam):
+                deleted.append(foam)
+
+        if deleted:
+            messagebox.showinfo("Foams Deleted", f"Deleted: {', '.join(deleted)}")
+
+        for foam in deleted:
+            self.unused_foam_vars.pop(foam, None)
+            self.available_foam_vars.pop(foam, None)
+            self.current_foam_vars.pop(foam, None)
+
+        self._render_unused_foams()
+        self._render_available_foams()
+        self._render_current_foams()
+
+    def add_custom_foam(self):
+        import tkinter as tk
+        from tkinter import messagebox
         
         custom = self.custom_foam_var.get().strip()
-        if custom and custom not in self.available_foam_vars and custom not in self.current_foam_vars:
-            # Add to foam manager
-            self.foam_manager.add_foam_type(custom)
-            
-            # Add checkbox to available section
-            available_frame = getattr(self, "available_frame", None)
-            if available_frame:
-                if getattr(self, "no_available_label", None):
-                    self.no_available_label.destroy()
-                    self.no_available_label = None
-                count = len(self.available_foam_vars)
-                row = count // 2
-                col = count % 2
-                var = tk.BooleanVar(value=True)  # Default selected for new custom
-                self.available_foam_vars[custom] = var
-                ttk.Checkbutton(available_frame, text=custom, variable=var).grid(row=row, column=col, sticky=tk.W, padx=(0, 15), pady=2)
-                
-            self.custom_foam_var.set("")
+        if not custom:
+            return
+        if custom in self.current_foam_vars or custom in self.available_foam_vars:
+            messagebox.showwarning("Duplicate", f"Foam type '{custom}' is already listed.")
+            return
+
+        self.foam_manager.add_foam_type(custom)
+        self.available_foam_vars[custom] = tk.BooleanVar(value=True)
+        self._render_available_foams()
+        self.custom_foam_var.set("")
     
     def apply_changes(self):
         from tkinter import messagebox
