@@ -10,8 +10,8 @@ class SEMImageEditor:
         self.root.title("Editor de Imágenes SEM")
         # Tamaño optimizado para imágenes SEM de 1280x960
         # Ventana ligeramente más grande para incluir controles y márgenes
-        self.root.geometry("1480x1100")
-        self.root.minsize(1280, 960)
+        self.root.geometry("1480x1250")
+        self.root.minsize(1280, 1050)
 
         # Variables de estado
         self.original_image = None
@@ -38,6 +38,9 @@ class SEMImageEditor:
         self.scale_length_um = 100
         self.cell_size_enabled = False
         self.cell_size_value = ""
+        self.density_overlay_enabled = False
+        self.density_mode = "rho_f"  # Options: rho_f, rho_r, expansion
+        self.density_value = ""
 
         # Estado del flujo de trabajo
         self.workflow_step = 0  # 0: cargar, 1: calibrar, 2: recortar, 3: configurar, 4: finalizar
@@ -154,7 +157,10 @@ class SEMImageEditor:
             'border_color': self.border_color,
             'border_width': self.border_width,
             'cell_size_enabled': self.cell_size_enabled,
-            'cell_size_value': self.cell_size_value
+            'cell_size_value': self.cell_size_value,
+            'density_overlay_enabled': self.density_overlay_enabled,
+            'density_mode': self.density_mode,
+            'density_value': self.density_value
         }
         
         # Eliminar estados futuros si estamos en medio del historial
@@ -198,6 +204,9 @@ class SEMImageEditor:
         self.border_width = state['border_width']
         self.cell_size_enabled = state['cell_size_enabled']
         self.cell_size_value = state['cell_size_value']
+        self.density_overlay_enabled = state.get('density_overlay_enabled', False)
+        self.density_mode = state.get('density_mode', 'rho_f')
+        self.density_value = state.get('density_value', '')
         
         # Actualizar interfaz
         self.display_image_on_canvas()
@@ -472,7 +481,7 @@ class SEMImageEditor:
         # Ventana de configuración
         config_window = tk.Toplevel(self.root)
         config_window.title("Configuración de Elementos")
-        config_window.geometry("450x350")
+        config_window.geometry("500x480")
         config_window.transient(self.root)
         config_window.grab_set()
         
@@ -514,6 +523,54 @@ class SEMImageEditor:
         ttk.Label(cellsize_entry_frame, text="μm").pack(side=tk.LEFT)
         
         self.toggle_cellsize()
+
+        # Overlay de densidad
+        density_frame = ttk.LabelFrame(config_window, text="Densidad (Opcional)", padding=10)
+        density_frame.pack(fill=tk.X, padx=10, pady=5)
+
+        self.density_enabled_var = tk.BooleanVar(value=self.density_overlay_enabled)
+        density_check = ttk.Checkbutton(
+            density_frame,
+            text="Añadir etiqueta de densidad",
+            variable=self.density_enabled_var,
+            command=self.toggle_density_controls
+        )
+        density_check.pack(anchor=tk.W)
+
+        density_options_frame = ttk.Frame(density_frame)
+        density_options_frame.pack(fill=tk.X, pady=(5, 0))
+
+        self.density_mode_var = tk.StringVar(value=self.density_mode)
+        self.density_mode_var.trace_add("write", lambda *_: self.update_density_units_label())
+
+        options = [
+            ("ρf (kg/m³)", "rho_f"),
+            ("ρᵣ", "rho_r"),
+            ("X", "expansion"),
+        ]
+        self.density_radio_buttons = []
+        for idx, (label, value) in enumerate(options):
+            rb = ttk.Radiobutton(
+                density_options_frame,
+                text=label,
+                value=value,
+                variable=self.density_mode_var
+            )
+            rb.grid(row=0, column=idx, padx=5, sticky=tk.W)
+            self.density_radio_buttons.append(rb)
+
+        density_value_frame = ttk.Frame(density_frame)
+        density_value_frame.pack(fill=tk.X, pady=(5, 0))
+
+        ttk.Label(density_value_frame, text="Valor:").pack(side=tk.LEFT)
+        self.density_value_var = tk.StringVar(value=self.density_value)
+        self.density_entry = ttk.Entry(density_value_frame, textvariable=self.density_value_var, width=12)
+        self.density_entry.pack(side=tk.LEFT, padx=(5, 5))
+        self.density_units_label = ttk.Label(density_value_frame, text="")
+        self.density_units_label.pack(side=tk.LEFT)
+
+        self.update_density_units_label()
+        self.toggle_density_controls()
         
         # Longitud de escala
         scale_frame = ttk.LabelFrame(config_window, text="Configuración de Escala", padding=10)
@@ -538,6 +595,9 @@ class SEMImageEditor:
                 self.border_width = int(self.border_width_var.get())
                 self.cell_size_enabled = self.cellsize_var.get()
                 self.cell_size_value = self.cellsize_entry_var.get() if self.cell_size_enabled else ""
+                self.density_overlay_enabled = self.density_enabled_var.get()
+                self.density_mode = self.density_mode_var.get()
+                raw_density_value = self.density_value_var.get().strip()
                 
                 if self.scale_length_um <= 0:
                     raise ValueError("La longitud de escala debe ser positiva")
@@ -548,11 +608,16 @@ class SEMImageEditor:
                 if self.cell_size_enabled and not self.cell_size_value:
                     raise ValueError("Ingrese un valor para el cell size")
                 
+                if self.density_overlay_enabled and not raw_density_value:
+                    raise ValueError("Ingrese un valor para la densidad seleccionada")
+                
+                self.density_value = raw_density_value
+                
                 config_window.destroy()
                 self.apply_final_processing()
                 
             except ValueError as e:
-                messagebox.showerror("Error", "Por favor, verifique los valores ingresados")
+                messagebox.showerror("Error", str(e))
         
         ttk.Button(button_frame, text="Aplicar", command=apply_config).pack(side=tk.RIGHT, padx=(5, 0))
         ttk.Button(button_frame, text="Cancelar", command=config_window.destroy).pack(side=tk.RIGHT)
@@ -568,6 +633,106 @@ class SEMImageEditor:
             self.cellsize_entry.config(state=tk.NORMAL)
         else:
             self.cellsize_entry.config(state=tk.DISABLED)
+    
+    def toggle_density_controls(self):
+        if not hasattr(self, 'density_enabled_var'):
+            return
+        enabled = self.density_enabled_var.get()
+        state = tk.NORMAL if enabled else tk.DISABLED
+        if hasattr(self, 'density_radio_buttons'):
+            for rb in self.density_radio_buttons:
+                rb.config(state=state)
+        if hasattr(self, 'density_entry'):
+            self.density_entry.config(state=state)
+        self.update_density_units_label()
+    
+    def update_density_units_label(self, *_args):
+        if hasattr(self, 'density_units_label'):
+            mode = self.density_mode_var.get() if hasattr(self, 'density_mode_var') else self.density_mode
+            unit = self._density_unit_for_mode(mode)
+            if hasattr(self, 'density_enabled_var') and not self.density_enabled_var.get():
+                self.density_units_label.config(text="")
+            else:
+                self.density_units_label.config(text=unit)
+    
+    def _density_unit_for_mode(self, mode):
+        if mode == "rho_f":
+            return "kg/m³"
+        return ""
+    
+    def _density_components_for_mode(self, mode):
+        if mode == "rho_f":
+            return "ρ", "f", "kg/m³"
+        if mode == "rho_r":
+            return "ρ", "r", ""
+        if mode == "expansion":
+            return "X", "", ""
+        return "", "", ""
+    
+    def _draw_density_overlay(self, draw, image, font, font_size):
+        main_char, sub_char, unit_text = self._density_components_for_mode(self.density_mode)
+        value_text = self.density_value.strip()
+        if not main_char or not value_text:
+            return
+
+        display_label = main_char + (sub_char if sub_char else "")
+        measurement_text = f"{display_label} = {value_text}"
+        if unit_text:
+            measurement_text += f" {unit_text}"
+
+        padding_x = 10
+        padding_y = 8
+        sub_extra = int(font_size * 0.35) if sub_char else 0
+
+        text_bbox = draw.textbbox((0, 0), measurement_text, font=font)
+        text_width = text_bbox[2] - text_bbox[0]
+        text_height = text_bbox[3] - text_bbox[1]
+
+        bg_width = text_width + padding_x * 2
+        bg_height = text_height + padding_y * 2 + sub_extra
+        bg_x = self.border_width
+        bg_y = self.border_width
+
+        draw.rectangle(
+            [bg_x, bg_y, bg_x + bg_width, bg_y + bg_height],
+            fill='lightgray',
+            outline=self.border_color,
+            width=2
+        )
+
+        text_x = bg_x + padding_x
+        text_y = bg_y + padding_y
+
+        main_bbox = draw.textbbox((0, 0), main_char, font=font)
+        main_width = main_bbox[2] - main_bbox[0]
+        main_height = main_bbox[3] - main_bbox[1]
+        draw.text((text_x, text_y), main_char, fill='black', font=font)
+
+        current_x = text_x + main_width
+
+        if sub_char:
+            sub_font_size = max(8, int(font_size * 0.65))
+            try:
+                sub_font = ImageFont.truetype("arial.ttf", sub_font_size)
+            except:
+                sub_font = font
+            sub_bbox = draw.textbbox((0, 0), sub_char, font=sub_font)
+            sub_width = sub_bbox[2] - sub_bbox[0]
+            sub_height = sub_bbox[3] - sub_bbox[1]
+            sub_y = text_y + max(2, int(main_height * 0.55))
+            draw.text((current_x, sub_y), sub_char, fill='black', font=sub_font)
+            current_x += sub_width + 4
+        else:
+            current_x += 4
+
+        rest_text = f"= {value_text}"
+        rest_bbox = draw.textbbox((0, 0), rest_text, font=font)
+        rest_width = rest_bbox[2] - rest_bbox[0]
+        draw.text((current_x, text_y), rest_text, fill='black', font=font)
+        current_x += rest_width + 4
+
+        if unit_text:
+            draw.text((current_x, text_y), unit_text, fill='black', font=font)
     
     def apply_final_processing(self):
         if self.unprocessed_image is None or self.pixels_per_micron is None:
@@ -585,8 +750,8 @@ class SEMImageEditor:
         draw = ImageDraw.Draw(img_with_border)
         
         # Configurar fuente
+        font_size = max(12, int(min(img.width, img.height) / 40))
         try:
-            font_size = max(12, int(min(img.width, img.height) / 40))
             font = ImageFont.truetype("arial.ttf", font_size)
         except:
             font = ImageFont.load_default()
@@ -658,6 +823,9 @@ class SEMImageEditor:
             text_x = cs_bg_x + (cs_bg_width - cs_width) / 2
             text_y = cs_bg_y + (cs_bg_height - cs_height) / 2
             draw.text((text_x, text_y), cellsize_text, fill='black', font=font)
+        
+        if self.density_overlay_enabled and self.density_value:
+            self._draw_density_overlay(draw, img_with_border, font, font_size)
         
         # Reemplazar la imagen procesada anterior
         self.processed_image = img_with_border

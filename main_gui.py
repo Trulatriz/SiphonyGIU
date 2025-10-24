@@ -205,7 +205,7 @@ class PressTechGUI:
 
         sem_images_btn = ttk.Button(
             images_frame,
-            text='�Y"� SEM IMAGE EDITOR',
+            text='SEM IMAGE EDITOR',
             command=self.open_sem_with_foam_check,
             **button_style
         )
