@@ -10,6 +10,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import pandas as pd
 import openpyxl
+import numpy as np
 
 
 def normalize_label(label):
@@ -40,6 +41,80 @@ def extract_label_tokens(value):
 def primary_label_token(value):
     tokens = extract_label_tokens(value)
     return tokens[0] if tokens else ""
+
+def compute_histogram_distribution_stats(sheet, formula_sheet=None):
+    """Compute mean and stddev for the histogram sheet if Excel cache is empty."""
+    values = []
+    for (val,) in sheet.iter_rows(min_row=3, min_col=5, max_col=5, values_only=True):
+        if val is None:
+            continue
+        try:
+            num = float(val)
+        except (TypeError, ValueError):
+            continue
+        if np.isnan(num):
+            continue
+        values.append(num)
+    if not values and formula_sheet is not None:
+        # Attempt to evaluate formulas of the form =C{row}*constant using column C values
+        scale = 1.0
+        try:
+            formula = formula_sheet.cell(row=3, column=5).value
+        except Exception:
+            formula = None
+        if isinstance(formula, str):
+            match = re.search(r"=C\\d+\\*([0-9.,]+)", formula.replace(",", "."))
+            if match:
+                try:
+                    scale = float(match.group(1))
+                except ValueError:
+                    scale = 1.0
+        values = []
+        for (base_val,) in sheet.iter_rows(min_row=3, min_col=3, max_col=3, values_only=True):
+            if base_val is None:
+                continue
+            try:
+                num = float(base_val)
+            except (TypeError, ValueError):
+                continue
+            if np.isnan(num):
+                continue
+            values.append(num * scale)
+    if not values:
+        return None
+    arr = np.asarray(values, dtype=float)
+    mean = float(np.mean(arr))
+    std = float(np.std(arr, ddof=1)) if arr.size > 1 else 0.0
+    return mean, std
+
+def compute_cell_density_stats(workbook, sheet_names, histogram_sheet_name):
+    """Compute mean and stddev for Q3 values across log sheets when Excel cache is empty."""
+    q_values = []
+    for sn in sheet_names:
+        if sn == histogram_sheet_name:
+            continue
+        name_norm = str(sn).strip().lower()
+        if not name_norm or name_norm in {"sheet", "summary", "intro"}:
+            continue
+        try:
+            val = workbook[sn]["Q3"].value
+        except KeyError:
+            continue
+        if val is None:
+            continue
+        try:
+            num = float(val)
+        except (TypeError, ValueError):
+            continue
+        if np.isnan(num):
+            continue
+        q_values.append(num)
+    if not q_values:
+        return None
+    arr = np.asarray(q_values, dtype=float)
+    mean = float(np.mean(arr))
+    std = float(np.std(arr, ddof=1)) if arr.size > 1 else 0.0
+    return mean, std
 
 
 def excel_cell_to_indices(cell_ref: str):
@@ -216,7 +291,7 @@ class HistogramCombinerModule:
             return False, None
         wb = None
         try:
-            wb = openpyxl.load_workbook(file_path, data_only=True, read_only=True)
+            wb = openpyxl.load_workbook(file_path, data_only=True, read_only=False)
             sheet_names = wb.sheetnames
             if not sheet_names:
                 return False, None
@@ -279,6 +354,35 @@ class HistogramCombinerModule:
             v_nv     = pd.to_numeric(val('AG3'), errors='coerce')
             v_std_nv = pd.to_numeric(val('AH3'), errors='coerce')
 
+            wb_formula = None
+            formula_sheet = None
+
+            def ensure_formula_sheet():
+                nonlocal wb_formula, formula_sheet
+                if formula_sheet is None:
+                    if wb_formula is None:
+                        wb_formula = openpyxl.load_workbook(file_path, data_only=False, read_only=False)
+                    formula_sheet = wb_formula[target]
+                return formula_sheet
+
+            # Fallback calculations when workbooks lack cached formula results
+            if pd.isna(v_mean_o) or pd.isna(v_std_o):
+                diam_stats = compute_histogram_distribution_stats(sh, ensure_formula_sheet())
+                if diam_stats:
+                    v_mean_o, v_std_o = diam_stats
+            if pd.isna(v_rsd_o) and v_mean_o and not pd.isna(v_mean_o) and v_mean_o != 0:
+                if pd.isna(v_std_o):
+                    diam_stats = compute_histogram_distribution_stats(sh, ensure_formula_sheet())
+                    if diam_stats:
+                        _, v_std_o = diam_stats
+                if not pd.isna(v_std_o) and v_std_o is not None:
+                    v_rsd_o = float(v_std_o) / float(v_mean_o) if v_mean_o else None
+
+            if pd.isna(v_nv) or pd.isna(v_std_nv):
+                density_stats = compute_cell_density_stats(wb, sheet_names, target)
+                if density_stats:
+                    v_nv, v_std_nv = density_stats
+
             out = {}
             if not pd.isna(v_mean_o):
                 out['\u00F8 (\u00B5m)'] = float(v_mean_o)
@@ -301,6 +405,11 @@ class HistogramCombinerModule:
         finally:
             if wb:
                 wb.close()
+            try:
+                if 'wb_formula' in locals() and wb_formula:
+                    wb_formula.close()
+            except Exception:
+                pass
 
     def combine_histograms(self):
         try:
