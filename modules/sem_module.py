@@ -771,7 +771,7 @@ class SEMImageEditor:
             return "X", "", ""
         return "", "", ""
     
-    def _draw_density_overlay(self, draw, image, font, font_size):
+    def _draw_density_overlay(self, draw, image, font, font_size, overlay_height, padding_x, padding_y):
         main_char, sub_char, unit_text = self._density_components_for_mode(self.density_mode)
         value_text = self.density_value.strip()
         if not main_char or not value_text:
@@ -782,35 +782,35 @@ class SEMImageEditor:
         if unit_text:
             measurement_text += f" {unit_text}"
 
-        padding_x = 10
-        padding_y = 8
-        mode = getattr(self, "density_mode", "rho_f")
-        if mode == "expansion":
-            base_extra = int(font_size * 0.25)
-            sub_extra = 0
-        else:
-            base_extra = int(font_size * 0.12)
-            sub_extra = int(font_size * 0.22) if sub_char else 0
-        extra_bottom = base_extra + sub_extra
-
+        # Ajustar tamaño de fuente si el recuadro objetivo es más alto
         text_bbox = draw.textbbox((0, 0), measurement_text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
+        target_height = overlay_height - padding_y * 2
+        if target_height > 0 and text_height > target_height:
+            scale_factor = target_height / text_height
+            adjusted_font_size = max(12, int(font_size * scale_factor))
+            try:
+                font = ImageFont.truetype("arial.ttf", adjusted_font_size)
+            except Exception:
+                font = ImageFont.load_default()
+            font_size = adjusted_font_size
+            text_bbox = draw.textbbox((0, 0), measurement_text, font=font)
+            text_width = text_bbox[2] - text_bbox[0]
+            text_height = text_bbox[3] - text_bbox[1]
 
         bg_width = text_width + padding_x * 2
-        bg_height = text_height + padding_y * 2 + extra_bottom
+        bg_height = overlay_height
         bg_x = self.border_width
         bg_y = self.border_width
 
-        draw.rectangle(
-            [bg_x, bg_y, bg_x + bg_width, bg_y + bg_height],
-            fill='lightgray',
-            outline=self.border_color,
-            width=2
-        )
+        draw.rectangle([bg_x, bg_y, bg_x + bg_width, bg_y + bg_height],
+                       fill='lightgray',
+                       outline=self.border_color,
+                       width=2)
 
         text_x = bg_x + padding_x
-        text_y = bg_y + padding_y
+        text_y = bg_y + (bg_height - text_height) / 2
 
         main_bbox = draw.textbbox((0, 0), main_char, font=font)
         main_width = main_bbox[2] - main_bbox[0]
@@ -857,84 +857,71 @@ class SEMImageEditor:
         img_with_border.paste(img, (self.border_width, self.border_width))
         
         draw = ImageDraw.Draw(img_with_border)
-        
-        # Configurar fuente
-        font_size = max(12, int(min(img.width, img.height) / 40))
+
+        # Ajuste dinámico de recuadros y tipografía (25 % de la altura de imagen)
+        overlay_height = max(60, int(img.height * 0.25))
+        padding_x = max(12, int(overlay_height * 0.1))
+        padding_y = max(10, int(overlay_height * 0.1))
+        max_text_band = max(20, overlay_height - padding_y * 2)
+
+        font_size = max(16, int(max_text_band * 0.6))
         try:
             font = ImageFont.truetype("arial.ttf", font_size)
         except:
             font = ImageFont.load_default()
-        
+
         # Añadir escala en la esquina inferior derecha
         scale_pixels = self.scale_length_um * self.pixels_per_micron
-        
-        # Calcular dimensiones del texto para ajustar el recuadro
         scale_text = f"{int(self.scale_length_um)} μm"
         text_bbox = draw.textbbox((0, 0), scale_text, font=font)
+        text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
-        
-        # El recuadro de la escala debe coincidir con los bordes internos de la imagen
-        scale_bg_width = scale_pixels + 20  # Padding interno
-        scale_bg_height = max(40, text_height + 25)  # Altura aumentada para el texto
-        
-        # Posición del recuadro de escala (alineado con bordes internos)
+
+        scale_bg_height = overlay_height
+        scale_bg_width = max(scale_pixels + padding_x * 2, int(scale_bg_height * 1.6))
         scale_bg_x = img_with_border.width - scale_bg_width - self.border_width
         scale_bg_y = img_with_border.height - scale_bg_height - self.border_width
-        
-        # Dibujar fondo gris claro para la escala
-        draw.rectangle([scale_bg_x, scale_bg_y, 
+
+        draw.rectangle([scale_bg_x, scale_bg_y,
                        img_with_border.width - self.border_width, img_with_border.height - self.border_width],
                       fill='lightgray', outline=self.border_color, width=2)
-        
-        # Posición de la línea de escala (centrada en el recuadro)
-        line_x = scale_bg_x + (scale_bg_width - scale_pixels) / 2
-        line_y = scale_bg_y + scale_bg_height - 12
-        
-        # Línea de escala horizontal con líneas verticales en los extremos
-        draw.line([line_x, line_y, line_x + scale_pixels, line_y],
-                 fill='black', width=2)
-        
-        # Líneas verticales en los extremos
-        tick_height = 4
-        draw.line([line_x, line_y - tick_height/2, line_x, line_y + tick_height/2],
-                 fill='black', width=2)
-        draw.line([line_x + scale_pixels, line_y - tick_height/2, 
-                  line_x + scale_pixels, line_y + tick_height/2],
-                 fill='black', width=2)
-        
-        # Texto de escala (más separado de la línea)
-        text_width = text_bbox[2] - text_bbox[0]
-        text_x = line_x + (scale_pixels - text_width) / 2
-        text_y = line_y - text_height - 8  # Más separación
+
+        line_x = scale_bg_x + max(padding_x, (scale_bg_width - scale_pixels) / 2)
+        line_y = scale_bg_y + scale_bg_height - padding_y - 4
+        draw.line([line_x, line_y, line_x + scale_pixels, line_y], fill='black', width=2)
+
+        tick_height = max(6, int(scale_bg_height * 0.08))
+        draw.line([line_x, line_y - tick_height/2, line_x, line_y + tick_height/2], fill='black', width=2)
+        draw.line([line_x + scale_pixels, line_y - tick_height/2,
+                  line_x + scale_pixels, line_y + tick_height/2], fill='black', width=2)
+
+        text_x = scale_bg_x + (scale_bg_width - text_width) / 2
+        text_y = scale_bg_y + padding_y
         draw.text((text_x, text_y), scale_text, fill='black', font=font)
-        
+
         # Añadir cell size si está habilitado
         if self.cell_size_enabled and self.cell_size_value:
             cellsize_text = f"ø = {self.cell_size_value} μm"
-            
-            # Posición superior derecha
             cs_bbox = draw.textbbox((0, 0), cellsize_text, font=font)
             cs_width = cs_bbox[2] - cs_bbox[0]
             cs_height = cs_bbox[3] - cs_bbox[1]
-            
-            # Recuadro que coincide con los bordes internos superior y derecho
-            cs_bg_width = cs_width + 20
-            cs_bg_height = cs_height + 15  # Altura aumentada para evitar solapamiento
+
+            cs_bg_height = overlay_height
+            cs_bg_width = max(cs_width + padding_x * 2, int(cs_bg_height * 1.2))
             cs_bg_x = img_with_border.width - cs_bg_width - self.border_width
             cs_bg_y = self.border_width
-            
-            # Fondo gris claro para cell size
-            draw.rectangle([cs_bg_x, cs_bg_y, 
+
+            draw.rectangle([cs_bg_x, cs_bg_y,
                            img_with_border.width - self.border_width, cs_bg_y + cs_bg_height],
                           fill='lightgray', outline=self.border_color, width=2)
-            
-            # Texto centrado en el recuadro
+
             text_x = cs_bg_x + (cs_bg_width - cs_width) / 2
             text_y = cs_bg_y + (cs_bg_height - cs_height) / 2
             draw.text((text_x, text_y), cellsize_text, fill='black', font=font)
-        
+
         if self.density_overlay_enabled and self.density_value:
-            self._draw_density_overlay(draw, img_with_border, font, font_size)
+            self._draw_density_overlay(draw, img_with_border, font, font_size,
+                                       overlay_height, padding_x, padding_y)
         
         # Reemplazar la imagen procesada anterior
         self.processed_image = img_with_border
