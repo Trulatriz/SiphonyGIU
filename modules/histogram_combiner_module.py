@@ -17,6 +17,22 @@ def normalize_label(label):
         return ""
     return str(label).strip().upper()
 
+def canonical_histogram_key(value):
+    """Canonical form of a histogram sheet name (case-insensitive, ignores spaces/underscores)."""
+    if value is None:
+        return ""
+    s = str(value).strip().upper()
+    s = s.replace("HISTOGRAM-", "HISTOGRAM")
+    s = s.replace("HISTOGRAM_", "HISTOGRAM")
+    s = s.replace("HISTOGRAM ", "HISTOGRAM")
+    return re.sub(r"[ _]", "", s)
+
+def canonical_label_key(value):
+    """Canonical form for comparing labels (preserve hyphen but ignore spaces/underscores)."""
+    if value is None:
+        return ""
+    return re.sub(r"[ _]", "", str(value).strip().upper())
+
 
 def excel_cell_to_indices(cell_ref: str):
     m_col = re.match(r'([A-Z]+)', cell_ref)
@@ -197,11 +213,39 @@ class HistogramCombinerModule:
             if not sheet_names:
                 return False, None
             expected = f"histogram_{label}"
+            expected_norm = canonical_histogram_key(expected)
+            label_norm = canonical_label_key(label)
             target = None
+            loose_candidate = None
+            label_only_candidate = None
             # Prefer the last matching sheet (others may have similar names)
             for sn in sheet_names:
-                if normalize_label(sn) == normalize_label(expected):
-                    target = sn  # keep last match
+                key = canonical_histogram_key(sn)
+                if key == expected_norm:
+                    target = sn  # keep last exact match
+                    continue
+                prefix_len = len("HISTOGRAM")
+                suffix = key[prefix_len:] if key.startswith("HISTOGRAM") else key
+                if suffix == label_norm:
+                    target = sn
+                    continue
+                if suffix.startswith(label_norm) and label_norm:
+                    remainder = suffix[len(label_norm):]
+                    # Avoid matching "-2" style suffixes when looking for base label
+                    if remainder.startswith('-') and '-' not in label:
+                        remainder_digits = remainder[1:].replace('-', '')
+                        if remainder_digits.isdigit():
+                            continue
+                    if remainder and remainder[0].isdigit() and '-' not in label:
+                        # Skip if remainder starts with digits (likely a different sample)
+                        continue
+                    loose_candidate = sn
+                    continue
+                sheet_label = canonical_label_key(sn)
+                if not label_only_candidate and sheet_label == label_norm:
+                    label_only_candidate = sn
+            if not target:
+                target = loose_candidate or label_only_candidate
             if not target:
                 return False, None
             sh = wb[target]

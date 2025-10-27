@@ -526,10 +526,11 @@ class FoamTypeManager:
 
 class FoamTypeSelector:
     """GUI component for selecting foam type"""
-    def __init__(self, parent, foam_manager: FoamTypeManager, on_change_callback=None):
+    def __init__(self, parent, foam_manager: FoamTypeManager, on_change_callback=None, auto_commit: bool = True):
         self.parent = parent
         self.foam_manager = foam_manager
         self.on_change_callback = on_change_callback
+        self.auto_commit = auto_commit
         
         self.create_widgets()
         
@@ -562,10 +563,17 @@ class FoamTypeSelector:
     def on_foam_type_changed(self, event=None):
         """Handle foam type change"""
         new_type = self.foam_var.get()
-        self.foam_manager.set_current_foam_type(new_type)
+        if self.auto_commit:
+            self.foam_manager.set_current_foam_type(new_type)
         
         if self.on_change_callback:
             self.on_change_callback(new_type)
+
+    def commit_selection(self):
+        """Persist the currently selected foam type to the manager."""
+        selected = self.foam_var.get()
+        if selected:
+            self.foam_manager.set_current_foam_type(selected)
     
     def add_foam_type(self):
         """Add a new foam type"""
@@ -623,6 +631,7 @@ class FoamTypeDialog:
     def __init__(self, parent, foam_manager: FoamTypeManager):
         import tkinter as tk
         from tkinter import ttk
+
         self.parent = parent
         self.top = tk.Toplevel(parent)
         self.top.title("Select Foam Type")
@@ -631,6 +640,7 @@ class FoamTypeDialog:
         self.top.resizable(False, False)
 
         self.foam_manager = foam_manager
+        self._original_foam_type = self.foam_manager.get_current_foam_type()
 
         frame = ttk.Frame(self.top, padding=15)
         frame.grid(row=0, column=0)
@@ -638,7 +648,7 @@ class FoamTypeDialog:
         ttk.Label(frame, text="Select Foam Type", font=("Arial", 14, "bold")).grid(row=0, column=0, columnspan=3, pady=(0, 10))
 
         # Reuse selector widget
-        self.selector = FoamTypeSelector(frame, foam_manager, on_change_callback=None)
+        self.selector = FoamTypeSelector(frame, foam_manager, on_change_callback=None, auto_commit=False)
 
         # Buttons
         btns = ttk.Frame(frame)
@@ -659,16 +669,52 @@ class FoamTypeDialog:
 
     def on_ok(self):
         # Persist current selection
-        self.foam_manager.set_current_foam_type(self.selector.get_selected_foam_type())
+        self.selector.commit_selection()
         self.result = self.selector.get_selected_foam_type()
         self.top.grab_release()
         self.top.destroy()
 
     def on_cancel(self):
         # Keep current foam type
-        self.result = self.foam_manager.get_current_foam_type()
+        if self._original_foam_type:
+            self.foam_manager.set_current_foam_type(self._original_foam_type)
+        self.result = self._original_foam_type
         self.top.grab_release()
         self.top.destroy()
+
+    def _refresh_selector(self):
+        self.selector.refresh()
+
+    def new_paper(self):
+        """Create a new paper and refresh foam types."""
+        from tkinter import messagebox
+        try:
+            dialog = NewPaperDialog(self.top, self.foam_manager)
+            self.top.wait_window(dialog.top)
+            self._refresh_selector()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to create new paper: {str(e)}")
+
+    def manage_papers(self):
+        """Open manage papers dialog and refresh selection afterwards."""
+        from tkinter import messagebox
+        try:
+            dialog = ManagePapersDialog(self.top, self.foam_manager)
+            self.top.wait_window(dialog.top)
+            self._refresh_selector()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to manage papers: {str(e)}")
+
+    def manage_foams(self):
+        """Open manage foams dialog for the current paper and refresh selection."""
+        from tkinter import messagebox
+        try:
+            current_paper = self.foam_manager.get_current_paper()
+            dialog = ManageFoamsDialog(self.top, self.foam_manager, current_paper)
+            self.top.wait_window(dialog.top)
+            self._refresh_selector()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to manage foams: {str(e)}")
 
 
 class PaperSelector:
