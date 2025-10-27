@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, colorchooser
-from PIL import Image, ImageTk, ImageDraw, ImageFont
+from PIL import Image, ImageTk, ImageDraw, ImageFont, ImageColor
 import numpy as np
 import os
 
@@ -83,6 +83,14 @@ class SEMImageEditor:
         
         self.crop_btn = ttk.Button(control_frame, text="3. Seleccionar Región", command=self.start_region_selection, state=tk.DISABLED)
         self.crop_btn.pack(side=tk.LEFT, padx=5)
+        
+        self.auto_crop_btn = ttk.Button(
+            control_frame,
+            text="3b. Recorte 1280×900",
+            command=self.auto_crop_to_target,
+            state=tk.DISABLED
+        )
+        self.auto_crop_btn.pack(side=tk.LEFT, padx=5)
         
         self.config_btn = ttk.Button(control_frame, text="4. Configurar Elementos", command=self.open_config, state=tk.DISABLED)
         self.config_btn.pack(side=tk.LEFT, padx=5)
@@ -229,6 +237,8 @@ class SEMImageEditor:
         
         # Recorte
         self.crop_btn.config(state=tk.NORMAL if self.workflow_step >= 2 else tk.DISABLED)
+        if hasattr(self, "auto_crop_btn"):
+            self.auto_crop_btn.config(state=tk.NORMAL if self.workflow_step >= 2 else tk.DISABLED)
         
         # Configuración
         self.config_btn.config(state=tk.NORMAL if self.workflow_step >= 3 else tk.DISABLED)
@@ -290,6 +300,48 @@ class SEMImageEditor:
         self.selection_rect = None
         self.selection_start = None
         messagebox.showinfo("Selección de Región", "Arrastre para seleccionar la región de la imagen que desea conservar.")
+    
+    def auto_crop_to_target(self):
+        if self.pixels_per_micron is None:
+            messagebox.showerror("Error", "Flujo de trabajo incorrecto. Primero calibre la escala.")
+            return
+        if self.current_image is None:
+            messagebox.showerror("Error", "No hay imagen cargada para recortar.")
+            return
+
+        target_width = 1280
+        target_height = 900
+        width, height = self.current_image.size
+
+        if height < target_height:
+            messagebox.showwarning(
+                "Altura insuficiente",
+                f"La imagen tiene una altura de {height}px, menor que el objetivo de {target_height}px."
+            )
+            return
+
+        left = 0
+        if width > target_width:
+            left = max(0, (width - target_width) // 2)
+        right = min(width, left + target_width)
+        top = 0
+        bottom = min(height, target_height)
+
+        try:
+            self.current_image = self.current_image.crop((left, top, right, bottom))
+            self.unprocessed_image = self.current_image.copy()
+            self.display_image_on_canvas()
+
+            self.canvas.delete("selection")
+            self.selecting_region = False
+            self.selection_start = None
+
+            self.workflow_step = 3
+            self.update_workflow_instructions()
+            self.update_workflow_buttons()
+            self.save_state()
+        except Exception as exc:
+            messagebox.showerror("Error de recorte", f"No se pudo aplicar el recorte automático: {exc}")
     
     def start_calibration(self):
         if self.current_image is None:
@@ -805,7 +857,7 @@ class SEMImageEditor:
         bg_y = self.border_width
 
         draw.rectangle([bg_x, bg_y, bg_x + bg_width, bg_y + bg_height],
-                       fill=(211, 211, 211, 180),
+                       fill=(211, 211, 211, 140),
                        outline=self.border_color,
                        width=2)
 
@@ -848,18 +900,21 @@ class SEMImageEditor:
             return
         
         # Usar la imagen sin procesar como base (sin elementos anteriores)
-        img = self.unprocessed_image.copy()
+        base_image = self.unprocessed_image.copy().convert("RGBA")
         
-        # Añadir borde
-        img_with_border = Image.new('RGB', 
-                                  (img.width + 2*self.border_width, img.height + 2*self.border_width),
-                                  self.border_color)
-        img_with_border.paste(img, (self.border_width, self.border_width))
+        # Añadir borde admitiendo transparencia
+        border_rgb = ImageColor.getrgb(self.border_color)
+        img_with_border = Image.new(
+            'RGBA',
+            (base_image.width + 2 * self.border_width, base_image.height + 2 * self.border_width),
+            border_rgb + (255,)
+        )
+        img_with_border.paste(base_image, (self.border_width, self.border_width))
         
         draw = ImageDraw.Draw(img_with_border)
 
-        # Ajuste dinámico de recuadros y tipografía (25 % de la altura de imagen)
-        overlay_height = max(60, int(img.height * 0.2))
+        # Ajuste dinámico de recuadros y tipografía (20 % de la altura de imagen)
+        overlay_height = max(60, int(base_image.height * 0.2))
         padding_x = max(12, int(overlay_height * 0.1))
         padding_y = max(10, int(overlay_height * 0.1))
         max_text_band = max(20, overlay_height - padding_y * 2)
@@ -884,7 +939,7 @@ class SEMImageEditor:
 
         draw.rectangle([scale_bg_x, scale_bg_y,
                        img_with_border.width - self.border_width, img_with_border.height - self.border_width],
-                      fill=(211, 211, 211, 180), outline=self.border_color, width=2)
+                      fill=(211, 211, 211, 140), outline=self.border_color, width=2)
 
         line_x = scale_bg_x + max(padding_x, (scale_bg_width - scale_pixels) / 2)
         line_y = scale_bg_y + scale_bg_height - padding_y - 4
@@ -913,7 +968,7 @@ class SEMImageEditor:
 
             draw.rectangle([cs_bg_x, cs_bg_y,
                            img_with_border.width - self.border_width, cs_bg_y + cs_bg_height],
-                          fill=(211, 211, 211, 180), outline=self.border_color, width=2)
+                          fill=(211, 211, 211, 140), outline=self.border_color, width=2)
 
             text_x = cs_bg_x + (cs_bg_width - cs_width) / 2
             text_y = cs_bg_y + (cs_bg_height - cs_height) / 2
@@ -924,8 +979,9 @@ class SEMImageEditor:
                                        overlay_height, padding_x, padding_y)
         
         # Reemplazar la imagen procesada anterior
-        self.processed_image = img_with_border
-        self.current_image = img_with_border
+        final_image = img_with_border.convert("RGB")
+        self.processed_image = final_image
+        self.current_image = final_image.copy()
         self.display_image_on_canvas()
         
         self.workflow_step = 4
