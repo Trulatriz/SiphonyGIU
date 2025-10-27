@@ -805,7 +805,7 @@ class SEMImageEditor:
         bg_y = self.border_width
 
         draw.rectangle([bg_x, bg_y, bg_x + bg_width, bg_y + bg_height],
-                       fill='lightgray',
+                       fill=(211, 211, 211, 180),
                        outline=self.border_color,
                        width=2)
 
@@ -859,7 +859,7 @@ class SEMImageEditor:
         draw = ImageDraw.Draw(img_with_border)
 
         # Ajuste dinámico de recuadros y tipografía (25 % de la altura de imagen)
-        overlay_height = max(60, int(img.height * 0.25))
+        overlay_height = max(60, int(img.height * 0.2))
         padding_x = max(12, int(overlay_height * 0.1))
         padding_y = max(10, int(overlay_height * 0.1))
         max_text_band = max(20, overlay_height - padding_y * 2)
@@ -884,13 +884,13 @@ class SEMImageEditor:
 
         draw.rectangle([scale_bg_x, scale_bg_y,
                        img_with_border.width - self.border_width, img_with_border.height - self.border_width],
-                      fill='lightgray', outline=self.border_color, width=2)
+                      fill=(211, 211, 211, 180), outline=self.border_color, width=2)
 
         line_x = scale_bg_x + max(padding_x, (scale_bg_width - scale_pixels) / 2)
         line_y = scale_bg_y + scale_bg_height - padding_y - 4
         draw.line([line_x, line_y, line_x + scale_pixels, line_y], fill='black', width=2)
 
-        tick_height = max(6, int(scale_bg_height * 0.08))
+        tick_height = max(8, int(scale_bg_height * 0.12))
         draw.line([line_x, line_y - tick_height/2, line_x, line_y + tick_height/2], fill='black', width=2)
         draw.line([line_x + scale_pixels, line_y - tick_height/2,
                   line_x + scale_pixels, line_y + tick_height/2], fill='black', width=2)
@@ -913,7 +913,7 @@ class SEMImageEditor:
 
             draw.rectangle([cs_bg_x, cs_bg_y,
                            img_with_border.width - self.border_width, cs_bg_y + cs_bg_height],
-                          fill='lightgray', outline=self.border_color, width=2)
+                          fill=(211, 211, 211, 180), outline=self.border_color, width=2)
 
             text_x = cs_bg_x + (cs_bg_width - cs_width) / 2
             text_y = cs_bg_y + (cs_bg_height - cs_height) / 2
