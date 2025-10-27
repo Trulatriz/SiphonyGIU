@@ -910,8 +910,9 @@ class SEMImageEditor:
             border_rgb + (255,)
         )
         img_with_border.paste(base_image, (self.border_width, self.border_width))
-        
-        draw = ImageDraw.Draw(img_with_border)
+
+        overlay = Image.new('RGBA', img_with_border.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
 
         # Ajuste dinámico de recuadros y tipografía (20 % de la altura de imagen)
         overlay_height = max(60, int(base_image.height * 0.2))
@@ -977,7 +978,9 @@ class SEMImageEditor:
         if self.density_overlay_enabled and self.density_value:
             self._draw_density_overlay(draw, img_with_border, font, font_size,
                                        overlay_height, padding_x, padding_y)
-        
+
+        img_with_border = Image.alpha_composite(img_with_border, overlay)
+
         # Reemplazar la imagen procesada anterior
         final_image = img_with_border.convert("RGB")
         self.processed_image = final_image
