@@ -22,9 +22,7 @@ def canonical_histogram_key(value):
     if value is None:
         return ""
     s = str(value).strip().upper()
-    s = s.replace("HISTOGRAM-", "HISTOGRAM")
-    s = s.replace("HISTOGRAM_", "HISTOGRAM")
-    s = s.replace("HISTOGRAM ", "HISTOGRAM")
+    s = re.sub(r"HISTOGRAM[\s_-]*", "HISTOGRAM", s)
     return re.sub(r"[ _]", "", s)
 
 def canonical_label_key(value):
@@ -32,6 +30,16 @@ def canonical_label_key(value):
     if value is None:
         return ""
     return re.sub(r"[ _]", "", str(value).strip().upper())
+
+def extract_label_tokens(value):
+    """Return all numeric tokens (with optional single hyphen) found in the value."""
+    if value is None:
+        return []
+    return re.findall(r"\d+(?:-\d+)?", str(value))
+
+def primary_label_token(value):
+    tokens = extract_label_tokens(value)
+    return tokens[0] if tokens else ""
 
 
 def excel_cell_to_indices(cell_ref: str):
@@ -215,17 +223,21 @@ class HistogramCombinerModule:
             expected = f"histogram_{label}"
             expected_norm = canonical_histogram_key(expected)
             label_norm = canonical_label_key(label)
+            label_token = primary_label_token(label)
             target = None
             loose_candidate = None
             label_only_candidate = None
             # Prefer the last matching sheet (others may have similar names)
             for sn in sheet_names:
                 key = canonical_histogram_key(sn)
+                hist_idx = key.rfind("HISTOGRAM")
+                suffix = key[hist_idx + len("HISTOGRAM"):] if hist_idx != -1 else key
+                sn_upper = str(sn).upper()
+                hist_idx_raw = sn_upper.rfind("HISTOGRAM")
+                suffix_raw = sn[hist_idx_raw + len("HISTOGRAM"):] if hist_idx_raw != -1 else sn
                 if key == expected_norm:
                     target = sn  # keep last exact match
                     continue
-                prefix_len = len("HISTOGRAM")
-                suffix = key[prefix_len:] if key.startswith("HISTOGRAM") else key
                 if suffix == label_norm:
                     target = sn
                     continue
@@ -239,6 +251,14 @@ class HistogramCombinerModule:
                     if remainder and remainder[0].isdigit() and '-' not in label:
                         # Skip if remainder starts with digits (likely a different sample)
                         continue
+                    loose_candidate = sn
+                    continue
+                suffix_tokens = extract_label_tokens(suffix_raw)
+                if label_token and label_token in suffix_tokens:
+                    target = sn
+                    continue
+                sheet_tokens = extract_label_tokens(sn)
+                if label_token and label_token in sheet_tokens:
                     loose_candidate = sn
                     continue
                 sheet_label = canonical_label_key(sn)
