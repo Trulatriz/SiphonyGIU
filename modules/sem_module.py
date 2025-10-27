@@ -857,7 +857,7 @@ class SEMImageEditor:
         bg_y = self.border_width
 
         draw.rectangle([bg_x, bg_y, bg_x + bg_width, bg_y + bg_height],
-                       fill=(211, 211, 211, 140),
+                       fill=(211, 211, 211, 178),
                        outline=self.border_color,
                        width=2)
 
@@ -939,7 +939,7 @@ class SEMImageEditor:
 
         draw.rectangle([scale_bg_x, scale_bg_y,
                        img_with_border.width - self.border_width, img_with_border.height - self.border_width],
-                      fill=(211, 211, 211, 140), outline=self.border_color, width=2)
+                      fill=(211, 211, 211, 178), outline=self.border_color, width=2)
 
         line_x = scale_bg_x + max(padding_x, (scale_bg_width - scale_pixels) / 2)
         line_y = scale_bg_y + scale_bg_height - padding_y - 4
@@ -968,7 +968,7 @@ class SEMImageEditor:
 
             draw.rectangle([cs_bg_x, cs_bg_y,
                            img_with_border.width - self.border_width, cs_bg_y + cs_bg_height],
-                          fill=(211, 211, 211, 140), outline=self.border_color, width=2)
+                          fill=(211, 211, 211, 178), outline=self.border_color, width=2)
 
             text_x = cs_bg_x + (cs_bg_width - cs_width) / 2
             text_y = cs_bg_y + (cs_bg_height - cs_height) / 2
