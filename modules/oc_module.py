@@ -10,6 +10,9 @@ from .foam_type_manager import FoamTypeManager, FoamTypeSelector
 # Suppress warnings for better user experience
 warnings.filterwarnings("ignore", category=FutureWarning, module="pandas")
 
+INSTRUMENT_PRESSTECH = "Pycnometer PressTech"
+INSTRUMENT_CELLMAT = "Pycnometer CellMat"
+
 
 class OCModule:
     def __init__(self, root, paper_path=None, foam_type=None):
@@ -27,6 +30,11 @@ class OCModule:
         else:
             self.current_foam_type = self.foam_manager.get_current_foam_type()
 
+        # Instrument selection
+        self.instrument_options = [INSTRUMENT_PRESSTECH, INSTRUMENT_CELLMAT]
+        self.instrument_var = tk.StringVar(value=INSTRUMENT_PRESSTECH)
+        self.current_instrument = self.instrument_var.get()
+
         # Paths / state
         self.picnometry_folder = None
         self.selected_picnometry_files = []
@@ -36,6 +44,7 @@ class OCModule:
         # Review data after processing
         self.processed_data = []  # List of dicts with processing results
         self.review_window = None
+        self._last_density_df = None
 
         # Suggest density at paper root
         if self.paper_path:
@@ -57,6 +66,19 @@ class OCModule:
 
         # Foam type selector
         self.foam_selector = FoamTypeSelector(main, self.foam_manager, self.on_foam_type_changed)
+
+        instrument_frame = ttk.LabelFrame(main, text="Instrument", padding="10")
+        instrument_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(4, 10))
+        ttk.Label(instrument_frame, text="Select instrument:").grid(row=0, column=0, sticky=tk.W)
+        instrument_combo = ttk.Combobox(
+            instrument_frame,
+            textvariable=self.instrument_var,
+            values=self.instrument_options,
+            state="readonly",
+            width=28,
+        )
+        instrument_combo.grid(row=0, column=1, sticky=tk.W, padx=(10, 0))
+        instrument_combo.bind("<<ComboboxSelected>>", lambda _e: self.on_instrument_changed())
 
         setup = ttk.LabelFrame(main, text="Setup Files and Folders", padding="10")
         setup.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(4, 10))
@@ -164,6 +186,11 @@ class OCModule:
         # Results file path suggestion
         if sug.get("results_file"):
             self.results_file_var.set(sug["results_file"])
+
+    def on_instrument_changed(self):
+        self.current_instrument = self.instrument_var.get()
+        if hasattr(self, "status_var"):
+            self.status_var.set(f"Instrument set to {self.current_instrument}")
 
     def on_foam_type_changed(self, new_type):
         # Save current paths before switching
@@ -300,6 +327,33 @@ class OCModule:
             return "OC_Results.xlsx"  # Fallback
         return f"OC_Results_{self.current_foam_type}.xlsx"
 
+    def _load_density_dataframe(self):
+        if not self.density_file or not os.path.exists(self.density_file):
+            raise ValueError("Density.xlsx not set or not found.")
+        try:
+            density_df = pd.read_excel(self.density_file, sheet_name=self.current_foam_type, engine="openpyxl")
+            density_df["Label"] = density_df["Label"].astype(str)
+            density_df.set_index("Label", inplace=True)
+        except Exception as e:
+            raise ValueError(f"Could not read density sheet for '{self.current_foam_type}': {e}")
+        try:
+            self._density_pos = self._excel_letter_to_iloc_pos('F', label_letter='B')
+            self._rho_r_pos = self._excel_letter_to_iloc_pos('I', label_letter='B')
+            ncols_check = density_df.shape[1]
+            if not (0 <= self._density_pos < ncols_check and 0 <= self._rho_r_pos < ncols_check):
+                raise IndexError(
+                    f"Positions out of range (ncols={ncols_check}): F->{self._density_pos}, I->{self._rho_r_pos}"
+                )
+        except Exception as e:
+            raise ValueError(f"Failed to map Excel columns F/I: {e}")
+        self._last_density_df = density_df
+        return density_df
+
+    def _ensure_density_dataframe(self):
+        if self._last_density_df is not None:
+            return self._last_density_df
+        return self._load_density_dataframe()
+
     def open_or_create_results_file(self):
         target = self.results_file_var.get()
         if not target:
@@ -378,34 +432,18 @@ class OCModule:
         if not selected_files:
             messagebox.showerror("Error", "No files selected for processing. Check files in the list.")
             return
-        if not self.density_file or not os.path.exists(self.density_file):
-            messagebox.showerror("Error", "Density.xlsx not set or not found.")
-            return
         if not self.output_folder:
             messagebox.showerror("Error", "Output folder not selected.")
             return
         os.makedirs(self.output_folder, exist_ok=True)
 
-        # Load density for current foam sheet
         try:
-            density_df = pd.read_excel(self.density_file, sheet_name=self.current_foam_type, engine="openpyxl")
-            density_df["Label"] = density_df["Label"].astype(str)
-            density_df.set_index("Label", inplace=True)
+            density_df = self._load_density_dataframe()
         except Exception as e:
-            messagebox.showerror("Error", f"Could not read density sheet for '{self.current_foam_type}': {e}")
+            messagebox.showerror("Error", str(e))
             return
 
-        # Map fixed Excel columns to iloc positions (F for density, I for rho_r)
-        try:
-            # Label is in column B in Density.xlsx
-            self._density_pos = self._excel_letter_to_iloc_pos('F', label_letter='B')
-            self._rho_r_pos = self._excel_letter_to_iloc_pos('I', label_letter='B')
-            ncols_check = density_df.shape[1]
-            if not (0 <= self._density_pos < ncols_check and 0 <= self._rho_r_pos < ncols_check):
-                raise IndexError(f"Positions out of range (ncols={ncols_check}): F->{self._density_pos}, I->{self._rho_r_pos}")
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to map Excel columns F/I: {e}")
-            return
+        instrument_choice = self.instrument_var.get()
 
         self.progress["maximum"] = len(selected_files)
         self.progress["value"] = 0
@@ -416,11 +454,12 @@ class OCModule:
             fname = os.path.basename(path)
             self.status_var.set(f"Processing {fname}…")
             self.root.update()
-            ok, data = self.process_single_file(path, density_df)
+            ok, data = self.process_single_file(path, density_df, instrument=instrument_choice)
             if ok and data:
                 # Add extra info for review
                 data['filename'] = fname
                 data['filepath'] = path
+                data['instrument'] = data.get('instrument', instrument_choice)
                 self.processed_data.append(data)
                 self._set_tree_status(fname, "✅ Processed")
             else:
@@ -551,7 +590,7 @@ class OCModule:
                 # If all are small integers, take the largest
                 balls_volume = max(integers)
         
-        analysis += f" | Detected balls volume: {balls_volume:.6f} cm³"
+        analysis += f" | Detected balls volume: {balls_volume:.6f} cm\u00B3"
         return balls_volume, analysis
 
     def clean_numeric_value(self, value):
@@ -618,14 +657,16 @@ class OCModule:
         table_frame.pack(fill=tk.BOTH, expand=True)
         
         # Create treeview for results
-        columns = ("filename", "comment", "volume")
+        columns = ("filename", "instrument", "comment", "volume")
         self.review_tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=15)
         
         self.review_tree.heading("filename", text="File Name")
+        self.review_tree.heading("instrument", text="Instrument")
         self.review_tree.heading("comment", text="Comment Analysis")
         self.review_tree.heading("volume", text="Balls Volume (cm³)")
         
         self.review_tree.column("filename", width=250)
+        self.review_tree.column("instrument", width=180, anchor="center")
         self.review_tree.column("comment", width=400)
         self.review_tree.column("volume", width=150, anchor="center")
         
@@ -644,9 +685,11 @@ class OCModule:
             filename = data.get('filename', 'Unknown')
             comment = data.get('raw_comment', '')
             detected_volume = data.get('detected_balls_volume', 0.0)
+            instrument = data.get('instrument', INSTRUMENT_PRESSTECH)
             
             item_id = self.review_tree.insert("", "end", values=(
                 filename,
+                instrument,
                 comment[:50] + "..." if len(comment) > 50 else comment,
                 f"{detected_volume:.6f}"
             ))
@@ -654,6 +697,7 @@ class OCModule:
             # Store variables for this row
             self.review_data_vars[item_id] = {
                 'volume': tk.DoubleVar(value=detected_volume),
+                'instrument': tk.StringVar(value=instrument),
                 'data_index': i
             }
         
@@ -664,13 +708,27 @@ class OCModule:
         edit_grid = ttk.Frame(edit_frame)
         edit_grid.pack(fill=tk.X)
         
-        ttk.Label(edit_grid, text="Balls volume (cm³):").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        ttk.Label(edit_grid, text="Instrument:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        self.edit_instrument_var = tk.StringVar(value=self.instrument_var.get())
+        self.edit_instrument_combo = ttk.Combobox(
+            edit_grid,
+            textvariable=self.edit_instrument_var,
+            values=self.instrument_options,
+            state="readonly",
+            width=25,
+        )
+        self.edit_instrument_combo.grid(row=0, column=1, padx=(0, 20), sticky=tk.W)
+        self.edit_instrument_combo.bind("<<ComboboxSelected>>", lambda _e: self._update_edit_controls(self.edit_instrument_var.get()))
+
+        ttk.Label(edit_grid, text="Balls volume (cm³):").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=(6, 0))
         self.edit_volume_var = tk.DoubleVar(value=0.0)
         volume_entry = ttk.Entry(edit_grid, textvariable=self.edit_volume_var, width=15)
-        volume_entry.grid(row=0, column=1, padx=(0, 20))
-        
+        volume_entry.grid(row=1, column=1, padx=(0, 20), pady=(6, 0))
+        self.edit_volume_entry = volume_entry
+        self._update_edit_controls(self.edit_instrument_var.get())
+
         ttk.Button(edit_grid, text="Apply to Selected", 
-                  command=self.apply_edit_to_selected).grid(row=0, column=2, padx=(10, 0))
+                  command=self.apply_edit_to_selected).grid(row=1, column=2, padx=(10, 0), pady=(6, 0))
         
         # Bind selection event
         self.review_tree.bind("<<TreeviewSelect>>", self.on_review_selection_change)
@@ -692,6 +750,9 @@ class OCModule:
             if item_id in self.review_data_vars:
                 vars_dict = self.review_data_vars[item_id]
                 self.edit_volume_var.set(vars_dict['volume'].get())
+                instrument = vars_dict['instrument'].get()
+                self.edit_instrument_var.set(instrument)
+                self._update_edit_controls(instrument)
 
     def apply_edit_to_selected(self):
         """Apply edit values to selected row"""
@@ -699,39 +760,101 @@ class OCModule:
         if not selection:
             messagebox.showwarning("No Selection", "Please select a row to edit.")
             return
-        
+
         item_id = selection[0]
         if item_id in self.review_data_vars:
             vars_dict = self.review_data_vars[item_id]
-            # Update variable
-            vars_dict['volume'].set(self.edit_volume_var.get())
-            
-            # Update tree display
-            current_values = list(self.review_tree.item(item_id, "values"))
-            current_values[2] = f"{self.edit_volume_var.get():.6f}"
-            self.review_tree.item(item_id, values=current_values)
+            self._apply_review_update(item_id, vars_dict)
+
+    def _apply_review_update(self, item_id, vars_dict):
+        instrument = self.edit_instrument_var.get()
+        vars_dict['instrument'].set(instrument)
+        self._update_edit_controls(instrument)
+
+        try:
+            density_df = self._ensure_density_dataframe()
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+            return
+
+        data_index = vars_dict['data_index']
+        base_data = self.processed_data[data_index]
+        filepath = base_data.get('filepath')
+        filename = base_data.get('filename', 'Unknown')
+        if not filepath:
+            messagebox.showerror("Error", "Missing original file path for reprocessing.")
+            return
+
+        ok, new_data = self.process_single_file(filepath, density_df, instrument=instrument)
+        if not ok or not new_data:
+            messagebox.showerror("Error", f"Failed to reprocess {filename} with {instrument}.")
+            return
+
+        new_data['filename'] = filename
+        new_data['filepath'] = filepath
+        new_data['instrument'] = instrument
+
+        if instrument == INSTRUMENT_CELLMAT:
+            manual_volume = self.edit_volume_var.get()
+            detected_volume = new_data.get('detected_balls_volume', 0.0)
+            if abs(manual_volume - detected_volume) > 1e-9:
+                vpyc_original = new_data.get("Vpyc unfixed (cm3)")
+                if vpyc_original is not None:
+                    new_data["Vpyc (cm3)"] = vpyc_original - manual_volume
+                new_data["detected_balls_volume"] = manual_volume
+                raw_comment = new_data.get("raw_comment", "")
+                new_data["Comment Analysis"] = (
+                    f"Original: '{raw_comment}' | Manual: balls volume = {manual_volume:.6f} cm³"
+                )
+            vars_dict['volume'].set(new_data.get("detected_balls_volume", 0.0))
+        else:
+            new_data["detected_balls_volume"] = 0.0
+            new_data["Vpyc (cm3)"] = new_data.get("Vpyc unfixed (cm3)")
+            new_data["Comment Analysis"] = INSTRUMENT_PRESSTECH
+            vars_dict['volume'].set(0.0)
+            self.edit_volume_var.set(0.0)
+
+        self.processed_data[data_index] = new_data
+
+        comment = new_data.get("Comment Analysis", "")
+        comment_display = comment if len(comment) <= 50 else comment[:50] + "..."
+        volume_display = f"{vars_dict['volume'].get():.6f}"
+        self.review_tree.item(item_id, values=(filename, instrument, comment_display, volume_display))
+
+    def _update_edit_controls(self, instrument):
+        if instrument == INSTRUMENT_PRESSTECH:
+            self.edit_volume_var.set(0.0)
+            self.edit_volume_entry.configure(state="disabled")
+        else:
+            self.edit_volume_entry.configure(state="normal")
 
     def save_reviewed_results(self):
         """Save the reviewed results to Excel"""
         # Update processed_data with edited values
         for item_id, vars_dict in self.review_data_vars.items():
             data_index = vars_dict['data_index']
-            new_balls_volume = vars_dict['volume'].get()
-            
-            # Update the data
+            instrument_choice = vars_dict['instrument'].get()
             data = self.processed_data[data_index]
+            data['instrument'] = instrument_choice
+
+            if instrument_choice == INSTRUMENT_PRESSTECH:
+                data["detected_balls_volume"] = 0.0
+                vpyc_original = data.get("Vpyc unfixed (cm3)")
+                if vpyc_original is not None:
+                    data["Vpyc (cm3)"] = vpyc_original
+                data["Comment Analysis"] = INSTRUMENT_PRESSTECH
+                continue
+
+            new_balls_volume = vars_dict['volume'].get()
             vpyc_original = data["Vpyc unfixed (cm3)"]
             vpyc_corrected = vpyc_original - new_balls_volume
-            
-            # Determine if user actually changed the volume
+
             detected_volume = data.get("detected_balls_volume", 0.0)
             changed = abs(new_balls_volume - detected_volume) > 1e-9
 
-            # Always update Vpyc to reflect what is shown in the table
             data["Vpyc (cm3)"] = vpyc_corrected
             data["detected_balls_volume"] = new_balls_volume
 
-            # Update Comment Analysis only when edited; otherwise keep original parsed analysis
             if changed:
                 raw_comment = data.get("raw_comment", "")
                 data["Comment Analysis"] = (
@@ -742,7 +865,7 @@ class OCModule:
         excel_data = []
         for data in self.processed_data:
             excel_row = {k: v for k, v in data.items() 
-                        if k not in ['filename', 'filepath', 'raw_comment', 'detected_balls_volume']}
+                        if k not in ['filename', 'filepath', 'raw_comment', 'detected_balls_volume', 'instrument']}
             excel_data.append(excel_row)
         
         try:
@@ -887,87 +1010,53 @@ def main():
 if __name__ == "__main__":
     main()
 
-# ---- Override process_single_file to read density/ρr by position (F, I) ----
-def _oc_process_single_file_pos(self, file_path, density_df):
-    fname = os.path.basename(file_path)
+def _clean_presstech_value(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        cleaned = value.strip()
+        cleaned = cleaned.replace("cm³", "").replace("cm3", "").replace("g", "")
+        cleaned = cleaned.replace(" ", "")
+        cleaned = cleaned.replace(",", ".")
+        cleaned = re.sub(r"[^\d\.\-+eE]", "", cleaned)
+        if not cleaned:
+            return None
+        try:
+            return float(cleaned)
+        except ValueError:
+            return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _resolve_density_rho(self, density_df, label):
+    density_row = density_df.loc[label]
     try:
-        label = os.path.splitext(fname)[0]
-        for sep in (" ", "-", "_"):
-            prefix = f"{self.current_foam_type}{sep}"
-            if label.startswith(prefix):
-                label = label[len(prefix):]
-                break
+        density = density_row.iloc[self._density_pos]
+    except Exception:
+        density = None
+    try:
+        rho_r = density_row.iloc[self._rho_r_pos]
+    except Exception:
+        rho_r = None
 
-        engine = "openpyxl"
-        if fname.lower().endswith(".xls"):
-            import importlib.util
-            if importlib.util.find_spec("xlrd") is not None:
-                engine = "xlrd"
-            else:
-                raise ImportError("Missing optional dependency 'xlrd'. Please install xlrd>=2.0.1 to read .xls files.")
-
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            m_raw = pd.read_excel(file_path, header=None, usecols="B", skiprows=13, nrows=1, engine=engine).iloc[0, 0]
-            vpyc_raw = pd.read_excel(file_path, header=None, usecols="G", skiprows=40, nrows=1, engine=engine).iloc[0, 0]
-            comment_raw = pd.read_excel(file_path, header=None, usecols="A", skiprows=19, nrows=1, engine=engine).iloc[0, 0]
-
-        balls_volume, comment_analysis = self._parse_balls(comment_raw)
-        m = self.clean_numeric_value(m_raw)
-        vpyc_original = self.clean_numeric_value(vpyc_raw)
-        if m is None or vpyc_original is None:
-            return False, None
-        vpyc = vpyc_original - balls_volume
-
-        if label not in density_df.index:
-            return False, None
-
-        density_row = density_df.loc[label]
+    if rho_r is None or (isinstance(rho_r, float) and pd.isna(rho_r)):
         try:
-            density = density_row.iloc[self._density_pos]
-        except Exception:
-            density = None
-        try:
-            rho_r = density_row.iloc[self._rho_r_pos]
-        except Exception:
-            rho_r = None
-
-        # Fallback for ρr when Excel stores a formula without cached value
-        try:
-            if rho_r is None or (isinstance(rho_r, float) and pd.isna(rho_r)):
-                import openpyxl
-                wb = openpyxl.load_workbook(self.density_file, data_only=True, read_only=True)
-                if self.current_foam_type in wb.sheetnames:
-                    ws = wb[self.current_foam_type]
-                    excel_row = int(density_df.index.get_loc(label)) + 2  # header row is 1
-                    cell_val = ws[f"I{excel_row}"].value
-                    if cell_val is not None:
-                        rho_r = float(cell_val)
+            import openpyxl
+            wb = openpyxl.load_workbook(self.density_file, data_only=True, read_only=True)
+            if self.current_foam_type in wb.sheetnames:
+                ws = wb[self.current_foam_type]
+                excel_row = int(density_df.index.get_loc(label)) + 2  # header row is 1
+                cell_val = ws[f"I{excel_row}"].value
+                if cell_val is not None:
+                    rho_r = float(cell_val)
         except Exception:
             pass
+    return density, rho_r
 
-        result = {
-            "Label": label,
-            # Keep legacy keys here to remain compatible with current save_results
-            "Density (g/cm3)": density,
-            "m (g)": m,
-            "Vpyc unfixed (cm3)": vpyc_original,
-            "Vpyc (cm3)": vpyc,
-            "ρr": rho_r,
-            "Comment Analysis": comment_analysis,
-            "raw_comment": str(comment_raw),
-            "detected_balls_volume": balls_volume,
-        }
-        return True, result
-    except Exception as e:
-        print(f"ERROR processing {fname}: {e}")
-        return False, None
 
-# Activate the override
-OCModule.process_single_file = _oc_process_single_file_pos
-
-# ---- Override process_single_file to use position-based density/ρr reading ----
-def _oc_process_single_file_pos(self, file_path, density_df):
+def _oc_process_single_file_cellmat(self, file_path, density_df):
     fname = os.path.basename(file_path)
     try:
         label = os.path.splitext(fname)[0]
@@ -1001,25 +1090,7 @@ def _oc_process_single_file_pos(self, file_path, density_df):
         if label not in density_df.index:
             return False, None
 
-        # Determine iloc positions (Label in B; density F; rho_r I)
-        density_pos = getattr(self, '_density_pos', None)
-        rho_r_pos = getattr(self, '_rho_r_pos', None)
-        if density_pos is None or rho_r_pos is None:
-            try:
-                density_pos = self._excel_letter_to_iloc_pos('F', label_letter='B')
-                rho_r_pos = self._excel_letter_to_iloc_pos('I', label_letter='B')
-            except Exception:
-                density_pos, rho_r_pos = 4, 7  # safe fallback
-
-        density_row = density_df.loc[label]
-        try:
-            density = density_row.iloc[density_pos]
-        except Exception:
-            density = None
-        try:
-            rho_r = density_row.iloc[rho_r_pos]
-        except Exception:
-            rho_r = None
+        density, rho_r = _resolve_density_rho(self, density_df, label)
 
         result = {
             "Label": label,
@@ -1031,11 +1102,74 @@ def _oc_process_single_file_pos(self, file_path, density_df):
             "Comment Analysis": comment_analysis,
             "raw_comment": str(comment_raw),
             "detected_balls_volume": balls_volume,
+            "instrument": INSTRUMENT_CELLMAT,
         }
         return True, result
     except Exception as e:
         print(f"ERROR processing {fname}: {e}")
         return False, None
 
-# Monkey-patch the class method to the position-based version
-OCModule.process_single_file = _oc_process_single_file_pos
+
+def _oc_process_single_file_presstech(self, file_path, density_df):
+    fname = os.path.basename(file_path)
+    try:
+        label = os.path.splitext(fname)[0]
+        for sep in (" ", "-", "_"):
+            prefix = f"{self.current_foam_type}{sep}"
+            if label.startswith(prefix):
+                label = label[len(prefix):]
+                break
+
+        engine = "openpyxl"
+        if fname.lower().endswith(".xls"):
+            import importlib.util
+            if importlib.util.find_spec("xlrd") is not None:
+                engine = "xlrd"
+            else:
+                raise ImportError("Missing optional dependency 'xlrd'. Please install xlrd>=2.0.1 to read .xls files.")
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            m_raw = pd.read_excel(file_path, header=None, usecols="B", skiprows=13, nrows=1, engine=engine).iloc[0, 0]
+            vpyc_raw = pd.read_excel(file_path, header=None, usecols="B", skiprows=36, nrows=1, engine=engine).iloc[0, 0]
+
+        m = _clean_presstech_value(m_raw)
+        vpyc = _clean_presstech_value(vpyc_raw)
+        if m is None or vpyc is None:
+            return False, None
+
+        if label not in density_df.index:
+            return False, None
+
+        density, rho_r = _resolve_density_rho(self, density_df, label)
+
+        result = {
+            "Label": label,
+            "Density (g/cm3)": density,
+            "m (g)": m,
+            "Vpyc unfixed (cm3)": vpyc,
+            "Vpyc (cm3)": vpyc,
+            "ρr": rho_r,
+            "Comment Analysis": INSTRUMENT_PRESSTECH,
+            "raw_comment": "",
+            "detected_balls_volume": 0.0,
+            "instrument": INSTRUMENT_PRESSTECH,
+        }
+        return True, result
+    except Exception as e:
+        print(f"ERROR processing {fname}: {e}")
+        return False, None
+
+
+def _oc_process_single_file(self, file_path, density_df, instrument=None):
+    selected = instrument
+    if isinstance(selected, tk.StringVar):
+        selected = selected.get()
+    if not selected:
+        selected = getattr(self, "current_instrument", INSTRUMENT_PRESSTECH)
+    if selected == INSTRUMENT_CELLMAT:
+        return _oc_process_single_file_cellmat(self, file_path, density_df)
+    return _oc_process_single_file_presstech(self, file_path, density_df)
+
+
+OCModule.process_single_file = _oc_process_single_file
