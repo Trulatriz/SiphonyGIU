@@ -56,16 +56,16 @@ INDEPENDENTS = [
 ]
 
 DEPENDENT_OPTIONS = [
-    ("\u00F8 (\u00B5m)", "\u00F8 (\u00B5m)", r"$\varnothing\,(\mu\mathrm{m})$"),
-    ("N\u1D65 (cells\u00B7cm^3)", "N\u1D65 (cells\u00B7cm^3)", r"{v}\,(\mathrm{cells}/\mathrm{cm}^3)$"),
-    ("\u03C1f (g/cm^3)", RHO_FOAM_G, r"$\rho_{f}\,(\mathrm{g}/\mathrm{cm}^3)$"),
-    ("\u03C1f (kg/m^3)", RHO_FOAM_KG, r"$\rho_{f}\,(\mathrm{kg}/\mathrm{m}^3)$"),
+    ("\u00F8 (\u00B5m)", "\u00F8 (\u00B5m)", r"$\varnothing\;(\mu\mathrm{m})$"),
+    ("N\u1D65 (cells\u00B7cm^3)", "N\u1D65 (cells\u00B7cm^3)", r"$N_{\mathrm{v}}\;(\mathrm{cells}/\mathrm{cm}^3)$"),
+    ("\u03C1f (g/cm^3)", RHO_FOAM_G, r"$\rho_{f}\;(\mathrm{g}/\mathrm{cm}^3)$"),
+    ("\u03C1f (kg/m^3)", RHO_FOAM_KG, r"$\rho_{f}\;(\mathrm{kg}/\mathrm{m}^3)$"),
     ("\u03C1\u1D63", RHO_REL, r"$\rho_{r}$"),
-    ("X", "X", r"$"),
-    ("Ov (%)", "OC (%)", r"{v}\,(%)$"),
-    ("Tm (\u00B0C)", "DSC Tm (\u00B0C)", r"{m}\,({^\circ}\mathrm{C})$"),
-    ("Tg (\u00B0C)", "DSC Tg (\u00B0C)", r"{g}\,({^\circ}\mathrm{C})$"),
-    ("\u03C7c (%)", "DSC Xc (%)", r"$\chi_{c}\,(%)$"),
+    ("X", "X", r"$X$"),
+    ("Ov (%)", "OC (%)", r"$\mathrm{OC}\;(\%)$"),
+    ("Tm (\u00B0C)", "DSC Tm (\u00B0C)", r"$T_{\mathrm{m}}\;({}^\circ\mathrm{C})$"),
+    ("Tg (\u00B0C)", "DSC Tg (\u00B0C)", r"$T_{\mathrm{g}}\;({}^\circ\mathrm{C})$"),
+    ("\u03C7c (%)", "DSC Xc (%)", r"$\chi_{c}\;(\%)$"),
 ]
 
 
@@ -292,7 +292,10 @@ class PlotModule:
 
         self.err_chk = ttk.Checkbutton(sel, text="Error bars", variable=self.errorbar_var, command=self._on_option_change)
         self.err_chk.grid(row=0, column=6, sticky=tk.W)
-        _Tooltip(self.err_chk, "Available only for Y in {��, N��, �? foam} and if deviation column exists.")
+        _Tooltip(
+            self.err_chk,
+            "Available only for Y in {Ø (µm), Nᵥ (cells·cm³), ρf (g/cm³), ρf (kg/m³)} when the matching deviation column is present."
+        )
 
         self.mono_chk = ttk.Checkbutton(sel, text="Monochrome preview", variable=self.mono_var, command=self._on_option_change)
         self.mono_chk.grid(row=0, column=7, sticky=tk.W)
