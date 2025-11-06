@@ -11,6 +11,7 @@ from modules.sem_module import SEMImageEditor as SEMModule
 from modules.oc_module import OCModule
 from modules.pdr_module import PDRModule
 from modules.plot_module import PlotModule
+from modules.plot_dvsvs_module import DependentScatterModule
 from modules.heatmap_module import HeatmapModule
 from modules.settings_manager import SettingsManager, SettingsDialog
 from modules.foam_type_manager import FoamTypeManager, FoamTypeDialog, PaperDialog, NewPaperDialog, ManageFoamsDialog, ManagePapersDialog
@@ -341,7 +342,17 @@ class PressTechGUI:
         # Plots menu
         plots_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Plots", menu=plots_menu)
-        plots_menu.add_command(label="Publication Plots (Scatter)", command=self.open_publication_plots)
+        scatter_menu = tk.Menu(plots_menu, tearoff=0)
+        scatter_menu.add_command(
+            label="Independent vs Dependent",
+            command=self.open_scatter_independent_dependent,
+        )
+        scatter_menu.add_command(
+            label="Dependent vs Dependent",
+            command=self.open_scatter_dependent_dependent,
+        )
+        plots_menu.add_cascade(label="Scatter Plots", menu=scatter_menu)
+        plots_menu.add_command(label="Heatmaps", command=self.open_heatmap)
         tools_menu.add_command(label="📊 Publication Plots", command=self.open_analysis)
         tools_menu.add_command(label="⚡ Smart Combine", command=self.open_combine)
         tools_menu.add_command(label="🔬 Cell Size & Density", command=self.open_cell_analysis)
@@ -618,22 +629,76 @@ class PressTechGUI:
             messagebox.showerror("Error", f"Failed to open PDR module: {str(e)}")
             self.update_status("Error opening Pressure Drop Rate module")
 
-    def open_publication_plots(self):
-        """Open publication-quality scatter plotter (All_Results_* Excel)."""
-        self.update_status("Opening Publication Plots (Scatter)...")
+    def _default_all_results_glob(self) -> str:
+        try:
+            base = self.foam_manager.get_paper_root_path()
+        except Exception:
+            base = None
+        return os.path.join(base, "Results", "All_Results_*.xlsx") if base else ""
+
+    def _launch_scatter(self, dialog: tk.Toplevel, opener):
+        dialog.destroy()
+        self.root.after(0, opener)
+
+    def open_scatter_independent_dependent(self):
+        """Launch scatter module with independent variables on X axis."""
+        self.update_status("Opening independent vs dependent scatter plots...")
         try:
             win = tk.Toplevel(self.root)
-            base = None
-            try:
-                base = self.foam_manager.get_paper_root_path()
-            except Exception:
-                base = None
-            default_glob = os.path.join(base, "Results", "All_Results_*.xlsx") if base else ""
+            default_glob = self._default_all_results_glob()
             PlotModule(win, self.settings, default_all_results_glob=default_glob)
-            self.update_status("Publication Plots opened")
+            self.update_status("Scatter plots (independent vs dependent) opened")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open plotting module: {str(e)}")
-            self.update_status("Error opening Publication Plots")
+            self.update_status("Error opening scatter plots")
+
+    def open_scatter_dependent_dependent(self):
+        """Launch scatter module with dependent variables on both axes."""
+        self.update_status("Opening dependent vs dependent scatter plots...")
+        try:
+            win = tk.Toplevel(self.root)
+            default_glob = self._default_all_results_glob()
+            DependentScatterModule(win, self.settings, default_all_results_glob=default_glob)
+            self.update_status("Scatter plots (dependent vs dependent) opened")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open dependent-vs-dependent module: {str(e)}")
+            self.update_status("Error opening dependent-vs-dependent plots")
+
+    def open_publication_plots(self):
+        """Prompt for scatter plot type before launching the corresponding module."""
+        self.update_status("Select scatter plot type...")
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Scatter Plots")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+
+        frame = ttk.Frame(dialog, padding=20)
+        frame.grid(row=0, column=0)
+        ttk.Label(frame, text="Select Scatter Plot Type", font=("Arial", 14, "bold")).grid(row=0, column=0, pady=(0, 15))
+
+        ttk.Button(
+            frame,
+            text="Independent vs Dependent",
+            width=30,
+            command=lambda: self._launch_scatter(dialog, self.open_scatter_independent_dependent),
+        ).grid(row=1, column=0, pady=5)
+
+        ttk.Button(
+            frame,
+            text="Dependent vs Dependent",
+            width=30,
+            command=lambda: self._launch_scatter(dialog, self.open_scatter_dependent_dependent),
+        ).grid(row=2, column=0, pady=5)
+
+        ttk.Button(
+            frame,
+            text="Cancel",
+            width=30,
+            command=lambda: (self.update_status("Ready"), dialog.destroy()),
+        ).grid(row=3, column=0, pady=(12, 0))
+
+        dialog.protocol("WM_DELETE_WINDOW", lambda: (self.update_status("Ready"), dialog.destroy()))
     
     def open_dsc_with_foam_check(self):
         """Open DSC Analysis module with foam type verification"""

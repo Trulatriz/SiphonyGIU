@@ -14,88 +14,32 @@ import matplotlib
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
+from .plot_shared import (
+    OKABE_ITO,
+    RHO_FOAM_G,
+    RHO_FOAM_KG,
+    RHO_REL,
+    DESV_RHO_FOAM_G,
+    DESV_RHO_FOAM_KG,
+    INDEPENDENTS,
+    INDEPENDENT_TO_COLUMN,
+    INDEPENDENT_COLUMNS,
+    INDEPENDENT_LATEX,
+    DEPENDENT_LABELS,
+    DEPENDENT_MAP,
+    DEPENDENT_COLUMN_TO_LABEL,
+    DEPENDENT_COLUMNS,
+    DEVIATIONS,
+    LEGACY_DEPENDENT_LABELS,
+    dependent_latex,
+    independent_latex,
+    friendly_column_name,
+    augment_density_columns,
+)
+
 
 # Ensure TkAgg backend for embedding
 matplotlib.use("TkAgg")
-
-
-# Okabe–Ito color-blind–safe palette
-OKABE_ITO = [
-    "#000000",  # black
-    "#E69F00",  # orange
-    "#56B4E9",  # sky blue
-    "#009E73",  # bluish green
-    "#F0E442",  # yellow
-    "#0072B2",  # blue
-    "#D55E00",  # vermillion
-    "#CC79A7",  # reddish purple
-]
-
-RHO_FOAM_G = "\u03C1 foam (g/cm^3)"
-RHO_FOAM_KG = "\u03C1 foam (kg/m^3)"
-RHO_REL = "\u03C1\u1D63"
-DESV_RHO_FOAM_G = "Desvest \u03C1 foam (g/cm^3)"
-DESV_RHO_FOAM_KG = "Desvest \u03C1 foam (kg/m^3)"
-
-
-def _normalize_numeric_series(series: pd.Series) -> pd.Series:
-    if series is None:
-        return pd.Series(dtype=float)
-    cleaned = series.astype(str).str.replace(r"\s", "", regex=True).str.replace(",", ".", regex=False)
-    return pd.to_numeric(cleaned, errors="coerce")
-
-
-# Exact canonical column names from CombineModule.new_column_order
-INDEPENDENTS = [
-    "m(g)",
-    "Water (g)",
-    "T (\u00B0C)",
-    "P CO2 (bar)",
-    "t (min)",
-    "PDR (MPa/s)",
-]
-
-DEPENDENT_OPTIONS = [
-    ("\u00F8 (\u00B5m)", "\u00F8 (\u00B5m)", r"$\varnothing\;(\mu\mathrm{m})$"),
-    ("N\u1D65 (cells\u00B7cm^3)", "N\u1D65 (cells\u00B7cm^3)", r"$N_{\mathrm{v}}\;(\mathrm{cells}/\mathrm{cm}^3)$"),
-    ("\u03C1f (g/cm^3)", RHO_FOAM_G, r"$\rho_{f}\;(\mathrm{g}/\mathrm{cm}^3)$"),
-    ("\u03C1f (kg/m^3)", RHO_FOAM_KG, r"$\rho_{f}\;(\mathrm{kg}/\mathrm{m}^3)$"),
-    ("\u03C1\u1D63", RHO_REL, r"$\rho_{r}$"),
-    ("X", "X", r"$X$"),
-    ("Ov (%)", "OC (%)", r"$\mathrm{OC}\;(\%)$"),
-    ("Tm (\u00B0C)", "DSC Tm (\u00B0C)", r"$T_{\mathrm{m}}\;({}^\circ\mathrm{C})$"),
-    ("Tg (\u00B0C)", "DSC Tg (\u00B0C)", r"$T_{\mathrm{g}}\;({}^\circ\mathrm{C})$"),
-    ("\u03C7c (%)", "DSC Xc (%)", r"$\chi_{c}\;(\%)$"),
-]
-
-
-DEPENDENT_LABELS = [label for label, _, _ in DEPENDENT_OPTIONS]
-DEPENDENT_MAP = {label: column for label, column, _ in DEPENDENT_OPTIONS}
-DEPENDENT_COLUMN_TO_LABEL = {column: label for label, column, _ in DEPENDENT_OPTIONS}
-DEPENDENT_LATEX = {label: latex for label, _, latex in DEPENDENT_OPTIONS}
-DEPENDENT_COLUMNS = [column for _, column, _ in DEPENDENT_OPTIONS]
-DEPENDENTS = DEPENDENT_LABELS
-
-
-def _dependent_latex(label: str) -> str:
-    return DEPENDENT_LATEX.get(label, label)
-
-DEVIATIONS = {
-    "\u00F8 (\u00B5m)": "Desvest \u00F8 (\u00B5m)",
-    "N\u1D65 (cells\u00B7cm^3)": "Desvest N\u1D65 (cells\u00B7cm^3)",
-    "\u03C1f (g/cm^3)": DESV_RHO_FOAM_G,
-    "\u03C1f (kg/m^3)": DESV_RHO_FOAM_KG,
-}
-
-LEGACY_DEPENDENT_LABELS = {
-    "\u03C1 foam (g/cm^3)": "\u03C1f (g/cm^3)",
-    "\u03C1 foam (kg/m^3)": "\u03C1f (kg/m^3)",
-    "OC (%)": "Ov (%)",
-    "DSC Tm (\u00B0C)": "Tm (\u00B0C)",
-    "DSC Tg (\u00B0C)": "Tg (\u00B0C)",
-    "DSC Xc (\u00B0C)": "\u03C7c (%)",
-    "DSC Xc (%)": "\u03C7c (%)",
-}
 
 
 
@@ -430,7 +374,7 @@ class PlotModule:
         if self.active_sheet_name == sheet_name and not reset_axes:
             return
         self.active_sheet_name = sheet_name
-        self.df_all = self._augment_density_columns(self.df_sheets[sheet_name].copy())
+        self.df_all = augment_density_columns(self.df_sheets[sheet_name].copy())
         self.df_filtered = pd.DataFrame()
         self.constraints = {name: Constraint() for name in INDEPENDENTS}
         self._suspend_state_events = True
@@ -609,23 +553,26 @@ class PlotModule:
             messagebox.showerror("Read error", f"Failed to read workbook: {e}")
             return
 
-        required = set(INDEPENDENTS + DEPENDENT_COLUMNS)
+        required = set(INDEPENDENT_COLUMNS + DEPENDENT_COLUMNS)
+        required.discard("Psat (MPa)")
         valid_sheets = {}
-        skipped = []
         for sheet_name, df in sheets_raw.items():
             if not isinstance(df, pd.DataFrame):
                 continue
             if 'Water (g)' not in df.columns and 'Water' in df.columns:
                 df = df.rename(columns={'Water': 'Water (g)'})
-            df = self._augment_density_columns(df)
+            df = augment_density_columns(df)
+            for legacy, modern in LEGACY_DEPENDENT_LABELS.items():
+                if legacy in df.columns and modern not in df.columns:
+                    df = df.rename(columns={legacy: modern})
             missing = [c for c in required if c not in df.columns]
             if missing:
-                skipped.append((sheet_name, missing))
-                continue
+                for col in missing:
+                    df[col] = pd.NA
             valid_sheets[sheet_name] = df.copy()
 
         if not valid_sheets:
-            expected = "\n- ".join(sorted(DEPENDENT_COLUMN_TO_LABEL.get(col, col) for col in required))
+            expected = "\n- ".join(sorted(friendly_column_name(col) for col in required))
             messagebox.showerror(
                 "Invalid workbook",
                 f"No sheet contains the required columns. Expected:\n- {expected}",
@@ -652,11 +599,10 @@ class PlotModule:
         self._activate_sheet(default_sheet, reset_axes=True, select_tab=True)
         self._set_controls_state("readonly")
 
-        summary = f"Loaded {len(valid_sheets)} sheet{'s' if len(valid_sheets) != 1 else ''} from '{os.path.basename(path)}'."
-        if skipped:
-            skipped_names = ", ".join(name for name, _ in skipped)
-            summary += f" Skipped (missing columns): {skipped_names}."
-        messagebox.showinfo("Loaded", summary)
+        messagebox.showinfo(
+            "Loaded",
+            f"Loaded {len(valid_sheets)} sheet{'s' if len(valid_sheets) != 1 else ''} from '{os.path.basename(path)}'.",
+        )
     def _on_axes_change(self):
         # Ensure group is not same as X
         cur_g = self.group_var.get()
@@ -691,10 +637,11 @@ class PlotModule:
         if self.df_all.empty:
             return
         for name, cb in self.constraint_rows.items():
-            if name not in self.df_all.columns:
+            column = INDEPENDENT_TO_COLUMN.get(name, name)
+            if column not in self.df_all.columns:
                 cb.configure(state="disabled", values=[])
                 continue
-            vals = self.df_all[name].dropna().unique().tolist()
+            vals = self.df_all[column].dropna().unique().tolist()
             try:
                 vals_sorted = sorted(vals, key=_natural_sort_key)
             except Exception:
@@ -726,17 +673,28 @@ class PlotModule:
             res[name] = Constraint(exact=val)
         return res
 
-    def _apply_constancy_rule(self, df: pd.DataFrame, x_name: str, group_name: str | None, constraints: dict):
-        # Exclude PDR from constancy rule
-        remaining = [v for v in INDEPENDENTS if v not in (x_name, "PDR (MPa/s)") and (group_name is None or v != group_name)]
-        # Enforce that each remaining has some constraint
+    def _apply_constancy_rule(self, df: pd.DataFrame, x_display: str, group_display: str | None, constraints: dict):
+        # Exclude X and optional group from constancy rule (and PDR globally)
+        remaining_pairs = []
+        for display in INDEPENDENTS:
+            if display == "PDR (MPa/s)":
+                continue
+            if display == x_display:
+                continue
+            if group_display and display == group_display:
+                continue
+            column = INDEPENDENT_TO_COLUMN.get(display, display)
+            if column not in df.columns:
+                continue
+            remaining_pairs.append((display, column))
+
+        # Enforce that each remaining has some constraint (unless constant already)
         missing = []
-        for v in remaining:
-            c: Constraint = constraints.get(v, Constraint())
+        for display, column in remaining_pairs:
+            c: Constraint = constraints.get(display, Constraint())
             if c.exact.strip() == "":
-                # Only block if this independent actually varies in the data subset
-                if df[v].dropna().nunique() > 1:
-                    missing.append(v)
+                if df[column].dropna().nunique() > 1:
+                    missing.append(display)
         if missing:
             raise ValueError(
                 "Constancy rule: select an exact value for these variables: " + ", ".join(missing)
@@ -744,17 +702,17 @@ class PlotModule:
 
         # Build mask by ANDing all constraints provided
         mask = pd.Series([True] * len(df), index=df.index)
-        for v in remaining:
-            c: Constraint = constraints.get(v, Constraint())
+        for display, column in remaining_pairs:
+            c: Constraint = constraints.get(display, Constraint())
             if c.exact.strip() != "":
-                series = df[v]
+                series = df[column]
                 s_numeric = pd.to_numeric(series, errors="coerce")
                 try:
                     vnum = float(c.exact)
                     mask &= (s_numeric - vnum).abs() < 1e-12
                 except Exception:
                     mask &= series.astype(str) == c.exact
-        return df[mask].copy(), remaining
+        return df[mask].copy(), [display for display, _ in remaining_pairs]
 
     def _ensure_n_requirements(self, df: pd.DataFrame, group_col: str | None):
         # Overall n >= 2
@@ -819,11 +777,20 @@ class PlotModule:
             messagebox.showwarning("No data", "Load an All_Results Excel first.")
             return
 
-        x_name = self.x_var.get().strip()
+        x_display = self.x_var.get().strip()
+        x_column = INDEPENDENT_TO_COLUMN.get(x_display, x_display)
         y_label = self.y_var.get().strip()
         y_column = DEPENDENT_MAP.get(y_label, y_label)
         grp = self.group_var.get().strip()
-        group_name = None if grp == "<None>" else grp
+        group_display = None if grp == "<None>" else grp
+        group_column = INDEPENDENT_TO_COLUMN.get(group_display, group_display) if group_display else None
+
+        if x_column not in self.df_all.columns:
+            messagebox.showerror("Missing column", f"Column '{x_column}' not found in the selected sheet.")
+            return
+        if group_column and (group_column not in self.df_all.columns):
+            messagebox.showerror("Missing column", f"Grouping column '{group_column}' not found in the selected sheet.")
+            return
 
         # Collect and apply constraints
         constraints = self._collect_constraints()
@@ -831,15 +798,15 @@ class PlotModule:
         self.constraints.update(constraints)
         self._persist_current_state()
         try:
-            filtered, remaining = self._apply_constancy_rule(self.df_all, x_name, group_name, constraints)
+            filtered, _remaining = self._apply_constancy_rule(self.df_all, x_display, group_display, constraints)
         except ValueError as e:
             messagebox.showerror("Constancy rule", str(e))
             return
 
         # Keep only relevant columns
-        cols = [x_name, y_column]
-        if group_name:
-            cols.append(group_name)
+        cols = [x_column, y_column]
+        if group_column:
+            cols.append(group_column)
         yerr_name = DEVIATIONS.get(y_label)
         if self.errorbar_var.get() and yerr_name in filtered.columns:
             cols.append(yerr_name)
@@ -848,7 +815,7 @@ class PlotModule:
 
         # Guard for n
         try:
-            self._ensure_n_requirements(filtered.dropna(subset=[x_name, y_column]), group_name)
+            self._ensure_n_requirements(filtered.dropna(subset=[x_column, y_column]), group_column)
         except ValueError as e:
             messagebox.showerror("Not enough points", str(e))
             return
@@ -857,13 +824,13 @@ class PlotModule:
         self.ax.clear()
         self._style_axes(self.ax)
 
-        groups = self._prepare_plot_data(filtered, x_name, y_column, group_name)
+        groups = self._prepare_plot_data(filtered, x_column, y_column, group_column)
         styles = self._group_styles(len(groups), self.mono_var.get())
 
         for (gidx, (gval, gdf)) in enumerate(groups):
             color, marker, linestyle = styles[gidx]
 
-            x = _as_float_array(gdf[x_name])
+            x = _as_float_array(gdf[x_column])
             y = _as_float_array(gdf[y_column])
             x = self._maybe_jitter(x)
 
@@ -899,18 +866,19 @@ class PlotModule:
                 )
 
         # Labels (exact headers with units)
-        self.ax.set_xlabel(x_name)
-        self.ax.set_ylabel(_dependent_latex(y_label))
+        self.ax.set_xlabel(independent_latex(x_display))
+        self.ax.set_ylabel(dependent_latex(y_label))
 
         # Legend
-        if group_name:
+        if group_display:
             handles, labels = [], []
             for (gidx, (gval, _)) in enumerate(groups):
                 color, marker, linestyle = styles[gidx]
                 h = matplotlib.lines.Line2D([0], [0], color=color, marker=marker, linestyle=linestyle, linewidth=1.5,
                                             markerfacecolor=color, markeredgecolor="black", markeredgewidth=0.6)
                 handles.append(h)
-                labels.append(f"{group_name} = {gval}")
+                group_label = independent_latex(group_display)
+                labels.append(f"{group_label} = {gval}")
             leg = self.ax.legend(
                 handles, labels,
                 loc="upper left",
@@ -928,7 +896,7 @@ class PlotModule:
 
         # Under-plot annotations: n per group and fixed variables
         n_info = self._n_info_text(groups)
-        fixed_info = self._fixed_info_text(group_name, constraints)
+        fixed_info = self._fixed_info_text(group_display, constraints)
         sheet_label = self._sheet_labels.get(self.active_sheet_name, self.active_sheet_name or "<no sheet>")
         self.info_var.set(f"Sheet: {sheet_label}    |    {n_info}    |    Fixed: {fixed_info}")
 
@@ -1004,26 +972,6 @@ class PlotModule:
             messagebox.showerror("Copy error", str(e))
         finally:
             buffer.close()
-    def _augment_density_columns(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Ensure derived density columns exist for plotting."""
-        result = df.copy()
-
-        if RHO_REL not in result.columns:
-            for legacy in ("ρᵣ", "ρr", "rho_r"):
-                if legacy in result.columns:
-                    result[RHO_REL] = result[legacy]
-                    break
-        for legacy in ("ρr", "rho_r"):
-            if legacy in result.columns and legacy != RHO_REL:
-                result = result.drop(columns=[legacy])
-
-        if RHO_FOAM_G in result.columns and RHO_FOAM_KG not in result.columns:
-            result[RHO_FOAM_KG] = _normalize_numeric_series(result[RHO_FOAM_G]) * 1000
-        if DESV_RHO_FOAM_G in result.columns and DESV_RHO_FOAM_KG not in result.columns:
-            result[DESV_RHO_FOAM_KG] = _normalize_numeric_series(result[DESV_RHO_FOAM_G]) * 1000
-
-        return result
-
     def _save_figure(self):
         if self.df_all.empty:
             messagebox.showwarning("No plot", "Render a plot before saving.")
@@ -1067,25 +1015,30 @@ class PlotModule:
             y_label = self.y_var.get().strip()
             y_column = DEPENDENT_MAP.get(y_label, y_label)
             yerr_name = DEVIATIONS.get(y_label)
-            used_cols = [self.x_var.get(), y_column]
-            if self.group_var.get() and self.group_var.get() != "<None>":
-                used_cols.append(self.group_var.get())
+            x_display = self.x_var.get().strip()
+            x_column = INDEPENDENT_TO_COLUMN.get(x_display, x_display)
+            used_cols = [x_column, y_column]
+            group_display = None if self.group_var.get() == "<None>" else self.group_var.get().strip()
+            group_column = INDEPENDENT_TO_COLUMN.get(group_display, group_display) if group_display else None
+            if group_column:
+                used_cols.append(group_column)
             # Always include deviation columns if present
             if yerr_name and (yerr_name in self.df_filtered.columns):
                 used_cols.append(yerr_name)
             # Also include all constraints columns for reproducibility
             for v in INDEPENDENTS:
-                if v not in used_cols:
-                    used_cols.append(v)
+                column = INDEPENDENT_TO_COLUMN.get(v, v)
+                if column not in used_cols:
+                    used_cols.append(column)
             used_cols = [c for c in used_cols if c in self.df_filtered.columns]
             self.df_filtered[used_cols].to_csv(csv_path, index=False)
 
             # Sidecar JSON settings
             settings = {
                 "file": self.file_var.get(),
-                "x": self.x_var.get(),
+                "x": x_display,
                 "y": y_label,
-                "group": None if self.group_var.get() == "<None>" else self.group_var.get(),
+                "group": group_display,
                 "error_bars": bool(self.errorbar_var.get()),
                 "yerr_column": yerr_name if yerr_name in self.df_filtered.columns else None,
                 "dpi": int(self.dpi_var.get()),
