@@ -70,10 +70,9 @@ def _as_float_array(series: pd.Series) -> np.ndarray:
 def _format_number(value: float) -> str:
     if value is None or not np.isfinite(value):
         return "-"
-    magnitude = abs(value)
-    if 0 < magnitude < 1e-2 or magnitude >= 1e4:
-        return f"{value:.3g}"
-    return f"{value:.4f}".rstrip("0").rstrip(".")
+    # Keep sufficient precision so boundary values remain within range filters.
+    text = f"{value:.12g}"
+    return text
 
 
 def _interval_label(left: float, right: float) -> str:
