@@ -24,6 +24,7 @@ from .plot_shared import (
     DEPENDENT_MAP,
     DEPENDENT_COLUMN_TO_LABEL,
     DEPENDENT_COLUMNS,
+    DEPENDENT_TO_DEVIATION,
     DEVIATIONS,
     LEGACY_DEPENDENT_LABELS,
     friendly_column_name,
@@ -144,6 +145,7 @@ class DependentScatterModule:
         self.y_var = tk.StringVar()
         self.color_var = tk.StringVar(value="<None>")
         self.shape_var = tk.StringVar(value="<None>")
+        self.errorbar_var = tk.BooleanVar(value=False)
         self.mono_var = tk.BooleanVar(value=False)
         self.dpi_var = tk.IntVar(value=300)
 
@@ -152,6 +154,7 @@ class DependentScatterModule:
         self.filter_defaults: dict[str, tuple[float | None, float | None]] = {}
         self.last_filters: dict[str, dict] = {}
         self.last_encoding_info: dict[str, dict | None] = {"color": None, "shape": None}
+        self._current_legends: list = []
 
         self._build_ui()
         self._apply_default_fonts()
@@ -212,10 +215,13 @@ class DependentScatterModule:
         self.shape_combo.grid(row=0, column=3, sticky=(tk.W, tk.E), padx=6)
         self.shape_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_encoding_change())
 
+        self.err_chk = ttk.Checkbutton(enc_row, text="Show error bars", variable=self.errorbar_var, command=self._on_option_change)
+        self.err_chk.grid(row=0, column=4, sticky=tk.W, padx=(6, 0))
+
         self.mono_chk = ttk.Checkbutton(
             enc_row, text="Monochrome preview", variable=self.mono_var, command=self._on_option_change
         )
-        self.mono_chk.grid(row=0, column=4, sticky=tk.W, padx=(6, 0))
+        self.mono_chk.grid(row=0, column=5, sticky=tk.W, padx=(6, 0))
 
         # Filters
         self.filters_frame = ttk.LabelFrame(container, text="Filters (optional)", padding=10)
@@ -240,7 +246,7 @@ class DependentScatterModule:
         canvas_frame.rowconfigure(0, weight=1)
         canvas_frame.columnconfigure(0, weight=1)
 
-        self.fig = Figure(figsize=(9.8, 8.0), dpi=100)
+        self.fig = Figure(figsize=(8.5, 8.0), dpi=100)
         self.ax = self.fig.add_subplot(111)
         self.canvas = FigureCanvasTkAgg(self.fig, master=canvas_frame)
         self.canvas_widget = self.canvas.get_tk_widget()
@@ -266,7 +272,7 @@ class DependentScatterModule:
         )
 
     def _set_controls_state(self, state: str):
-        for widget in [self.x_combo, self.y_combo, self.color_combo, self.shape_combo, self.mono_chk]:
+        for widget in [self.x_combo, self.y_combo, self.color_combo, self.shape_combo, self.err_chk, self.mono_chk]:
             try:
                 widget.configure(state=state)
             except Exception:
@@ -390,6 +396,7 @@ class DependentScatterModule:
             "y": self.y_var.get(),
             "color": self.color_var.get(),
             "shape": self.shape_var.get(),
+            "errorbars": bool(self.errorbar_var.get()),
             "monochrome": bool(self.mono_var.get()),
             "dpi": int(self.dpi_var.get()),
             "filters": {col: {"min": ctrl["min_var"].get(), "max": ctrl["max_var"].get()} for col, ctrl in self.filter_controls.items()},
@@ -417,6 +424,7 @@ class DependentScatterModule:
             shape_val = state.get("shape")
             if shape_val in (["<None>"] + INDEPENDENTS):
                 self.shape_var.set(shape_val)
+            self.errorbar_var.set(bool(state.get("errorbars")))
             self.mono_var.set(bool(state.get("monochrome")))
             dpi_val = state.get("dpi")
             if dpi_val in (300, 600):
@@ -771,7 +779,11 @@ class DependentScatterModule:
         if MISSING_LABEL in unique_labels:
             color_map[MISSING_LABEL] = "#999999" if not self.mono_var.get() else "#777777"
         if "__all__" in unique_labels:
-            color_map["__all__"] = _color_palette(1, self.mono_var.get())[0] if non_special else OKABE_ITO[1]
+            if display == "Water (g)" and non_special:
+                base_color = "#000000"
+            else:
+                base_color = _color_palette(1, self.mono_var.get())[0] if non_special else OKABE_ITO[1]
+            color_map["__all__"] = base_color
 
         variable_display = INDEPENDENT_LATEX.get(display, display)
         legend = []
@@ -896,6 +908,7 @@ class DependentScatterModule:
         color_column = INDEPENDENT_TO_COLUMN.get(color_display, color_display) if color_display != "<None>" else None
         shape_display = self.shape_var.get().strip()
         shape_column = INDEPENDENT_TO_COLUMN.get(shape_display, shape_display) if shape_display != "<None>" else None
+        yerr_column = None
 
         try:
             filtered = self._apply_filters(self.df_all)
@@ -906,6 +919,11 @@ class DependentScatterModule:
         if filtered.empty:
             messagebox.showwarning("No data", "Filters removed all rows.")
             return
+
+        if self.errorbar_var.get():
+            candidate = DEPENDENT_TO_DEVIATION.get(y_display)
+            if candidate and candidate in filtered.columns:
+                yerr_column = candidate
 
         x_numeric = pd.to_numeric(filtered[x_column], errors="coerce")
         y_numeric = pd.to_numeric(filtered[y_column], errors="coerce")
@@ -925,9 +943,12 @@ class DependentScatterModule:
             self.df_filtered["Color category"] = color_series
         if shape_display != "<None>":
             self.df_filtered["Shape category"] = shape_series
+        if yerr_column and yerr_column in plot_df.columns:
+            self.df_filtered[yerr_column] = plot_df[yerr_column]
 
         self.ax.clear()
         self._style_axes(self.ax)
+        self._current_legends = []
 
         groups = plot_df.groupby(["_color_label", "_shape_label"])
         for (color_key, shape_key), group in groups:
@@ -946,6 +967,19 @@ class DependentScatterModule:
                 alpha=0.9,
                 zorder=3,
             )
+            if yerr_column and yerr_column in group.columns:
+                yerr_vals = _as_float_array(group[yerr_column])
+                self.ax.errorbar(
+                    x_vals,
+                    y_vals,
+                    yerr=yerr_vals,
+                    fmt="none",
+                    ecolor=color,
+                    elinewidth=1.1,
+                    capsize=3.5,
+                    alpha=0.8,
+                    zorder=2,
+                )
 
         self.ax.set_xlabel(dependent_latex(x_display))
         self.ax.set_ylabel(dependent_latex(y_display))
@@ -976,6 +1010,7 @@ class DependentScatterModule:
                 borderaxespad=0.0,
             )
             self.ax.add_artist(leg1)
+            self._current_legends.append(leg1)
             legend_count += 1
 
         if shape_display != "<None>" and shape_legend:
@@ -1002,6 +1037,7 @@ class DependentScatterModule:
                 borderaxespad=0.0,
             )
             self.ax.add_artist(leg2)
+            self._current_legends.append(leg2)
             legend_count += 1
 
         if legend_count == 0:
@@ -1050,7 +1086,13 @@ class DependentScatterModule:
         if not filename:
             return
         try:
-            self.fig.savefig(filename, dpi=int(self.dpi_var.get()), facecolor="white", bbox_inches="tight")
+            self.fig.savefig(
+                filename,
+                dpi=int(self.dpi_var.get()),
+                facecolor="white",
+                bbox_inches="tight",
+                bbox_extra_artists=self._current_legends,
+            )
             messagebox.showinfo("Saved", f"Figure saved to:\n{filename}")
         except Exception as e:
             messagebox.showerror("Save error", str(e))
@@ -1079,6 +1121,7 @@ class DependentScatterModule:
                 dpi=int(self.dpi_var.get()),
                 facecolor="white",
                 bbox_inches="tight",
+                bbox_extra_artists=self._current_legends,
             )
             buffer.seek(0)
             image = Image.open(buffer).convert("RGB")

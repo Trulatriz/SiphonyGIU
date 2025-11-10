@@ -283,7 +283,7 @@ class PlotModule:
         canvas_frame.rowconfigure(0, weight=1)
         canvas_frame.columnconfigure(0, weight=1)
 
-        self.fig = Figure(figsize=(8.5, 8.0), dpi=100)  # ~800+ px height
+        self.fig = Figure(figsize=(8.5, 8.0), dpi=100)
         self.ax = self.fig.add_subplot(111)
         self.canvas = FigureCanvasTkAgg(self.fig, master=canvas_frame)
         self.canvas_widget = self.canvas.get_tk_widget()
@@ -322,6 +322,29 @@ class PlotModule:
                 w.configure(state=state)
             except Exception:
                 pass
+
+    def _drop_embedded_headers(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty:
+            return df
+        key_cols = ["Label", "m(g)", "Water (g)", "T (\u00B0C)", "Psat (MPa)", "t (min)"]
+        present = [col for col in key_cols if col in df.columns]
+        if not present:
+            return df
+        match_flags = []
+        for col in present:
+            token = str(col).strip().casefold()
+            series = df[col].astype(str).str.strip().str.casefold()
+            match_flags.append(series == token)
+        if not match_flags:
+            return df
+        match_sum = match_flags[0].astype(int)
+        for flag in match_flags[1:]:
+            match_sum += flag.astype(int)
+        min_matches = 3 if len(present) >= 3 else len(present)
+        header_mask = match_sum >= min_matches
+        if header_mask.any():
+            df = df.loc[~header_mask].copy()
+        return df
 
     # ---------- Sheet management ----------
     def _clear_sheet_tabs(self):
@@ -374,7 +397,7 @@ class PlotModule:
         if self.active_sheet_name == sheet_name and not reset_axes:
             return
         self.active_sheet_name = sheet_name
-        self.df_all = augment_density_columns(self.df_sheets[sheet_name].copy())
+        self.df_all = self._drop_embedded_headers(augment_density_columns(self.df_sheets[sheet_name].copy()))
         self.df_filtered = pd.DataFrame()
         self.constraints = {name: Constraint() for name in INDEPENDENTS}
         self._suspend_state_events = True
@@ -561,7 +584,7 @@ class PlotModule:
                 continue
             if 'Water (g)' not in df.columns and 'Water' in df.columns:
                 df = df.rename(columns={'Water': 'Water (g)'})
-            df = augment_density_columns(df)
+            df = self._drop_embedded_headers(augment_density_columns(df))
             for legacy, modern in LEGACY_DEPENDENT_LABELS.items():
                 if legacy in df.columns and modern not in df.columns:
                     df = df.rename(columns={legacy: modern})
@@ -715,17 +738,27 @@ class PlotModule:
         return df[mask].copy(), [display for display, _ in remaining_pairs]
 
     def _ensure_n_requirements(self, df: pd.DataFrame, group_col: str | None):
-        # Overall n >= 2
-        if len(df) < 2:
-            raise ValueError("Insufficient data: at least 2 points required after filtering.")
+        total = int(len(df))
+        if total < 2:
+            detail = ""
+            if group_col and total > 0 and group_col in df.columns:
+                counts = df[group_col].value_counts(dropna=False).to_dict()
+                detail = f" (counts by {group_col}: {counts})"
+            raise ValueError(
+                f"Insufficient data: at least 2 points required after filtering (n={total})." + detail
+            )
         if group_col:
-            # Each group must have >= 2 points
             bad = []
+            counts = {}
             for g, gdf in df.groupby(group_col):
+                counts[str(g)] = len(gdf)
                 if len(gdf) < 2:
-                    bad.append(str(g))
+                    bad.append(f"{g} (n={len(gdf)})")
             if bad:
-                raise ValueError("Groups with < 2 points: " + ", ".join(bad))
+                message = "Groups with < 2 points: " + ", ".join(bad)
+                if counts:
+                    message += f". Counts: {counts}"
+                raise ValueError(message)
 
     def _prepare_plot_data(self, df: pd.DataFrame, x_name: str, y_name: str, group_name: str | None):
         if group_name:
@@ -867,7 +900,8 @@ class PlotModule:
 
         # Labels (exact headers with units)
         self.ax.set_xlabel(independent_latex(x_display))
-        self.ax.set_ylabel(dependent_latex(y_label))
+        y_display_label = DEPENDENT_COLUMN_TO_LABEL.get(y_column, y_label)
+        self.ax.set_ylabel(dependent_latex(y_display_label))
 
         # Legend
         if group_display:

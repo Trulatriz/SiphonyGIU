@@ -54,6 +54,27 @@ DEPENDENT_LATEX = {label: latex for label, _column, latex in DEPENDENT_OPTIONS}
 DEPENDENT_COLUMNS = [column for _label, column, _latex in DEPENDENT_OPTIONS]
 DEPENDENTS = DEPENDENT_LABELS
 
+DEPENDENT_TO_DEVIATION = {
+    "\u00F8 (\u00B5m)": "Desvest \u00F8 (\u00B5m)",
+    "N\u1D65 (cells\u00B7cm^3)": "Desvest N\u1D65 (cells\u00B7cm^3)",
+    "\u03C1f (g/cm^3)": DESV_RHO_FOAM_G,
+    "\u03C1f (kg/m^3)": DESV_RHO_FOAM_KG,
+}
+
+DEPENDENT_TO_DEVIATION = {
+    "Ø (µm)": "Desvest Ø (µm)",
+    "Nᵥ (cells·cm^3)": "Desvest Nᵥ (cells·cm^3)",
+    "ρf (g/cm^3)": DESV_RHO_FOAM_G,
+    "ρf (kg/m^3)": DESV_RHO_FOAM_KG,
+}
+
+DEPENDENT_TO_DEVIATION = {
+    "\u00F8 (\u00B5m)": "Desvest \u00F8 (\u00B5m)",
+    "N\u1D65 (cells\u00B7cm^3)": "Desvest N\u1D65 (cells\u00B7cm^3)",
+    "\u03C1f (g/cm^3)": DESV_RHO_FOAM_G,
+    "\u03C1f (kg/m^3)": DESV_RHO_FOAM_KG,
+}
+
 DEVIATIONS = {
     "\u00F8 (\u00B5m)": "Desvest \u00F8 (\u00B5m)",
     "N\u1D65 (cells\u00B7cm^3)": "Desvest N\u1D65 (cells\u00B7cm^3)",
@@ -62,13 +83,13 @@ DEVIATIONS = {
 }
 
 LEGACY_DEPENDENT_LABELS = {
-    "\u03C1 foam (g/cm^3)": "\u03C1f (g/cm^3)",
-    "\u03C1 foam (kg/m^3)": "\u03C1f (kg/m^3)",
-    "OC (%)": "Ov (%)",
-    "DSC Tm (\u00B0C)": "Tm (\u00B0C)",
-    "DSC Tg (\u00B0C)": "Tg (\u00B0C)",
-    "DSC Xc (\u00B0C)": "\u03C7c (%)",
-    "DSC Xc (%)": "\u03C7c (%)",
+    "\u03C1f (g/cm^3)": RHO_FOAM_G,
+    "\u03C1f (kg/m^3)": RHO_FOAM_KG,
+    "Ov (%)": "OC (%)",
+    "Tm (\u00B0C)": "DSC Tm (\u00B0C)",
+    "Tg (\u00B0C)": "DSC Tg (\u00B0C)",
+    "\u03C7c (%)": "DSC Xc (%)",
+    "DSC Xc (\u00B0C)": "DSC Xc (%)",
 }
 
 
