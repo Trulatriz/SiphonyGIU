@@ -926,7 +926,7 @@ class PlotModule:
             pass
 
         # Tight layout with room on right for legend
-        self.fig.subplots_adjust(right=0.78)
+        self.fig.subplots_adjust(left=0.12, right=0.78, bottom=0.12, top=0.95)
 
         # Under-plot annotations: n per group and fixed variables
         n_info = self._n_info_text(groups)

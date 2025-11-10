@@ -1039,14 +1039,7 @@ class DependentScatterModule:
             self._current_legends.append(leg2)
             legend_count += 1
 
-        if legend_count == 0:
-            right_margin = 0.88
-        elif legend_count == 1:
-            right_margin = 0.80
-        else:
-            right_margin = 0.72
-
-        self.fig.subplots_adjust(right=right_margin)
+        self.fig.subplots_adjust(left=0.12, right=0.78, bottom=0.12, top=0.95)
 
         sheet_label = self._sheet_labels.get(self.active_sheet_name, self.active_sheet_name or "<no sheet>")
         self.info_var.set(f"Sheet: {sheet_label}    |    Points: {len(valid)}")
