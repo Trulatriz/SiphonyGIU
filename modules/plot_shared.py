@@ -41,7 +41,7 @@ DEPENDENT_OPTIONS = [
     ("\u03C1f (kg/m^3)", RHO_FOAM_KG, r"$\rho_{f}\;(\mathrm{kg}/\mathrm{m}^3)$"),
     ("\u03C1\u1D63", RHO_REL, r"$\rho_{r}$"),
     ("X", "X", r"$X$"),
-    ("Ov (%)", "OC (%)", r"$\mathrm{OC}\;(\%)$"),
+    ("Ov (%)", "OC (%)", r"$O_{\mathrm{v}}\;(\%)$"),
     ("Tm (\u00B0C)", "DSC Tm (\u00B0C)", r"$T_{\mathrm{m}}\;({}^\circ\mathrm{C})$"),
     ("Tg (\u00B0C)", "DSC Tg (\u00B0C)", r"$T_{\mathrm{g}}\;({}^\circ\mathrm{C})$"),
     ("\u03C7c (%)", "DSC Xc (%)", r"$\chi_{c}\;(\%)$"),
