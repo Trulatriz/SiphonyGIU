@@ -988,7 +988,6 @@ class PlotModule:
                 format='png',
                 dpi=int(self.dpi_var.get()),
                 facecolor='white',
-                bbox_inches='tight',
             )
             buffer.seek(0)
             image = Image.open(buffer).convert('RGB')
@@ -1026,7 +1025,7 @@ class PlotModule:
             return
         # Ensure white background
         try:
-            self.fig.savefig(filename, dpi=int(self.dpi_var.get()), facecolor="white", bbox_inches="tight")
+            self.fig.savefig(filename, dpi=int(self.dpi_var.get()), facecolor="white")
             messagebox.showinfo("Saved", f"Figure saved to:\n{filename}")
         except Exception as e:
             messagebox.showerror("Save error", str(e))

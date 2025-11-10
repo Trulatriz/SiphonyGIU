@@ -1082,8 +1082,6 @@ class DependentScatterModule:
                 filename,
                 dpi=int(self.dpi_var.get()),
                 facecolor="white",
-                bbox_inches="tight",
-                bbox_extra_artists=self._current_legends,
             )
             messagebox.showinfo("Saved", f"Figure saved to:\n{filename}")
         except Exception as e:
@@ -1112,8 +1110,6 @@ class DependentScatterModule:
                 format="png",
                 dpi=int(self.dpi_var.get()),
                 facecolor="white",
-                bbox_inches="tight",
-                bbox_extra_artists=self._current_legends,
             )
             buffer.seek(0)
             image = Image.open(buffer).convert("RGB")
