@@ -146,7 +146,11 @@ class DependentScatterModule:
         self.shape_var = tk.StringVar(value="<None>")
         self.errorbar_var = tk.BooleanVar(value=False)
         self.mono_var = tk.BooleanVar(value=False)
-        self.dpi_var = tk.IntVar(value=300)
+        self.dpi_var = tk.IntVar(value=600)
+        self.xmin_var = tk.StringVar()
+        self.xmax_var = tk.StringVar()
+        self.ymin_var = tk.StringVar()
+        self.ymax_var = tk.StringVar()
 
         # Filters and encoding info
         self.filter_controls: dict[str, dict] = {}
@@ -234,9 +238,17 @@ class DependentScatterModule:
         ttk.Button(actions, text="Save Figure", command=self._save_figure).grid(row=0, column=1, padx=6)
         ttk.Button(actions, text="Copy Figure", command=self._copy_figure).grid(row=0, column=2, padx=6)
         ttk.Button(actions, text="Export Data", command=self._export_data).grid(row=0, column=3, padx=6)
-        ttk.Label(actions, text="DPI:").grid(row=0, column=4, padx=(12, 2))
-        ttk.Radiobutton(actions, text="300", variable=self.dpi_var, value=300, command=self._on_option_change).grid(row=0, column=5)
-        ttk.Radiobutton(actions, text="600", variable=self.dpi_var, value=600, command=self._on_option_change).grid(row=0, column=6)
+        ttk.Label(actions, text="DPI: 600 (fixed)").grid(row=0, column=4, padx=(12, 2))
+
+        # Optional axis limits
+        ttk.Label(actions, text="X min:").grid(row=1, column=0, sticky=tk.E, pady=(4, 0))
+        ttk.Entry(actions, textvariable=self.xmin_var, width=10).grid(row=1, column=1, sticky=tk.W, pady=(4, 0))
+        ttk.Label(actions, text="X max:").grid(row=1, column=2, sticky=tk.E, pady=(4, 0))
+        ttk.Entry(actions, textvariable=self.xmax_var, width=10).grid(row=1, column=3, sticky=tk.W, pady=(4, 0))
+        ttk.Label(actions, text="Y min:").grid(row=1, column=4, sticky=tk.E, pady=(4, 0))
+        ttk.Entry(actions, textvariable=self.ymin_var, width=10).grid(row=1, column=5, sticky=tk.W, pady=(4, 0))
+        ttk.Label(actions, text="Y max:").grid(row=1, column=6, sticky=tk.E, pady=(4, 0))
+        ttk.Entry(actions, textvariable=self.ymax_var, width=10).grid(row=1, column=7, sticky=tk.W, pady=(4, 0))
 
         # Canvas
         canvas_frame = ttk.Frame(container)
@@ -424,9 +436,8 @@ class DependentScatterModule:
                 self.shape_var.set(shape_val)
             self.errorbar_var.set(bool(state.get("errorbars")))
             self.mono_var.set(bool(state.get("monochrome")))
-            dpi_val = state.get("dpi")
-            if dpi_val in (300, 600):
-                self.dpi_var.set(dpi_val)
+            # Force 600 dpi for publication consistency; ignore legacy 300 dpi.
+            self.dpi_var.set(600)
         finally:
             self._suspend_state_events = False
 
@@ -1029,6 +1040,18 @@ class DependentScatterModule:
         self.ax.set_xlabel(dependent_latex(x_display))
         self.ax.set_ylabel(dependent_latex(y_display))
 
+        # Optional fixed axis limits
+        x_min = _parse_float(self.xmin_var.get())
+        x_max = _parse_float(self.xmax_var.get())
+        y_min = _parse_float(self.ymin_var.get())
+        y_max = _parse_float(self.ymax_var.get())
+        if x_min is not None or x_max is not None:
+            cur = self.ax.get_xlim()
+            self.ax.set_xlim(x_min if x_min is not None else cur[0], x_max if x_max is not None else cur[1])
+        if y_min is not None or y_max is not None:
+            cur = self.ax.get_ylim()
+            self.ax.set_ylim(y_min if y_min is not None else cur[0], y_max if y_max is not None else cur[1])
+
         legend_count = 0
         right_margin = 0.88
 
@@ -1126,6 +1149,7 @@ class DependentScatterModule:
                 ("PNG", "*.png"),
                 ("TIFF", "*.tiff;*.tif"),
                 ("SVG", "*.svg"),
+                ("PDF", "*.pdf"),
             ],
         )
         if not filename:

@@ -184,7 +184,11 @@ class PlotModule:
         self.errorbar_var = tk.BooleanVar(value=False)
         self.mono_var = tk.BooleanVar(value=False)
         self.connect_lines_var = tk.BooleanVar(value=True)
-        self.dpi_var = tk.IntVar(value=300)
+        self.dpi_var = tk.IntVar(value=600)
+        self.xmin_var = tk.StringVar()
+        self.xmax_var = tk.StringVar()
+        self.ymin_var = tk.StringVar()
+        self.ymax_var = tk.StringVar()
         self.hline_enabled_var = tk.BooleanVar(value=False)
         self.hline_value_var = tk.StringVar()
         self.vline_enabled_var = tk.BooleanVar(value=False)
@@ -314,9 +318,17 @@ class PlotModule:
         ttk.Button(actions, text="Save Figure", command=self._save_figure).grid(row=0, column=1, padx=6)
         ttk.Button(actions, text="Copy Figure", command=self._copy_figure).grid(row=0, column=2, padx=6)
         ttk.Button(actions, text="Export Data", command=self._export_data).grid(row=0, column=3, padx=6)
-        ttk.Label(actions, text="DPI:").grid(row=0, column=4, padx=(12, 2))
-        ttk.Radiobutton(actions, text="300", variable=self.dpi_var, value=300, command=self._on_option_change).grid(row=0, column=4)
-        ttk.Radiobutton(actions, text="600", variable=self.dpi_var, value=600, command=self._on_option_change).grid(row=0, column=5)
+        ttk.Label(actions, text="DPI: 600 (fixed)").grid(row=0, column=4, padx=(12, 2))
+
+        # Optional axis limits
+        ttk.Label(actions, text="X min:").grid(row=1, column=0, sticky=tk.E, pady=(4, 0))
+        ttk.Entry(actions, textvariable=self.xmin_var, width=10).grid(row=1, column=1, sticky=tk.W, pady=(4, 0))
+        ttk.Label(actions, text="X max:").grid(row=1, column=2, sticky=tk.E, pady=(4, 0))
+        ttk.Entry(actions, textvariable=self.xmax_var, width=10).grid(row=1, column=3, sticky=tk.W, pady=(4, 0))
+        ttk.Label(actions, text="Y min:").grid(row=1, column=4, sticky=tk.E, pady=(4, 0))
+        ttk.Entry(actions, textvariable=self.ymin_var, width=10).grid(row=1, column=5, sticky=tk.W, pady=(4, 0))
+        ttk.Label(actions, text="Y max:").grid(row=1, column=6, sticky=tk.E, pady=(4, 0))
+        ttk.Entry(actions, textvariable=self.ymax_var, width=10).grid(row=1, column=7, sticky=tk.W, pady=(4, 0))
 
         # Canvas
         canvas_frame = ttk.Frame(container)
@@ -519,6 +531,10 @@ class PlotModule:
             'hline_value': self.hline_value_var.get(),
             'vline_enabled': bool(self.vline_enabled_var.get()),
             'vline_value': self.vline_value_var.get(),
+            'x_min': self.xmin_var.get(),
+            'x_max': self.xmax_var.get(),
+            'y_min': self.ymin_var.get(),
+            'y_max': self.ymax_var.get(),
             'constraints': {},
         }
         for name, cb in self.constraint_rows.items():
@@ -551,8 +567,12 @@ class PlotModule:
             self.mono_var.set(bool(state.get('monochrome')))
             self.connect_lines_var.set(bool(state.get('connect_lines', True)))
             dpi_val = state.get('dpi')
-            if dpi_val in (300, 600):
-                self.dpi_var.set(dpi_val)
+            # Force 600 dpi for publication consistency; ignore older 300 dpi states.
+            self.dpi_var.set(600)
+            self.xmin_var.set(state.get('x_min', ''))
+            self.xmax_var.set(state.get('x_max', ''))
+            self.ymin_var.set(state.get('y_min', ''))
+            self.ymax_var.set(state.get('y_max', ''))
             self.hline_enabled_var.set(bool(state.get('hline_enabled')))
             self.hline_value_var.set(state.get('hline_value', ''))
             self.vline_enabled_var.set(bool(state.get('vline_enabled')))
@@ -974,7 +994,6 @@ class PlotModule:
 
             x = _as_float_array(gdf[x_column])
             y = _as_float_array(gdf[y_column])
-            x = self._maybe_jitter(x)
 
             # Optional connecting lines within each group in ascending X
             if connect:
@@ -1040,13 +1059,36 @@ class PlotModule:
         y_display_label = DEPENDENT_COLUMN_TO_LABEL.get(y_column, y_label)
         self.ax.set_ylabel(dependent_latex(y_display_label))
 
+        # Optional fixed axis limits
+        x_min = self._optional_float(self.xmin_var.get())
+        x_max = self._optional_float(self.xmax_var.get())
+        y_min = self._optional_float(self.ymin_var.get())
+        y_max = self._optional_float(self.ymax_var.get())
+        if x_min is not None or x_max is not None:
+            cur = self.ax.get_xlim()
+            self.ax.set_xlim(x_min if x_min is not None else cur[0], x_max if x_max is not None else cur[1])
+        if y_min is not None or y_max is not None:
+            cur = self.ax.get_ylim()
+            self.ax.set_ylim(y_min if y_min is not None else cur[0], y_max if y_max is not None else cur[1])
+
         # Legend
         if group_display:
             handles, labels = [], []
             for (gidx, (gval, _)) in enumerate(groups):
                 color, marker, linestyle = styles[gidx]
-                h = matplotlib.lines.Line2D([0], [0], color=color, marker=marker, linestyle=linestyle, linewidth=1.5,
-                                            markerfacecolor=color, markeredgecolor="black", markeredgewidth=0.6)
+                legend_linestyle = linestyle if connect else ""
+                legend_linewidth = 1.5 if connect else 0.0
+                h = matplotlib.lines.Line2D(
+                    [0],
+                    [0],
+                    color=color,
+                    marker=marker,
+                    linestyle=legend_linestyle,
+                    linewidth=legend_linewidth,
+                    markerfacecolor=color,
+                    markeredgecolor="black",
+                    markeredgewidth=0.6,
+                )
                 handles.append(h)
                 group_label = independent_latex(group_display)
                 labels.append(f"{group_label} = {gval}")
@@ -1156,6 +1198,7 @@ class PlotModule:
                 ("PNG", "*.png"),
                 ("TIFF", "*.tiff;*.tif"),
                 ("SVG", "*.svg"),
+                ("PDF", "*.pdf"),
             ],
         )
         if not filename:
@@ -1221,6 +1264,12 @@ class PlotModule:
                 "vertical_line": {
                     "enabled": bool(self.vline_enabled_var.get()),
                     "value": self._optional_float(self.vline_value_var.get()),
+                },
+                "axis_limits": {
+                    "x_min": self._optional_float(self.xmin_var.get()),
+                    "x_max": self._optional_float(self.xmax_var.get()),
+                    "y_min": self._optional_float(self.ymin_var.get()),
+                    "y_max": self._optional_float(self.ymax_var.get()),
                 },
                 "constraints": {
                     v: {"exact": self.constraints[v].exact, "min": self.constraints[v].min_val, "max": self.constraints[v].max_val}
