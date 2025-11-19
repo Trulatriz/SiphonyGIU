@@ -257,7 +257,7 @@ class DependentScatterModule:
         canvas_frame.rowconfigure(0, weight=1)
         canvas_frame.columnconfigure(0, weight=1)
 
-        self.fig = Figure(figsize=(8.5, 8.0), dpi=100)
+        self.fig = Figure(figsize=(6.0, 6.0), dpi=100)
         self.ax = self.fig.add_subplot(111)
         self.canvas = FigureCanvasTkAgg(self.fig, master=canvas_frame)
         self.canvas_widget = self.canvas.get_tk_widget()
