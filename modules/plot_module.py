@@ -252,18 +252,6 @@ class PlotModule:
         self.mono_chk = ttk.Checkbutton(sel, text="Monochrome preview", variable=self.mono_var, command=self._on_option_change)
         self.mono_chk.grid(row=0, column=7, sticky=tk.W)
 
-        # Second row for additional display options
-        sel2 = ttk.Frame(container)
-        sel2.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(0, 4))
-        sel2.columnconfigure(0, weight=0)
-        self.connect_chk = ttk.Checkbutton(
-            sel2,
-            text="Connect points with lines",
-            variable=self.connect_lines_var,
-            command=self._on_option_change,
-        )
-        self.connect_chk.grid(row=0, column=0, sticky=tk.W)
-
         # Optional reference lines controls
         self.hline_chk = ttk.Checkbutton(
             sel,
@@ -288,6 +276,15 @@ class PlotModule:
         self.vline_entry = ttk.Entry(sel, textvariable=self.vline_value_var, width=12, state="disabled")
         self.vline_entry.grid(row=1, column=6, sticky=(tk.W, tk.E), padx=(4, 0), pady=(6, 0))
         _Tooltip(self.vline_entry, "Draws a red vertical guide across the plot at the specified X value.")
+
+        # Second-row display option: connect or not connect points
+        self.connect_chk = ttk.Checkbutton(
+            sel,
+            text="Connect points with lines",
+            variable=self.connect_lines_var,
+            command=self._on_option_change,
+        )
+        self.connect_chk.grid(row=1, column=7, sticky=tk.W, pady=(6, 0))
 
         # Constraints frame
         const_frame = ttk.LabelFrame(container, text="Fixed Independents (Constancy rule)", padding=10)
