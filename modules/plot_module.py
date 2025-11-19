@@ -41,10 +41,7 @@ from .plot_shared import (
 # Ensure TkAgg backend for embedding
 matplotlib.use("TkAgg")
 
-
-
-
-
+PUBLICATION_FIGSIZE = (6.0, 6.0)
 
 def _is_number_series(s: pd.Series) -> bool:
     try:
@@ -337,7 +334,7 @@ class PlotModule:
         canvas_frame.rowconfigure(0, weight=1)
         canvas_frame.columnconfigure(0, weight=1)
 
-        self.fig = Figure(figsize=(6.0, 6.0), dpi=100)
+        self.fig = Figure(figsize=PUBLICATION_FIGSIZE, dpi=100)
         self.ax = self.fig.add_subplot(111)
         self.canvas = FigureCanvasTkAgg(self.fig, master=canvas_frame)
         self.canvas_widget = self.canvas.get_tk_widget()
@@ -1203,9 +1200,17 @@ class PlotModule:
         )
         if not filename:
             return
-        # Ensure white background
+        # Ensure white background and a fixed publication canvas size, independent
+        # of how large the embedded Tk window currently is.
         try:
+            original_size = self.fig.get_size_inches()
+            self.fig.set_size_inches(*PUBLICATION_FIGSIZE)
             self.fig.savefig(filename, dpi=int(self.dpi_var.get()), facecolor="white")
+            self.fig.set_size_inches(original_size[0], original_size[1])
+            try:
+                self.canvas.draw_idle()
+            except Exception:
+                pass
             messagebox.showinfo("Saved", f"Figure saved to:\n{filename}")
         except Exception as e:
             messagebox.showerror("Save error", str(e))

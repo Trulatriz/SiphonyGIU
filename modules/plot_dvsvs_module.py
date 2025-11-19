@@ -34,6 +34,8 @@ from .plot_shared import (
 
 matplotlib.use("TkAgg")
 
+PUBLICATION_FIGSIZE = (6.0, 6.0)
+
 COLOR_BINS = 5
 SHAPE_BINS = 5
 SHAPE_MARKERS = ["o", "s", "^", "D", "v", "P", "X", "h", "*"]
@@ -257,7 +259,7 @@ class DependentScatterModule:
         canvas_frame.rowconfigure(0, weight=1)
         canvas_frame.columnconfigure(0, weight=1)
 
-        self.fig = Figure(figsize=(6.0, 6.0), dpi=100)
+        self.fig = Figure(figsize=PUBLICATION_FIGSIZE, dpi=100)
         self.ax = self.fig.add_subplot(111)
         self.canvas = FigureCanvasTkAgg(self.fig, master=canvas_frame)
         self.canvas_widget = self.canvas.get_tk_widget()
@@ -1155,11 +1157,18 @@ class DependentScatterModule:
         if not filename:
             return
         try:
+            original_size = self.fig.get_size_inches()
+            self.fig.set_size_inches(*PUBLICATION_FIGSIZE)
             self.fig.savefig(
                 filename,
                 dpi=int(self.dpi_var.get()),
                 facecolor="white",
             )
+            self.fig.set_size_inches(original_size[0], original_size[1])
+            try:
+                self.canvas.draw_idle()
+            except Exception:
+                pass
             messagebox.showinfo("Saved", f"Figure saved to:\n{filename}")
         except Exception as e:
             messagebox.showerror("Save error", str(e))
