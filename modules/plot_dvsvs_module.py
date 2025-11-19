@@ -34,7 +34,10 @@ from .plot_shared import (
 
 matplotlib.use("TkAgg")
 
-PUBLICATION_FIGSIZE = (6.0, 6.0)
+# Shared publication canvas for all scatter plots (width, height in inches)
+# Width slightly larger than height so that legends on the right comfortably
+# fit inside the saved figure without being clipped.
+PUBLICATION_FIGSIZE = (7.5, 6.0)
 
 COLOR_BINS = 5
 SHAPE_BINS = 5
