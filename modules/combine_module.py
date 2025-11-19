@@ -43,7 +43,7 @@ EXPANSION_COL = "X"
 POROSITY_COL = "Porosity (%)"
 
 BASE_NEW_COLUMN_ORDER = [
-    'Polymer', 'Label', 'm(g)', 'Water (g)', 'T (\u00B0C)', 'P CO2 (bar)', 't (min)',
+    'Polymer', 'Label', 'm(g)', 'Water (g)', 'T (\u00B0C)', 'P CO2 (bar)', 'Psat (MPa)', 't (min)',
     'Pi (MPa)', 'Pf (MPa)', 'PDR (MPa/s)',
     'n SEM images', '\u00F8 (\u00B5m)', 'Desvest \u00F8 (\u00B5m)', 'RSD \u00F8 (%)',
     'N\u1D65 (cells\u00B7cm^3)', 'Desvest N\u1D65 (cells\u00B7cm^3)', 'RSD N\u1D65 (%)',
@@ -60,6 +60,17 @@ def _normalize_numeric_series(series: pd.Series) -> pd.Series:
         return pd.Series(dtype=float)
     cleaned = series.astype(str).str.replace(r"\s", "", regex=True).str.replace(',', '.', regex=False)
     return pd.to_numeric(cleaned, errors='coerce')
+
+
+def _ensure_psat_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Create Psat (MPa) derived from P CO2 (bar) when available."""
+    if df is None or df.empty:
+        return df
+    if "Psat (MPa)" not in df.columns and "P CO2 (bar)" in df.columns:
+        psat = pd.to_numeric(df["P CO2 (bar)"], errors="coerce") / 10
+        df = df.copy()
+        df["Psat (MPa)"] = psat
+    return df
 
 class CombineModule:
     def __init__(self, root, paper_path=None):
@@ -834,6 +845,7 @@ class CombineModule:
                     all_data[RHO_FOAM_KG] = pd.to_numeric(all_data[RHO_FOAM_G], errors='coerce') * 1000
                 if DESV_RHO_FOAM_G in all_data.columns:
                     all_data[DESV_RHO_FOAM_KG] = pd.to_numeric(all_data[DESV_RHO_FOAM_G], errors='coerce') * 1000
+                all_data = _ensure_psat_column(all_data)
                 for col in self.new_column_order:
                     if col not in all_data.columns:
                         all_data[col] = pd.NA
@@ -1087,6 +1099,7 @@ class CombineModule:
         if DESV_RHO_FOAM_G in df.columns:
             df[DESV_RHO_FOAM_KG] = _normalize_numeric_series(df[DESV_RHO_FOAM_G]) * 1000
         # Ensure all final columns exist and order
+        df = _ensure_psat_column(df)
         for col in self.new_column_order:
             if col not in df.columns:
                 df[col]=pd.NA
@@ -1350,6 +1363,7 @@ def _cm_merge_for_foam_pos(self, foam, files_map):
         rows.append(row)
 
     df = pd.DataFrame(rows)
+    df = _ensure_psat_column(df)
     for col in self.new_column_order:
         if col not in df.columns:
             df[col] = pd.NA

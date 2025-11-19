@@ -132,21 +132,18 @@ class PDRModule:
         
         # Set input folder (suggested path even if it doesn't exist yet)
         if "input_folder" in suggested:
-            if os.path.exists(suggested["input_folder"]) or not self.input_folder:
-                self.input_folder = suggested["input_folder"]
-                self.input_folder_var.set(suggested["input_folder"])
+            self.input_folder = suggested["input_folder"]
+            self.input_folder_var.set(suggested["input_folder"])
         
         # Set output folder (suggested path even if it doesn't exist yet)
         if "output_folder" in suggested:
-            if os.path.exists(suggested["output_folder"]) or not self.output_folder:
-                self.output_folder = suggested["output_folder"]
-                self.output_folder_var.set(suggested["output_folder"])
+            self.output_folder = suggested["output_folder"]
+            self.output_folder_var.set(suggested["output_folder"])
         
         # Set registros file (suggested path even if it doesn't exist yet)
         if "registros_file" in suggested:
-            if os.path.exists(suggested["registros_file"]) or not self.registros_file:
-                self.registros_file = suggested["registros_file"]
-                self.registros_file_var.set(suggested["registros_file"])
+            self.registros_file = suggested["registros_file"]
+            self.registros_file_var.set(suggested["registros_file"])
         
         if suggested and hasattr(self, 'status_var'):
             self.status_var.set(f"Default paths loaded for {self.current_foam_type}")

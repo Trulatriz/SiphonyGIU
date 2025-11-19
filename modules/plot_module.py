@@ -184,9 +184,16 @@ class PlotModule:
         self.errorbar_var = tk.BooleanVar(value=False)
         self.mono_var = tk.BooleanVar(value=False)
         self.dpi_var = tk.IntVar(value=300)
+        self.hline_enabled_var = tk.BooleanVar(value=False)
+        self.hline_value_var = tk.StringVar()
+        self.vline_enabled_var = tk.BooleanVar(value=False)
+        self.vline_value_var = tk.StringVar()
 
         # Constraint variables per independent
         self.constraints = {name: Constraint() for name in INDEPENDENTS}
+
+        self.hline_value_var.trace_add("write", self._on_reference_line_value_change)
+        self.vline_value_var.trace_add("write", self._on_reference_line_value_change)
 
         self._build_ui()
         self._apply_default_fonts()
@@ -243,6 +250,31 @@ class PlotModule:
 
         self.mono_chk = ttk.Checkbutton(sel, text="Monochrome preview", variable=self.mono_var, command=self._on_option_change)
         self.mono_chk.grid(row=0, column=7, sticky=tk.W)
+
+        # Optional reference lines controls
+        self.hline_chk = ttk.Checkbutton(
+            sel,
+            text="Horizontal line",
+            variable=self.hline_enabled_var,
+            command=self._on_reference_line_toggle,
+        )
+        self.hline_chk.grid(row=1, column=0, sticky=tk.W, pady=(6, 0))
+        ttk.Label(sel, text="Y =").grid(row=1, column=1, sticky=tk.E, pady=(6, 0))
+        self.hline_entry = ttk.Entry(sel, textvariable=self.hline_value_var, width=12, state="disabled")
+        self.hline_entry.grid(row=1, column=2, sticky=(tk.W, tk.E), padx=(4, 12), pady=(6, 0))
+        _Tooltip(self.hline_entry, "Draws a red horizontal guide across the plot at the specified Y value.")
+
+        self.vline_chk = ttk.Checkbutton(
+            sel,
+            text="Vertical line",
+            variable=self.vline_enabled_var,
+            command=self._on_reference_line_toggle,
+        )
+        self.vline_chk.grid(row=1, column=4, sticky=tk.W, pady=(6, 0))
+        ttk.Label(sel, text="X =").grid(row=1, column=5, sticky=tk.E, pady=(6, 0))
+        self.vline_entry = ttk.Entry(sel, textvariable=self.vline_value_var, width=12, state="disabled")
+        self.vline_entry.grid(row=1, column=6, sticky=(tk.W, tk.E), padx=(4, 0), pady=(6, 0))
+        _Tooltip(self.vline_entry, "Draws a red vertical guide across the plot at the specified X value.")
 
         # Constraints frame
         const_frame = ttk.LabelFrame(container, text="Fixed Independents (Constancy rule)", padding=10)
@@ -411,10 +443,15 @@ class PlotModule:
                 self.group_var.set('<None>')
                 self.errorbar_var.set(False)
                 self.mono_var.set(False)
+                self.hline_enabled_var.set(False)
+                self.hline_value_var.set("")
+                self.vline_enabled_var.set(False)
+                self.vline_value_var.set("")
             self._apply_stored_state(sheet_name)
         finally:
             self._suspend_state_events = False
         self._update_errorbar_state()
+        self._update_reference_line_controls()
         self._apply_constraint_enablement()
         self._persist_current_state()
         self.info_var.set('')
@@ -467,6 +504,10 @@ class PlotModule:
             'errorbars': bool(self.errorbar_var.get()),
             'monochrome': bool(self.mono_var.get()),
             'dpi': int(self.dpi_var.get()),
+            'hline_enabled': bool(self.hline_enabled_var.get()),
+            'hline_value': self.hline_value_var.get(),
+            'vline_enabled': bool(self.vline_enabled_var.get()),
+            'vline_value': self.vline_value_var.get(),
             'constraints': {},
         }
         for name, cb in self.constraint_rows.items():
@@ -500,6 +541,10 @@ class PlotModule:
             dpi_val = state.get('dpi')
             if dpi_val in (300, 600):
                 self.dpi_var.set(dpi_val)
+            self.hline_enabled_var.set(bool(state.get('hline_enabled')))
+            self.hline_value_var.set(state.get('hline_value', ''))
+            self.vline_enabled_var.set(bool(state.get('vline_enabled')))
+            self.vline_value_var.set(state.get('vline_value', ''))
             constraints = state.get('constraints', {})
             if isinstance(constraints, dict):
                 for name, cb in self.constraint_rows.items():
@@ -655,6 +700,23 @@ class PlotModule:
             self.errorbar_var.set(False)
             _Tooltip(self.err_chk, "Enable only for Y in {\u00F8, N\u1D65, \u03C1f (g/cm^3), \u03C1f (kg/m^3)} with deviation column present.")
 
+    def _on_reference_line_toggle(self):
+        self._update_reference_line_controls()
+        if not self._suspend_state_events:
+            self._persist_current_state()
+
+    def _on_reference_line_value_change(self, *_):
+        if not self._suspend_state_events:
+            self._persist_current_state()
+
+    def _update_reference_line_controls(self):
+        state_h = "normal" if self.hline_enabled_var.get() else "disabled"
+        state_v = "normal" if self.vline_enabled_var.get() else "disabled"
+        if hasattr(self, "hline_entry"):
+            self.hline_entry.configure(state=state_h)
+        if hasattr(self, "vline_entry"):
+            self.vline_entry.configure(state=state_v)
+
     def _populate_constraint_options(self):
         # Fill combobox options with unique values from data for each independent (except PDR)
         if self.df_all.empty:
@@ -805,6 +867,18 @@ class PlotModule:
             return x_vals + noise
         return x_vals
 
+    @staticmethod
+    def _optional_float(value):
+        if value is None:
+            return None
+        text = str(value).strip().replace(",", ".")
+        if text == "":
+            return None
+        try:
+            return float(text)
+        except ValueError:
+            return None
+
     def _render_plot(self):
         if self.df_all.empty:
             messagebox.showwarning("No data", "Load an All_Results Excel first.")
@@ -824,6 +898,28 @@ class PlotModule:
         if group_column and (group_column not in self.df_all.columns):
             messagebox.showerror("Missing column", f"Grouping column '{group_column}' not found in the selected sheet.")
             return
+
+        hline_value = None
+        if self.hline_enabled_var.get():
+            raw = self.hline_value_var.get()
+            if not raw.strip():
+                messagebox.showerror("Horizontal line", "Enter a Y value for the horizontal guide or disable the option.")
+                return
+            hline_value = self._optional_float(raw)
+            if hline_value is None:
+                messagebox.showerror("Horizontal line", f"'{raw}' is not a valid numeric Y value.")
+                return
+
+        vline_value = None
+        if self.vline_enabled_var.get():
+            raw = self.vline_value_var.get()
+            if not raw.strip():
+                messagebox.showerror("Vertical line", "Enter an X value for the vertical guide or disable the option.")
+                return
+            vline_value = self._optional_float(raw)
+            if vline_value is None:
+                messagebox.showerror("Vertical line", f"'{raw}' is not a valid numeric X value.")
+                return
 
         # Collect and apply constraints
         constraints = self._collect_constraints()
@@ -897,6 +993,25 @@ class PlotModule:
                     alpha=0.8,
                     zorder=2,
                 )
+
+        if hline_value is not None:
+            self.ax.axhline(
+                hline_value,
+                color="red",
+                linewidth=1.2,
+                linestyle="--",
+                alpha=0.9,
+                zorder=1,
+            )
+        if vline_value is not None:
+            self.ax.axvline(
+                vline_value,
+                color="red",
+                linewidth=1.2,
+                linestyle="--",
+                alpha=0.9,
+                zorder=1,
+            )
 
         # Labels (exact headers with units)
         self.ax.set_xlabel(independent_latex(x_display))
@@ -1077,6 +1192,14 @@ class PlotModule:
                 "dpi": int(self.dpi_var.get()),
                 "palette": "Okabe-Ito" if not self.mono_var.get() else "monochrome",
                 "monochrome": bool(self.mono_var.get()),
+                "horizontal_line": {
+                    "enabled": bool(self.hline_enabled_var.get()),
+                    "value": self._optional_float(self.hline_value_var.get()),
+                },
+                "vertical_line": {
+                    "enabled": bool(self.vline_enabled_var.get()),
+                    "value": self._optional_float(self.vline_value_var.get()),
+                },
                 "constraints": {
                     v: {"exact": self.constraints[v].exact, "min": self.constraints[v].min_val, "max": self.constraints[v].max_val}
                     for v in INDEPENDENTS

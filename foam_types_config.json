@@ -10,7 +10,7 @@
     "PS-cork",
     "rHDPE"
   ],
-  "current_foam_type": "HDPE",
+  "current_foam_type": "rHDPE",
   "module_paths": {
     "OC": {
       "TEST": {
@@ -42,11 +42,35 @@
           "results_file": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\TEST\\LDPE\\Open-cell content\\Output\\OC_Results_LDPE.xlsx",
           "last_used": "2025-09-08T20:52:26.808594"
         }
+      },
+      "HDPE_TW": {
+        "HDPE": {
+          "input_folder": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\HDPE\\Open-cell content\\Input",
+          "output_folder": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\HDPE\\Open-cell content\\Output",
+          "density_file": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\Density.xlsx",
+          "results_file": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\HDPE\\Open-cell content\\Output\\OC_Results_HDPE.xlsx",
+          "last_used": "2025-11-03T15:07:47.928952"
+        },
+        "rHDPE": {
+          "input_folder": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\rHDPE\\Open-cell content\\Input",
+          "output_folder": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\rHDPE\\Open-cell content\\Output",
+          "density_file": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\Density.xlsx",
+          "results_file": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\rHDPE\\Open-cell content\\Output\\OC_Results_rHDPE.xlsx",
+          "last_used": "2025-11-14T14:53:54.357772"
+        }
       }
     },
     "PDR": {
       "TEST": {
         "HDPE": {}
+      },
+      "HDPE_TW": {
+        "HDPE": {
+          "input_folder": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\HDPE\\PDR\\Input",
+          "output_folder": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\HDPE\\PDR\\Output",
+          "registros_file": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\HDPE\\PDR\\Output\\PDR_Results_HDPE.xlsx",
+          "last_used": "2025-11-03T14:43:15.874104"
+        }
       }
     },
     "DSC": {

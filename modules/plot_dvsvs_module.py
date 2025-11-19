@@ -398,7 +398,6 @@ class DependentScatterModule:
             "errorbars": bool(self.errorbar_var.get()),
             "monochrome": bool(self.mono_var.get()),
             "dpi": int(self.dpi_var.get()),
-            "filters": {col: {"min": ctrl["min_var"].get(), "max": ctrl["max_var"].get()} for col, ctrl in self.filter_controls.items()},
         }
 
     def _apply_stored_state(self, sheet_name: str):
@@ -431,15 +430,10 @@ class DependentScatterModule:
         finally:
             self._suspend_state_events = False
 
+        # Rebuild filters purely from current data and axis/encoding selections.
+        # We intentionally ignore any persisted numeric ranges so that outdated
+        # limits don't hide new data when a workbook changes.
         self._refresh_filter_controls()
-
-        filters = state.get("filters", {})
-        for column, values in filters.items():
-            ctrl = self.filter_controls.get(column)
-            if not ctrl:
-                continue
-            ctrl["min_var"].set(values.get("min", ""))
-            ctrl["max_var"].set(values.get("max", ""))
 
     def _persist_current_state(self):
         if self._suspend_state_events:
@@ -581,7 +575,24 @@ class DependentScatterModule:
             return (None, None)
         if numeric.empty:
             return (None, None)
-        return (float(numeric.min()), float(numeric.max()))
+        min_val = float(numeric.min())
+        max_val = float(numeric.max())
+
+        # Slightly expand the range so that boundary
+        # values are comfortably included in filters.
+        margin = 2.0
+        if not math.isfinite(min_val) or not math.isfinite(max_val):
+            return (min_val, max_val)
+
+        expanded_min = min_val - margin
+        expanded_max = max_val + margin
+
+        # For naturally non‑negative quantities (most of our columns),
+        # avoid suggesting a negative lower bound when data are ≥ 0.
+        if min_val >= 0 and expanded_min < 0:
+            expanded_min = 0.0
+
+        return (expanded_min, expanded_max)
 
     def _reset_filter(self, column: str):
         defaults = self.filter_defaults.get(column, (None, None))
@@ -591,6 +602,15 @@ class DependentScatterModule:
         min_val, max_val = defaults
         ctrl["min_var"].set("" if min_val is None else _format_number(min_val))
         ctrl["max_var"].set("" if max_val is None else _format_number(max_val))
+        self._persist_current_state()
+
+    def _clear_all_filters(self):
+        if not self.filter_controls:
+            return
+        for ctrl in self.filter_controls.values():
+            ctrl["min_var"].set("")
+            ctrl["max_var"].set("")
+        # When all limits are empty, _apply_filters() keeps every row.
         self._persist_current_state()
 
     def _refresh_filter_controls(self):
@@ -643,7 +663,15 @@ class DependentScatterModule:
             ).grid(row=0, column=0, sticky=tk.W)
             return
 
-        for row_idx, (display, column) in enumerate(ordered):
+        # Global controls row: clear all filters at once.
+        ttk.Button(
+            self.filters_frame,
+            text="Clear all filters",
+            command=self._clear_all_filters,
+            width=18,
+        ).grid(row=0, column=0, sticky=tk.W, pady=(0, 4))
+
+        for row_idx, (display, column) in enumerate(ordered, start=1):
             default_min, default_max = self._column_min_max(column)
             self.filter_defaults[column] = (default_min, default_max)
             prev_min, prev_max = existing.get(column, ("", ""))
@@ -894,6 +922,8 @@ class DependentScatterModule:
             messagebox.showwarning("No data", "Load an All_Results Excel first.")
             return
 
+        total_rows = len(self.df_all)
+
         x_display = self.x_var.get().strip()
         y_display = self.y_var.get().strip()
         if x_display not in DEPENDENT_MAP or y_display not in DEPENDENT_MAP:
@@ -915,6 +945,8 @@ class DependentScatterModule:
             messagebox.showerror("Invalid filter", str(exc))
             return
 
+        rows_after_filters = len(filtered)
+
         if filtered.empty:
             messagebox.showwarning("No data", "Filters removed all rows.")
             return
@@ -927,8 +959,22 @@ class DependentScatterModule:
         x_numeric = pd.to_numeric(filtered[x_column], errors="coerce")
         y_numeric = pd.to_numeric(filtered[y_column], errors="coerce")
         valid = filtered[x_numeric.notna() & y_numeric.notna()].copy()
+        rows_after_numeric = len(valid)
+        removed_by_filters = max(total_rows - rows_after_filters, 0)
+        removed_by_numeric = max(rows_after_filters - rows_after_numeric, 0)
+
         if len(valid) < 2:
-            messagebox.showerror("Not enough points", "At least 2 valid points required after filtering.")
+            messagebox.showerror(
+                "Not enough points",
+                (
+                    "At least 2 valid points required after filtering.\n\n"
+                    f"Total rows in sheet: {total_rows}\n"
+                    f"After filters: {rows_after_filters}\n"
+                    f"Usable for X/Y: {rows_after_numeric}\n"
+                    f"Filtered out by filters: {removed_by_filters}\n"
+                    f"Discarded due to missing/non-numeric X or Y: {removed_by_numeric}"
+                ),
+            )
             return
 
         color_series, color_map, color_meta, color_legend = self._prepare_color_encoding(valid, color_display, color_column)
@@ -1042,7 +1088,14 @@ class DependentScatterModule:
         self.fig.subplots_adjust(left=0.12, right=0.78, bottom=0.12, top=0.95)
 
         sheet_label = self._sheet_labels.get(self.active_sheet_name, self.active_sheet_name or "<no sheet>")
-        self.info_var.set(f"Sheet: {sheet_label}    |    Points: {len(valid)}")
+        removed_total = removed_by_filters + removed_by_numeric
+        info_parts = [f"Sheet: {sheet_label}", f"Points plotted: {rows_after_numeric}"]
+        if removed_total > 0:
+            info_parts.append(
+                f"Filtered out: {removed_total} "
+                f"(filters: {removed_by_filters}, non-numeric / missing X or Y: {removed_by_numeric})"
+            )
+        self.info_var.set("    |    ".join(info_parts))
 
         self.canvas.draw_idle()
         self.last_encoding_info = {"color": color_meta, "shape": shape_meta}
