@@ -183,6 +183,7 @@ class PlotModule:
         self.group_var = tk.StringVar(value="<None>")
         self.errorbar_var = tk.BooleanVar(value=False)
         self.mono_var = tk.BooleanVar(value=False)
+        self.connect_lines_var = tk.BooleanVar(value=True)
         self.dpi_var = tk.IntVar(value=300)
         self.hline_enabled_var = tk.BooleanVar(value=False)
         self.hline_value_var = tk.StringVar()
@@ -250,6 +251,18 @@ class PlotModule:
 
         self.mono_chk = ttk.Checkbutton(sel, text="Monochrome preview", variable=self.mono_var, command=self._on_option_change)
         self.mono_chk.grid(row=0, column=7, sticky=tk.W)
+
+        # Second row for additional display options
+        sel2 = ttk.Frame(container)
+        sel2.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(0, 4))
+        sel2.columnconfigure(0, weight=0)
+        self.connect_chk = ttk.Checkbutton(
+            sel2,
+            text="Connect points with lines",
+            variable=self.connect_lines_var,
+            command=self._on_option_change,
+        )
+        self.connect_chk.grid(row=0, column=0, sticky=tk.W)
 
         # Optional reference lines controls
         self.hline_chk = ttk.Checkbutton(
@@ -349,7 +362,7 @@ class PlotModule:
     def _set_controls_state(self, state: str):
         # Only set the state of the primary controls here.
         # Constraint comboboxes are managed separately by _populate_constraint_options/_apply_constraint_enablement.
-        for w in [self.x_combo, self.y_combo, self.group_combo, self.err_chk, self.mono_chk]:
+        for w in [self.x_combo, self.y_combo, self.group_combo, self.err_chk, self.mono_chk, self.connect_chk]:
             try:
                 w.configure(state=state)
             except Exception:
@@ -503,6 +516,7 @@ class PlotModule:
             'group': self.group_var.get(),
             'errorbars': bool(self.errorbar_var.get()),
             'monochrome': bool(self.mono_var.get()),
+            'connect_lines': bool(self.connect_lines_var.get()),
             'dpi': int(self.dpi_var.get()),
             'hline_enabled': bool(self.hline_enabled_var.get()),
             'hline_value': self.hline_value_var.get(),
@@ -538,6 +552,7 @@ class PlotModule:
                 self.group_var.set(group_val)
             self.errorbar_var.set(bool(state.get('errorbars')))
             self.mono_var.set(bool(state.get('monochrome')))
+            self.connect_lines_var.set(bool(state.get('connect_lines', True)))
             dpi_val = state.get('dpi')
             if dpi_val in (300, 600):
                 self.dpi_var.set(dpi_val)
@@ -955,6 +970,7 @@ class PlotModule:
 
         groups = self._prepare_plot_data(filtered, x_column, y_column, group_column)
         styles = self._group_styles(len(groups), self.mono_var.get())
+        connect = bool(self.connect_lines_var.get())
 
         for (gidx, (gval, gdf)) in enumerate(groups):
             color, marker, linestyle = styles[gidx]
@@ -963,8 +979,17 @@ class PlotModule:
             y = _as_float_array(gdf[y_column])
             x = self._maybe_jitter(x)
 
-            # Connect with lines within each group in ascending X
-            self.ax.plot(x, y, linestyle=linestyle, linewidth=1.5, color=color, alpha=1.0, antialiased=True)
+            # Optional connecting lines within each group in ascending X
+            if connect:
+                self.ax.plot(
+                    x,
+                    y,
+                    linestyle=linestyle,
+                    linewidth=1.5,
+                    color=color,
+                    alpha=1.0,
+                    antialiased=True,
+                )
 
             # Scatter markers (edge black 0.6pt, size ~ 42pt^2)
             self.ax.scatter(
