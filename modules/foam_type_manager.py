@@ -1063,8 +1063,8 @@ Note: Foam names with "/" create nested folders (e.g., "Foam_A/Type_1" → Foam_
             self.create_folder_structure(paper_path, selected_foams)
             
             # Create templates (new minimal format)
-            self.create_doe_template_v2(paper_path, selected_foams)
-            self.create_density_template_v2(paper_path, selected_foams)
+            self.foam_manager.create_doe_template_v2(paper_path, selected_foams)
+            self.foam_manager.create_density_template_v2(paper_path, selected_foams)
             
             # Add paper to manager and persist its root path
             self.foam_manager.add_paper(paper_name)
@@ -1121,6 +1121,11 @@ Note: Foam names with "/" create nested folders (e.g., "Foam_A/Type_1" → Foam_
                 foam_path / "Combine",
                 foam_path / "Combine" / "Previous results"
             ])
+            # Add additive/% subfolders when defined in formulations
+            try:
+                self.foam_manager.create_foam_folders_if_needed(foam)
+            except Exception:
+                pass
         
         # Create all folders
         for folder in folders:
