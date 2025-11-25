@@ -260,7 +260,11 @@ class FoamTypeManager:
                     if not loadings:
                         loadings = [None]
                     for load in loadings:
-                        base_add_path = foam_path / additive if load is None else foam_path / additive / f"{load}%"
+                        if load is None:
+                            base_add_path = foam_path / additive
+                        else:
+                            load_str = str(load).replace(".", "_")
+                            base_add_path = foam_path / additive / load_str
                         # Mirror per-module Input/Output structure
                         additive_folders = [
                             base_add_path / "PDR" / "Input",
