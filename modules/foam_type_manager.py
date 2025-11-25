@@ -1222,6 +1222,132 @@ Note: Foam names with "/" create nested folders (e.g., "Foam_A/Type_1" → Foam_
         self.top.grab_release()
         self.top.destroy()
 
+
+class AdditiveManagerDialog:
+    """Dialog to manage additives and loadings per foam (global)."""
+    def __init__(self, parent, foam_manager: FoamTypeManager):
+        import tkinter as tk
+        from tkinter import ttk, messagebox
+        self.parent = parent
+        self.foam_manager = foam_manager
+        self.formulations = foam_manager.get_formulations().copy()
+
+        self.top = tk.Toplevel(parent)
+        self.top.title("Manage Additives")
+        self.top.transient(parent)
+        self.top.grab_set()
+        self.top.resizable(False, False)
+
+        frame = ttk.Frame(self.top, padding=15)
+        frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        frame.columnconfigure(1, weight=1)
+
+        ttk.Label(frame, text="Foam:", font=("Arial", 10, "bold")).grid(row=0, column=0, sticky=tk.W, padx=(0, 8))
+        foams = foam_manager.get_foam_types()
+        self.foam_var = tk.StringVar(value=foams[0] if foams else "")
+        self.foam_combo = ttk.Combobox(frame, textvariable=self.foam_var, values=foams, state="readonly", width=20)
+        self.foam_combo.grid(row=0, column=1, sticky=(tk.W, tk.E))
+        self.foam_combo.bind("<<ComboboxSelected>>", lambda _e: self._refresh_list())
+
+        list_frame = ttk.LabelFrame(frame, text="Additives for foam", padding=10)
+        list_frame.grid(row=1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(10, 10))
+        list_frame.columnconfigure(0, weight=1)
+        self.listbox = tk.Listbox(list_frame, height=6, width=45)
+        self.listbox.grid(row=0, column=0, sticky=(tk.W, tk.E))
+        self.listbox.bind("<<ListboxSelect>>", lambda _e: self._on_select())
+
+        form = ttk.LabelFrame(frame, text="Add / Update", padding=10)
+        form.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E))
+        form.columnconfigure(1, weight=1)
+        ttk.Label(form, text="Additive:").grid(row=0, column=0, sticky=tk.W)
+        self.additive_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.additive_var, width=18).grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(6, 0))
+        ttk.Label(form, text="Loadings (%):").grid(row=1, column=0, sticky=tk.W, pady=(6, 0))
+        self.loadings_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.loadings_var, width=18).grid(row=1, column=1, sticky=(tk.W, tk.E), padx=(6, 0), pady=(6, 0))
+        ttk.Label(form, text="Ej.: 1, 3, 5   (vacío = sin % específica)").grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=(6, 0))
+
+        btns = ttk.Frame(form)
+        btns.grid(row=3, column=0, columnspan=2, pady=(8, 0), sticky=tk.W)
+        ttk.Button(btns, text="Guardar", command=self.save_current).grid(row=0, column=0, padx=(0, 6))
+        ttk.Button(btns, text="Eliminar", command=self.delete_current).grid(row=0, column=1)
+
+        ttk.Button(frame, text="Cerrar", command=self.close).grid(row=3, column=1, sticky=tk.E, pady=(12, 0))
+
+        self._refresh_list()
+
+    def _get_current_additives(self):
+        foam = self.foam_var.get()
+        return self.formulations.get(foam, {})
+
+    def _refresh_list(self):
+        self.listbox.delete(0, "end")
+        for additive, loads in self._get_current_additives().items():
+            loads_txt = ", ".join(str(l) for l in loads) if loads else "(sin %)"
+            self.listbox.insert("end", f"{additive}: {loads_txt}")
+        self.additive_var.set("")
+        self.loadings_var.set("")
+
+    def _on_select(self):
+        sel = self.listbox.curselection()
+        if not sel:
+            return
+        idx = sel[0]
+        items = list(self._get_current_additives().items())
+        if idx >= len(items):
+            return
+        additive, loads = items[idx]
+        self.additive_var.set(additive)
+        self.loadings_var.set(", ".join(str(l) for l in loads) if loads else "")
+
+    def _parse_loadings(self, txt: str):
+        cleaned = txt.strip()
+        if not cleaned:
+            return []
+        vals = []
+        for part in cleaned.split(","):
+            p = part.strip().replace(",", ".")
+            if not p:
+                continue
+            try:
+                vals.append(float(p))
+            except Exception:
+                pass
+        return vals
+
+    def save_current(self):
+        from tkinter import messagebox
+        foam = self.foam_var.get()
+        additive = self.additive_var.get().strip()
+        if not foam or not additive:
+            messagebox.showwarning("Falta información", "Selecciona una espuma y escribe un aditivo.")
+            return
+        loads = self._parse_loadings(self.loadings_var.get())
+        self.formulations.setdefault(foam, {})[additive] = loads
+        self.foam_manager.set_formulations(self.formulations)
+        self.foam_manager.create_foam_folders_if_needed(foam)
+        self._refresh_list()
+        messagebox.showinfo("Guardado", f"Aditivo '{additive}' actualizado para {foam}.")
+
+    def delete_current(self):
+        from tkinter import messagebox
+        foam = self.foam_var.get()
+        sel = self.listbox.curselection()
+        if not sel:
+            return
+        additive = self.listbox.get(sel[0]).split(":")[0].strip()
+        if foam in self.formulations and additive in self.formulations[foam]:
+            del self.formulations[foam][additive]
+            if not self.formulations[foam]:
+                del self.formulations[foam]
+            self.foam_manager.set_formulations(self.formulations)
+            self._refresh_list()
+            messagebox.showinfo("Eliminado", f"Aditivo '{additive}' borrado de {foam}.")
+
+    def close(self):
+        self.top.grab_release()
+        self.top.destroy()
+
     # --- New minimal templates ---
     def create_doe_template_v2(self, paper_path, foam_types):
         """Create DoE.xlsx with minimal headers, one sheet per foam type."""
@@ -1619,10 +1745,12 @@ class ManageFoamsDialog:
             "* Select foams under 'Available to Add' and click 'Add to the paper'\n"
             "* New foam folder structures will be created if they don't exist\n"
             "* Templates (DoE.xlsx, Density.xlsx) will be updated with new foams\n"
-            "* Use 'Delete Selected' to remove unused foams from the application"
+            "* Use 'Delete Selected' to remove unused foams from the application\n"
+            "* Manage additives and % for each foam (folders auto-create)"
         )
         
         ttk.Label(info_frame, text=info_text, justify=tk.LEFT).grid(row=0, column=0, sticky=tk.W)
+        ttk.Button(info_frame, text="Manage additives...", command=self.open_additives_manager).grid(row=1, column=0, pady=(8, 0), sticky=tk.W)
         
         # Buttons
         btn_frame = ttk.Frame(main_frame)
@@ -1754,7 +1882,11 @@ class ManageFoamsDialog:
         self.available_foam_vars[custom] = tk.BooleanVar(value=True)
         self._render_available_foams()
         self.custom_foam_var.set("")
-    
+
+    def open_additives_manager(self):
+        """Open dialog to manage additives/loadings for foams."""
+        AdditiveManagerDialog(self.top, self.foam_manager)
+
     def apply_changes(self):
         from tkinter import messagebox
         from pathlib import Path
