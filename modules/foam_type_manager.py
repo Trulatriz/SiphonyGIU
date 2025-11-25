@@ -36,6 +36,9 @@ class FoamTypeManager:
             },
             # Module paths organized by module -> paper -> foam_type -> paths
             "module_paths": {},
+            # Optional additive/loadings definitions per base foam
+            # Example: {"HDPE": {"PEG": [1, 3, 5], "MCC": [1, 3]}}
+            "formulations": {},
             # Per-paper All_Results.xlsx path (optional)
             "all_results_paths": {}
         }
@@ -99,6 +102,24 @@ class FoamTypeManager:
     def get_foam_types(self) -> List[str]:
         """Get list of all foam types"""
         return self.config["foam_types"]
+
+    def get_formulations(self) -> Dict:
+        """Return additive/loadings mapping per base foam (may be empty)."""
+        return self.config.get("formulations", {})
+
+    def set_formulations(self, formulations: Dict):
+        """Persist additive/loadings mapping per base foam."""
+        self.config["formulations"] = formulations or {}
+        self.save_config()
+
+    def get_additives_for_foam(self, foam: str) -> List[str]:
+        """List additives defined for a base foam."""
+        return list(self.get_formulations().get(foam, {}).keys())
+
+    def get_loadings_for_additive(self, foam: str, additive: str) -> List[float]:
+        """List loadings (%) for an additive of a base foam."""
+        loads = self.get_formulations().get(foam, {}).get(additive, [])
+        return loads if isinstance(loads, list) else []
     
     def get_foam_types_for_paper(self, paper: Optional[str] = None) -> List[str]:
         """Get foam types associated with a specific paper"""
@@ -232,7 +253,28 @@ class FoamTypeManager:
                 
                 for folder in foam_folders:
                     folder.mkdir(parents=True, exist_ok=True)
-                    
+                # Add additive/loadings subfolders when defined
+                formulations = self.get_formulations().get(foam_type, {})
+                for additive, loadings in formulations.items():
+                    # Support empty loadings list -> create additive root only
+                    if not loadings:
+                        loadings = [None]
+                    for load in loadings:
+                        base_add_path = foam_path / additive if load is None else foam_path / additive / f"{load}%"
+                        # Mirror per-module Input/Output structure
+                        additive_folders = [
+                            base_add_path / "PDR" / "Input",
+                            base_add_path / "PDR" / "Output",
+                            base_add_path / "DSC" / "Input",
+                            base_add_path / "DSC" / "Output",
+                            base_add_path / "SEM" / "Input",
+                            base_add_path / "SEM" / "Output",
+                            base_add_path / "Open-cell content" / "Input",
+                            base_add_path / "Open-cell content" / "Output",
+                        ]
+                        for folder in additive_folders:
+                            folder.mkdir(parents=True, exist_ok=True)
+
                 print(f"Created folder structure for {foam_type} in {current_paper}")
         except Exception as e:
             print(f"Could not auto-create folders for {foam_type}: {e}")
@@ -1096,12 +1138,15 @@ Note: Foam names with "/" create nested folders (e.g., "Foam_A/Type_1" → Foam_
             for foam in foam_types:
                 # Create sample data for this foam type
                 data = [{
-                    'Label': '20250204',
+                    'Label': 'HDPE-PEG-3%',
                     'Plastic name': foam,
+                    'Base Polymer': foam,
+                    'Additive': 'PEG',
+                    'Additive %': 3,
                     'Enterprise': '',
                     'm (g)': '10',
                     'Water (g)': 0,
-                    'T (ºC)': 120,
+                    'T (°C)': 120,
                     'P CO2 (bar)': 200,
                     't (min)': 30,
                     'SEM measured?': 'Yes',
@@ -1181,7 +1226,7 @@ Note: Foam names with "/" create nested folders (e.g., "Foam_A/Type_1" → Foam_
     def create_doe_template_v2(self, paper_path, foam_types):
         """Create DoE.xlsx with minimal headers, one sheet per foam type."""
         import pandas as pd
-        cols = ['Label', 'm (g)', 'Water (g)', 'T (°C)', 'P CO2 (bar)', 't (min)']
+        cols = ['Label', 'Base Polymer', 'Additive', 'Additive %', 'm (g)', 'Water (g)', 'T (°C)', 'P CO2 (bar)', 't (min)']
         doe_path = paper_path / "DoE.xlsx"
         with pd.ExcelWriter(doe_path, engine='openpyxl') as writer:
             for foam in foam_types:

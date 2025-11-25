@@ -26,6 +26,9 @@ INDEPENDENT_OPTIONS = [
     ("Psat (MPa)", "Psat (MPa)", r"$P_{\mathrm{sat}}\;(\mathrm{MPa})$"),
     ("tsat (min)", "t (min)", r"$t_{\mathrm{sat}}\;(\mathrm{min})$"),
     ("PDR (MPa/s)", "PDR (MPa/s)", r"$\mathrm{PDR}\;(\mathrm{MPa}/\mathrm{s})$"),
+    ("Additive %", "Additive %", r"\\text{Additive }(\\%)"),
+    ("Additive", "Additive", r"\\text{Additive}"),
+    ("Base Polymer", "Base Polymer", r"\\text{Base Polymer}"),
 ]
 
 INDEPENDENTS = [display for display, _column, _latex in INDEPENDENT_OPTIONS]
