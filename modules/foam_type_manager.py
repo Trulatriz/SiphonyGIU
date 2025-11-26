@@ -569,6 +569,67 @@ class FoamTypeManager:
         scopes[module] = scope
         self.save_config()
 
+    # ----- Template helpers -----
+    def create_doe_template_v2(self, paper_path, foam_types):
+        """Create DoE.xlsx with minimal headers, one sheet per foam (no aditivo)."""
+        import pandas as pd
+        cols = ['Label', 'm (g)', 'Water (g)', 'T (\u00B0C)', 'P CO2 (bar)', 't (min)']
+        doe_path = paper_path / "DoE.xlsx"
+        with pd.ExcelWriter(doe_path, engine='openpyxl') as writer:
+            for foam in foam_types:
+                df = pd.DataFrame([{c: '' for c in cols}])
+                sheet = foam[:31]
+                df.to_excel(writer, sheet_name=sheet, index=False)
+                ws = writer.sheets[sheet]
+                # Auto width
+                for col in ws.columns:
+                    max_len = 0
+                    col_letter = col[0].column_letter
+                    for cell in col:
+                        try:
+                            if cell.value is not None:
+                                max_len = max(max_len, len(str(cell.value)))
+                        except Exception:
+                            pass
+                    ws.column_dimensions[col_letter].width = min(max_len + 2, 50)
+
+    def create_density_template_v2(self, paper_path, foam_types):
+        """Create Density.xlsx per foam with formulas on row 2 (no aditivo split)."""
+        import pandas as pd
+        from openpyxl.utils import get_column_letter
+        headers = [
+            'Polymer', 'Label', 'Measure 1', 'Measure 2', 'Measure 3',
+            'ρ foam (g/cm^3)', 'Desvest ρ foam (g/cm^3)', '%DER ρ foam (g/cm^3)',
+            'ρr', 'X', 'Porosity (%)', '', 'ρ solid polymer (g/cm^3)',
+            'Measure 1', 'Measure 2', 'Measure 3'
+        ]
+        density_path = paper_path / "Density.xlsx"
+        with pd.ExcelWriter(density_path, engine='openpyxl') as writer:
+            for foam in foam_types:
+                df = pd.DataFrame([[''] * len(headers)], columns=headers)
+                sheet = foam[:31]
+                df.to_excel(writer, sheet_name=sheet, index=False)
+                ws = writer.sheets[sheet]
+                # Formulas row 2
+                ws['F2'] = "=AVERAGE(C2:E2)"
+                ws['G2'] = "=STDEV(C2:E2)"
+                ws['M2'] = "=AVERAGE(N2:P2)"
+                ws['H2'] = "=G2/F2*100"
+                ws['I2'] = "=F2/$M$2"
+                ws['J2'] = "=1/I2"
+                ws['K2'] = "=100*(1-1/I2)"
+                # Autosize
+                for col in ws.columns:
+                    max_len = 0
+                    col_letter = col[0].column_letter
+                    for cell in col:
+                        try:
+                            if cell.value is not None:
+                                max_len = max(max_len, len(str(cell.value)))
+                        except Exception:
+                            pass
+                    ws.column_dimensions[col_letter].width = min(max_len + 2, 50)
+
 
 class FoamTypeSelector:
     """GUI component for selecting foam type"""
