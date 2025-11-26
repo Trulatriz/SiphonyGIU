@@ -571,9 +571,9 @@ class FoamTypeManager:
 
     # ----- Template helpers -----
     def create_doe_template_v2(self, paper_path, foam_types):
-        """Create DoE.xlsx with minimal headers, one sheet per foam (no aditivo)."""
+        """Create DoE.xlsx with minimal headers, one sheet per foam (incl. additive columns)."""
         import pandas as pd
-        cols = ['Label', 'm (g)', 'Water (g)', 'T (\u00B0C)', 'P CO2 (bar)', 't (min)']
+        cols = ['Label', 'Additive', 'Additive %', 'm (g)', 'Water (g)', 'T (\u00B0C)', 'P CO2 (bar)', 't (min)']
         doe_path = paper_path / "DoE.xlsx"
         with pd.ExcelWriter(doe_path, engine='openpyxl') as writer:
             for foam in foam_types:

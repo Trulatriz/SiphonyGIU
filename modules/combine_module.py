@@ -928,23 +928,28 @@ class CombineModule:
     # ----- Reading helpers -----
     def _read_doe(self, path, foam):
         if not path or not os.path.exists(path):
-            return pd.DataFrame(columns=['Label','m(g)','Water (g)','T (Â°C)','P CO2 (bar)','t (min)'])
+            return pd.DataFrame(columns=['Label','Additive','Additive %','m(g)','Water (g)','T (??C)','P CO2 (bar)','t (min)'])
         try:
             df = pd.read_excel(path, sheet_name=foam)
             cols_map = {}
             for c in df.columns:
                 cn = str(c).strip()
                 if cn.lower().startswith('label'): cols_map[c]='Label'
+                elif cn.lower().startswith('additive'): cols_map[c]='Additive'
+                elif '%' in cn or 'additive %' in cn.lower(): cols_map[c]='Additive %'
                 elif cn.startswith('m(g)') or cn.startswith('m (g)'): cols_map[c]='m(g)'
                 elif cn.lower().startswith('water'): cols_map[c]='Water (g)'
-                elif 'T' in cn and 'Â°C' in cn: cols_map[c]='T (Â°C)'
+                elif 'T' in cn and '??C' in cn: cols_map[c]='T (??C)'
                 elif 'P' in cn and 'CO2' in cn: cols_map[c]='P CO2 (bar)'
                 elif cn.lower().startswith('t (min') or cn.lower().startswith('t (min)') or cn.lower().startswith('t'):
                     cols_map[c]='t (min)'
             df = df.rename(columns=cols_map)
-            return df[['Label','m(g)','Water (g)','T (Â°C)','P CO2 (bar)','t (min)']].dropna(subset=['Label'])
+            for col in ['Additive','Additive %','m(g)','Water (g)','T (??C)','P CO2 (bar)','t (min)']:
+                if col not in df.columns:
+                    df[col] = pd.NA
+            return df[['Label','Additive','Additive %','m(g)','Water (g)','T (??C)','P CO2 (bar)','t (min)']].dropna(subset=['Label'])
         except Exception:
-            return pd.DataFrame(columns=['Label','m(g)','Water (g)','T (Â°C)','P CO2 (bar)','t (min)'])
+            return pd.DataFrame(columns=['Label','Additive','Additive %','m(g)','Water (g)','T (??C)','P CO2 (bar)','t (min)'])
 
     def _read_density(self, path, foam):
         fallback_cols = ['Label'] + DENSITY_DATA_COLUMNS
