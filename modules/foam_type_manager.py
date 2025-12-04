@@ -232,54 +232,21 @@ class FoamTypeManager:
             # Check if paper folder exists (indicating it was created via NewPaper)
             if base_path.exists():
                 foam_path = base_path / foam_type
-                # Legacy flat folders (kept for backward compatibility)
+                # Simple per-foam folders only (no additive subfolders)
                 foam_folders = [
                     foam_path / "PDR" / "Input",
                     foam_path / "PDR" / "Output",
-                    foam_path / "DSC" / "Input", 
+                    foam_path / "DSC" / "Input",
                     foam_path / "DSC" / "Output",
                     foam_path / "SEM" / "Input",
                     foam_path / "SEM" / "Output",
                     foam_path / "Open-cell content" / "Input",
-                    foam_path / "Open-cell content" / "Output"
+                    foam_path / "Open-cell content" / "Output",
+                    foam_path / "Combine",
+                    foam_path / "Combine" / "Previous results",
                 ]
                 for folder in foam_folders:
                     folder.mkdir(parents=True, exist_ok=True)
-
-                # Structured folders: No additives
-                no_add_path = foam_path / "No additives"
-                no_add_folders = [
-                    no_add_path / "PDR" / "Input",
-                    no_add_path / "PDR" / "Output",
-                    no_add_path / "DSC" / "Input",
-                    no_add_path / "DSC" / "Output",
-                    no_add_path / "SEM" / "Input",
-                    no_add_path / "SEM" / "Output",
-                    no_add_path / "Open-cell content" / "Input",
-                    no_add_path / "Open-cell content" / "Output",
-                ]
-                for folder in no_add_folders:
-                    folder.mkdir(parents=True, exist_ok=True)
-
-                # Structured folders: Additives/<additive>/<load>
-                formulations = self.get_formulations().get(foam_type, {})
-                for additive, loadings in formulations.items():
-                    if not loadings:
-                        loadings = [None]
-                    for load in loadings:
-                        base_add_path = foam_path / "Additives" / additive if load is None else foam_path / "Additives" / additive / str(load).replace(".", "_")
-                        additive_folders = [
-                            base_add_path / "PDR" / "Input",
-                            base_add_path / "PDR" / "Output",
-                            base_add_path / "DSC" / "Input",
-                            base_add_path / "DSC" / "Output",
-                            base_add_path / "SEM" / "Input",
-                            base_add_path / "SEM" / "Output",
-                            base_add_path / "Open-cell content" / "Input",
-                            base_add_path / "Open-cell content" / "Output",
-                        ]
-                        for folder in additive_folders:
-                            folder.mkdir(parents=True, exist_ok=True)
 
                 print(f"Created folder structure for {foam_type} in {current_paper}")
         except Exception as e:
@@ -1042,17 +1009,18 @@ class NewPaperDialog:
         info_frame = ttk.LabelFrame(main_frame, text="What will be created", padding=10)
         info_frame.grid(row=4, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(15, 0))
         
-        info_text = """• Paper folder structure under base path
-• DoE.xlsx template
-• Density.xlsx template  
-• Folder structure per foam type with Input/Output subfolders:
+        info_text = """? Paper folder structure under base path
+? DoE.xlsx template
+? Density.xlsx template  
+? Folder structure per foam type with Input/Output subfolders:
   - PDR: Input, Output
   - DSC: Input, Output  
   - SEM: Input (images), Output (histogram results from web analysis)
   - Open-cell content: Input, Output
-• Templates stored at paper root level
+  - Combine: root + Previous results
+? Templates stored at paper root level
 
-Note: Foam names with "/" create nested folders (e.g., "Foam_A/Type_1" → Foam_A/Type_1/)"""
+Note: Foam names with "/" create nested folders (e.g., "Foam_A/Type_1" -> Foam_A/Type_1/)"""
         
         ttk.Label(info_frame, text=info_text, justify=tk.LEFT).grid(row=0, column=0, sticky=tk.W)
         
@@ -1188,39 +1156,6 @@ Note: Foam names with "/" create nested folders (e.g., "Foam_A/Type_1" → Foam_
                 foam_path / "Combine",
                 foam_path / "Combine" / "Previous results"
             ])
-            # Structured: No additives
-            no_add_path = foam_path / "No additives"
-            folders.extend([
-                no_add_path / "PDR" / "Input",
-                no_add_path / "PDR" / "Output",
-                no_add_path / "DSC" / "Input",
-                no_add_path / "DSC" / "Output",
-                no_add_path / "SEM" / "Input",
-                no_add_path / "SEM" / "Output",
-                no_add_path / "Open-cell content" / "Input",
-                no_add_path / "Open-cell content" / "Output",
-            ])
-            # Structured: Additives/<additive>/<load>
-            formulations = self.foam_manager.get_formulations().get(foam, {})
-            for additive, loadings in formulations.items():
-                loads = loadings if loadings else [None]
-                for load in loads:
-                    base_add_path = foam_path / "Additives" / additive if load is None else foam_path / "Additives" / additive / str(load).replace(".", "_")
-                    folders.extend([
-                        base_add_path / "PDR" / "Input",
-                        base_add_path / "PDR" / "Output",
-                        base_add_path / "DSC" / "Input",
-                        base_add_path / "DSC" / "Output",
-                        base_add_path / "SEM" / "Input",
-                        base_add_path / "SEM" / "Output",
-                        base_add_path / "Open-cell content" / "Input",
-                        base_add_path / "Open-cell content" / "Output",
-                    ])
-            # Add additive/% subfolders when defined in formulations
-            try:
-                self.foam_manager.create_foam_folders_if_needed(foam)
-            except Exception:
-                pass
         
         # Create all folders
         for folder in folders:
@@ -1846,7 +1781,7 @@ class ManageFoamsDialog:
             "* New foam folder structures will be created if they don't exist\n"
             "* Templates (DoE.xlsx, Density.xlsx) will be updated with new foams\n"
             "* Use 'Delete Selected' to remove unused foams from the application\n"
-            "* Manage additives and % for each foam (folders auto-create)"
+            "* Manage additives and % for each foam (metadata only; no extra folders)"
         )
         
         ttk.Label(info_frame, text=info_text, justify=tk.LEFT).grid(row=0, column=0, sticky=tk.W)
