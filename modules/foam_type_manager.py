@@ -429,7 +429,16 @@ class FoamTypeManager:
             self.save_config()
             return {"updated": 0, "skipped": 0, "old_root": None, "new_root": normalized_new}
 
+        remap_result = self._remap_paths_for_paper(paper, old_root, normalized_new)
+        self.save_config()
+        remap_result["old_root"] = os.path.normpath(old_root)
+        remap_result["new_root"] = normalized_new
+        return remap_result
+
+    def _remap_paths_for_paper(self, paper: str, old_root: str, new_root: str) -> dict:
+        """Internal: remap stored paths for a paper from old_root to new_root."""
         old_norm = os.path.normpath(old_root)
+        new_norm = os.path.normpath(new_root)
 
         def remap_path(value: str) -> str | None:
             if not value or not isinstance(value, str):
@@ -445,7 +454,7 @@ class FoamTypeManager:
                 rel = os.path.relpath(value_norm, old_norm)
             except Exception:
                 return None
-            return os.path.normpath(os.path.join(normalized_new, rel))
+            return os.path.normpath(os.path.join(new_norm, rel))
 
         updated = 0
         skipped = 0
@@ -480,8 +489,86 @@ class FoamTypeManager:
             elif current_results:
                 skipped += 1
 
+        return {"updated": updated, "skipped": skipped}
+
+    def rename_paper(self, old_name: str, new_name: str, move_folder: bool = True) -> dict:
+        """Rename a paper and optionally rename its base folder, remapping stored paths."""
+        if not new_name or not new_name.strip():
+            raise ValueError("New paper name cannot be empty.")
+        new_name = new_name.strip()
+        if old_name == new_name:
+            return {"renamed": False, "reason": "same name"}
+        papers = self.get_papers()
+        if old_name not in papers:
+            raise ValueError(f"Paper '{old_name}' does not exist.")
+        if new_name in papers:
+            raise ValueError(f"Paper '{new_name}' already exists.")
+
+        old_root = self.get_paper_root_path(old_name)
+        new_root = old_root
+        move_error = None
+
+        # Try renaming folder on disk if requested and path exists
+        if move_folder and old_root and os.path.exists(old_root):
+            try:
+                parent = os.path.dirname(old_root)
+                candidate = os.path.normpath(os.path.join(parent, new_name))
+                if os.path.exists(candidate):
+                    raise FileExistsError(f"Target folder already exists: {candidate}")
+                os.rename(old_root, candidate)
+                new_root = candidate
+            except Exception as exc:
+                # Keep old_root if move fails; caller may decide otherwise
+                new_root = old_root
+                move_folder = False
+                move_error = str(exc)
+            else:
+                move_error = None
+        else:
+            move_error = None
+
+        # Remap stored absolute paths if base changed
+        remap_result = {"updated": 0, "skipped": 0}
+        if old_root and new_root and old_root != new_root:
+            remap_result = self._remap_paths_for_paper(old_name, old_root, new_root)
+
+        # Rename keys in config
+        self.config["papers"] = [new_name if p == old_name else p for p in papers]
+
+        prp = self.config.setdefault("paper_root_paths", {})
+        if old_name in prp:
+            prp[new_name] = new_root
+            del prp[old_name]
+
+        pft = self.config.get("paper_foam_types", {})
+        if old_name in pft:
+            pft[new_name] = pft.pop(old_name)
+
+        all_results = self.config.setdefault("all_results_paths", {})
+        if old_name in all_results:
+            all_results[new_name] = all_results.pop(old_name)
+
+        mp = self.config.get("module_paths", {})
+        for module, by_paper in mp.items():
+            if not isinstance(by_paper, dict):
+                continue
+            if old_name in by_paper:
+                by_paper[new_name] = by_paper.pop(old_name)
+
+        if self.get_current_paper() == old_name:
+            self.config["current_paper"] = new_name
+
         self.save_config()
-        return {"updated": updated, "skipped": skipped, "old_root": old_norm, "new_root": normalized_new}
+        return {
+            "renamed": True,
+            "old_name": old_name,
+            "new_name": new_name,
+            "moved_folder": move_folder and bool(old_root),
+            "move_error": move_error,
+            "old_root": old_root,
+            "new_root": new_root,
+            "remap": remap_result,
+        }
 
 
 
@@ -1009,18 +1096,18 @@ class NewPaperDialog:
         info_frame = ttk.LabelFrame(main_frame, text="What will be created", padding=10)
         info_frame.grid(row=4, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(15, 0))
         
-        info_text = """? Paper folder structure under base path
-? DoE.xlsx template
-? Density.xlsx template  
-? Folder structure per foam type with Input/Output subfolders:
+        info_text = """- Paper folder structure under base path
+- DoE.xlsx template
+- Density.xlsx template  
+- Folder structure per foam type with Input/Output subfolders:
   - PDR: Input, Output
   - DSC: Input, Output  
   - SEM: Input (images), Output (histogram results from web analysis)
   - Open-cell content: Input, Output
   - Combine: root + Previous results
-? Templates stored at paper root level
+- Templates stored at paper root level
 
-Note: Foam names with "/" create nested folders (e.g., "Foam_A/Type_1" -> Foam_A/Type_1/)"""
+Note: Foam names with \"/\" create nested folders (e.g., \"Foam_A/Type_1\" -> Foam_A/Type_1/)"""
         
         ttk.Label(info_frame, text=info_text, justify=tk.LEFT).grid(row=0, column=0, sticky=tk.W)
         
@@ -1449,7 +1536,7 @@ class ManagePapersDialog:
 
     def __init__(self, parent, foam_manager: FoamTypeManager):
         import tkinter as tk
-        from tkinter import ttk, messagebox, filedialog
+        from tkinter import ttk, messagebox, filedialog, simpledialog
 
         self.parent = parent
         self.foam_manager = foam_manager
@@ -1504,12 +1591,14 @@ class ManagePapersDialog:
         btns.grid(row=1, column=1, sticky=tk.E, padx=(15, 0), pady=(12, 0))
         self.foams_btn = ttk.Button(btns, text="Manage Foams...", command=self.manage_foams)
         self.foams_btn.grid(row=0, column=0, padx=(0, 6))
+        self.rename_btn = ttk.Button(btns, text="Rename Paper...", command=self.rename_paper)
+        self.rename_btn.grid(row=0, column=1, padx=(0, 6))
         self.change_btn = ttk.Button(btns, text="Change Directory...", command=self.change_directory)
-        self.change_btn.grid(row=0, column=1, padx=(0, 6))
+        self.change_btn.grid(row=0, column=2, padx=(0, 6))
         self.open_btn = ttk.Button(btns, text="Open Folder", command=self.open_folder)
-        self.open_btn.grid(row=0, column=2, padx=(0, 6))
+        self.open_btn.grid(row=0, column=3, padx=(0, 6))
         self.delete_btn = ttk.Button(btns, text="Delete Paper", command=self.delete_paper)
-        self.delete_btn.grid(row=0, column=3)
+        self.delete_btn.grid(row=0, column=4)
 
         close_frame = ttk.Frame(main)
         close_frame.grid(row=2, column=0, columnspan=2, sticky=tk.E, pady=(12, 0))
@@ -1583,7 +1672,7 @@ class ManagePapersDialog:
 
     def _update_buttons_state(self, enabled: bool):
         state = "normal" if enabled else "disabled"
-        for btn in (self.foams_btn, self.change_btn, self.open_btn, self.delete_btn):
+        for btn in (self.foams_btn, self.rename_btn, self.change_btn, self.open_btn, self.delete_btn):
             btn.configure(state=state)
 
     def change_directory(self):
@@ -1643,6 +1732,46 @@ class ManagePapersDialog:
         messagebox.showinfo("Paper deleted", f"Paper '{paper}' has been removed.")
         self._populate_tree()
         self._update_buttons_state(bool(self.paper_items))
+
+    def rename_paper(self):
+        from tkinter import messagebox, simpledialog
+        import os
+        item, paper = self._current_selection()
+        if not paper:
+            return
+        new_name = simpledialog.askstring("Rename Paper", f"New name for '{paper}':", initialvalue=paper)
+        if new_name is None:
+            return
+        new_name = new_name.strip()
+        if not new_name:
+            messagebox.showwarning("Invalid name", "Please enter a valid paper name.")
+            return
+        base = self.foam_manager.get_paper_root_path(paper)
+        move_folder = False
+        if base and os.path.exists(base):
+            move_folder = messagebox.askyesno(
+                "Rename folder",
+                f"Rename the base folder on disk as well?\n\nCurrent: {base}"
+            )
+        try:
+            result = self.foam_manager.rename_paper(paper, new_name, move_folder=move_folder)
+            msg_lines = [f"Paper renamed to '{new_name}'."]
+            if result.get("moved_folder"):
+                msg_lines.append(f"Folder moved to:\n{result.get('new_root', '')}")
+            elif move_folder and result.get("move_error"):
+                msg_lines.append(f"Folder not moved: {result['move_error']}")
+            remap = result.get("remap", {})
+            msg_lines.append(f"Paths remapped: updated {remap.get('updated', 0)}, skipped {remap.get('skipped', 0)}")
+            messagebox.showinfo("Paper renamed", "\n\n".join(msg_lines))
+            self._populate_tree()
+            for node, value in self.paper_items.items():
+                if value == new_name:
+                    self.tree.selection_set(node)
+                    self.tree.focus(node)
+                    self._update_details(new_name)
+                    break
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to rename paper: {e}")
 
     def manage_foams(self):
         from tkinter import messagebox
