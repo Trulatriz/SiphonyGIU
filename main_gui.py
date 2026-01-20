@@ -268,31 +268,6 @@ class PressTechGUI:
 
         widget.bind("<Enter>", show_tooltip)
         widget.bind("<Leave>", hide_tooltip)
-        """Create a tooltip for a widget"""
-        def show_tooltip(event):
-            tooltip = tk.Toplevel()
-            tooltip.wm_overrideredirect(True)
-            tooltip.wm_geometry(f"+{event.x_root+10}+{event.y_root+10}")
-            
-            label = ttk.Label(
-                tooltip, 
-                text=text, 
-                background="lightyellow",
-                relief="solid",
-                borderwidth=1,
-                font=('Arial', 9)
-            )
-            label.pack()
-            
-            widget.tooltip = tooltip
-        
-        def hide_tooltip(event):
-            if hasattr(widget, 'tooltip'):
-                widget.tooltip.destroy()
-                del widget.tooltip
-        
-        widget.bind("<Enter>", show_tooltip)
-        widget.bind("<Leave>", hide_tooltip)
     
     def create_status_bar(self):
         """Create status bar at the bottom"""
@@ -353,7 +328,7 @@ class PressTechGUI:
         )
         plots_menu.add_cascade(label="Scatter Plots", menu=scatter_menu)
         plots_menu.add_command(label="Heatmaps", command=self.open_heatmap)
-        tools_menu.add_command(label="📊 Publication Plots", command=self.open_analysis)
+        tools_menu.add_command(label="📊 Publication Plots", command=self.open_publication_plots)
         tools_menu.add_command(label="⚡ Smart Combine", command=self.open_combine)
         tools_menu.add_command(label="🔬 Cell Size & Density", command=self.open_cell_analysis)
         tools_menu.add_separator()
@@ -408,16 +383,6 @@ class PressTechGUI:
         """Update status bar message"""
         self.status_var.set(message)
         self.root.update_idletasks()
-    
-    def open_analysis(self):
-        """Legacy entry: route to Publication Plots."""
-        return self.open_publication_plots()
-
-
-
-
-
-
     
     def open_combine(self):
         """Open Smart Combine Results module"""
@@ -808,7 +773,7 @@ Developed for advanced polymer foam research.
         
         # Paper-level analysis
         ttk.Label(frame, text="Paper-Level Analysis:", font=("Arial", 11, "bold")).grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=(0, 10))
-        a_btn = ttk.Button(frame, text="📊 Publication Plots", command=lambda: (dialog.destroy(), self.open_analysis()), width=25)
+        a_btn = ttk.Button(frame, text="📊 Publication Plots", command=lambda: (dialog.destroy(), self.open_publication_plots()), width=25)
         a_btn.grid(row=2, column=0, padx=(0, 10), pady=5, sticky=(tk.W, tk.E))
         c_btn = ttk.Button(frame, text="⚡ Smart Combine", command=lambda: (dialog.destroy(), self.open_combine()), width=25)
         c_btn.grid(row=2, column=1, padx=(10, 0), pady=5, sticky=(tk.W, tk.E))
@@ -877,7 +842,7 @@ Developed for advanced polymer foam research.
         if workflow == "specific":
             self.show_select_analysis_dialog()
         elif workflow == "analysis":
-            self.open_analysis()
+            self.open_publication_plots()
         elif workflow == "combine":
             self.open_combine()
 
@@ -998,11 +963,6 @@ Developed for advanced polymer foam research.
         self.settings.set("window_geometry", self.root.geometry())
         self.root.destroy()
     
-    def update_status(self, message):
-        """Update status bar message"""
-        self.status_var.set(message)
-        self.root.update_idletasks()
-
 def main():
     root = tk.Tk()
     app = PressTechGUI(root)

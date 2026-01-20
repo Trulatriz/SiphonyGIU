@@ -6,26 +6,6 @@ import re
 import glob
 import shutil
 import string  # stray block below is disabled
-if False:
-        foam_types = self.foam_manager.get_foam_types()
-        print(f"DEBUG: Creating foam tabs for: {foam_types}")  # Debug
-        
-        for foam_type in foam_types:
-            # Create tab for this foam type
-            foam_frame = ttk.Frame(self.notebook)
-            self.notebook.add(foam_frame, text=f"Ã°Å¸Â§Å  {foam_type}")
-            
-            # Configure grid
-            foam_frame.columnconfigure(1, weight=1)
-            
-            # Initialize variables for this foam type
-            self.foam_vars[foam_type] = {
-                'sem': tk.StringVar(),
-                'pdr': tk.StringVar(),
-                'oc': tk.StringVar(),
-                'dsc': tk.StringVar()
-            }
-            print(f"DEBUG: Created variables for {foam_type}: {list(self.foam_vars[foam_type].keys())}")  # Debugort datetime
 import openpyxl
 from openpyxl.styles import Font
 from openpyxl.utils.dataframe import dataframe_to_rows
@@ -177,15 +157,6 @@ class CombineModule:
         if matches:
             return matches[-1]
         return label
-
-    def _parse_formulation(self, label: str, fallback_polymer: str | None = None) -> dict:
-        """Fallback metadata when DoE data is missing."""
-        base = fallback_polymer or ""
-        return {
-            "Polymer": base,
-            "Additive": "",
-            "Additive %": pd.NA,
-        }
 
     def create_widgets(self):
         """Create the GUI widgets with tabbed interface for better organization"""
@@ -931,184 +902,209 @@ class CombineModule:
             return pd.DataFrame()
 
     # ----- Reading helpers -----
-    def _read_doe(self, path, foam):
+
+    def _read_doe_pos(self, path, foam):
+        columns = ['Polymer', 'Additive', 'Additive %', 'Label', 'm(g)', 'Water (g)', 'T (\u00B0C)', 'P CO2 (bar)', 'Psat (MPa)', 't (min)']
         if not path or not os.path.exists(path):
-            return pd.DataFrame(columns=['Label','Additive','Additive %','m(g)','Water (g)','T (??C)','P CO2 (bar)','t (min)'])
+            return pd.DataFrame(columns=columns)
         try:
-            df = pd.read_excel(path, sheet_name=foam)
-            cols_map = {}
-            for c in df.columns:
-                cn = str(c).strip()
-                if cn.lower().startswith('label'): cols_map[c]='Label'
-                elif cn.lower().startswith('additive'): cols_map[c]='Additive'
-                elif '%' in cn or 'additive %' in cn.lower(): cols_map[c]='Additive %'
-                elif cn.startswith('m(g)') or cn.startswith('m (g)'): cols_map[c]='m(g)'
-                elif cn.lower().startswith('water'): cols_map[c]='Water (g)'
-                elif 'T' in cn and '??C' in cn: cols_map[c]='T (??C)'
-                elif 'P' in cn and 'CO2' in cn: cols_map[c]='P CO2 (bar)'
-                elif cn.lower().startswith('t (min') or cn.lower().startswith('t (min)') or cn.lower().startswith('t'):
-                    cols_map[c]='t (min)'
-            df = df.rename(columns=cols_map)
-            for col in ['Additive','Additive %','m(g)','Water (g)','T (??C)','P CO2 (bar)','t (min)']:
-                if col not in df.columns:
-                    df[col] = pd.NA
-            return df[['Label','Additive','Additive %','m(g)','Water (g)','T (??C)','P CO2 (bar)','t (min)']].dropna(subset=['Label'])
+            df = pd.read_excel(path, sheet_name=foam, engine='openpyxl')
+            out = pd.DataFrame({
+                'Label': _cm_col(df, 'A').map(self.normalize_label),
+                'Additive': _cm_col(df, 'B'),
+                'Additive %': pd.to_numeric(_cm_col(df, 'C'), errors='coerce'),
+                'm(g)': _cm_col(df, 'D'),
+                'Water (g)': _cm_col(df, 'E'),
+                'T (\u00B0C)': _cm_col(df, 'F'),
+                'P CO2 (bar)': _cm_col(df, 'G'),
+                't (min)': _cm_col(df, 'H'),
+            })
+            out['Polymer'] = foam
+            out['Label'] = out['Label'].fillna("").astype(str).str.strip()
+            out = out[out['Label'] != ""]
+            out = out[~out['Label'].duplicated(keep='first')]
+            out['Additive'] = out['Additive'].fillna("")
+            out = _ensure_psat_column(out)
+            for col in columns:
+                if col not in out.columns:
+                    out[col] = pd.NA
+            return out[columns]
         except Exception:
-            return pd.DataFrame(columns=['Label','Additive','Additive %','m(g)','Water (g)','T (??C)','P CO2 (bar)','t (min)'])
+            return pd.DataFrame(columns=columns)
 
-    def _read_density(self, path, foam):
-        fallback_cols = ['Label'] + DENSITY_DATA_COLUMNS
+    def _read_density_pos(self, path, foam):
+        fallback = ['Label'] + DENSITY_DATA_COLUMNS
         if not path or not os.path.exists(path):
-            return pd.DataFrame(columns=fallback_cols)
+            return pd.DataFrame(columns=fallback)
         try:
-            df = pd.read_excel(path, sheet_name=foam)
-            colmap = {}
-            for c in df.columns:
-                cn = str(c).strip()
-                cn_lower = cn.lower()
-                if cn_lower.startswith('label'):
-                    colmap[c] = 'Label'
-                elif 'foam' in cn_lower and 'g/cm' in cn_lower and 'desvest' not in cn_lower and '%der' not in cn_lower:
-                    colmap[c] = RHO_FOAM_G
-                elif 'desvest' in cn_lower and 'foam' in cn_lower and 'g/cm' in cn_lower:
-                    colmap[c] = DESV_RHO_FOAM_G
-                elif '%der' in cn_lower and 'foam' in cn_lower and 'g/cm' in cn_lower:
-                    colmap[c] = PDER_RHO_FOAM
-                elif 'ρr' in cn or 'ρr' in cn or 'ρᵣ' in cn or 'rho_r' in cn_lower.replace(' ', ''):
-                    colmap[c] = RHO_REL
-                elif cn.strip() == 'X':
-                    colmap[c] = EXPANSION_COL
-            df = df.rename(columns=colmap)
-
-            legacy_rel_cols = [c for c in df.columns if str(c).strip().replace(' ', '') in ('ρr', 'ρᵣ', 'ρr', 'rho_r')]
-            if legacy_rel_cols and RHO_REL not in df.columns:
-                df[RHO_REL] = df[legacy_rel_cols[0]]
-            for legacy in legacy_rel_cols:
-                if legacy != RHO_REL and legacy in df.columns:
-                    df = df.drop(columns=[legacy])
-
-            for k in [RHO_FOAM_G, DESV_RHO_FOAM_G, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL]:
-                if k not in df.columns:
-                    df[k] = pd.NA
-
-            if RHO_FOAM_G in df.columns:
-                rho_g = _normalize_numeric_series(df[RHO_FOAM_G])
-            else:
-                rho_g = pd.Series([pd.NA] * len(df))
-            df[RHO_FOAM_KG] = rho_g * 1000
-
-            if DESV_RHO_FOAM_G in df.columns:
-                desv_g = _normalize_numeric_series(df[DESV_RHO_FOAM_G])
-            else:
-                desv_g = pd.Series([pd.NA] * len(df))
-            df[DESV_RHO_FOAM_KG] = desv_g * 1000
-
-            keep = ['Label'] + DENSITY_DATA_COLUMNS
-            for k in keep:
-                if k not in df.columns:
-                    df[k] = pd.NA
-            return df[keep].dropna(subset=['Label'])
+            df = pd.read_excel(path, sheet_name=foam, engine='openpyxl')
+            out = pd.DataFrame({
+                'Label': _cm_col(df, 'B').map(self.normalize_label),
+                RHO_FOAM_G: _cm_col(df, 'F'),
+                DESV_RHO_FOAM_G: _cm_col(df, 'G'),
+                PDER_RHO_FOAM: _cm_col(df, 'H'),
+                RHO_REL: _cm_col(df, 'I'),
+                EXPANSION_COL: _cm_col(df, 'J'),
+            })
+            out[RHO_FOAM_KG] = _normalize_numeric_series(out[RHO_FOAM_G]) * 1000
+            out[DESV_RHO_FOAM_KG] = _normalize_numeric_series(out[DESV_RHO_FOAM_G]) * 1000
+            return out[['Label'] + DENSITY_DATA_COLUMNS].dropna(subset=['Label'])
         except Exception:
-            return pd.DataFrame(columns=fallback_cols)
+            return pd.DataFrame(columns=fallback)
 
-    def _read_pdr(self, path):
+    def _read_pdr_pos(self, path):
         if not path or not os.path.exists(path):
             return pd.DataFrame(columns=['Label','Pi (MPa)','Pf (MPa)','PDR (MPa/s)'])
         try:
-            df = pd.read_excel(path, sheet_name='Registros')
-            # Label may be 'Filename' or 'Label'
-            if 'Label' not in df.columns:
-                if 'Filename' in df.columns:
-                    df['Label'] = df['Filename']
-            df['Label'] = df['Label'].map(self.normalize_label)
-            keep=['Label','Pi (MPa)','Pf (MPa)','PDR (MPa/s)']
-            for k in keep:
-                if k not in df.columns: df[k]=pd.NA
-            return df[keep].dropna(subset=['Label'])
+            with pd.ExcelFile(path) as xls:
+                sheet = 'Registros' if 'Registros' in xls.sheet_names else xls.sheet_names[0]
+                df = pd.read_excel(xls, sheet_name=sheet, engine='openpyxl')
+            out = pd.DataFrame({
+                'Label': _cm_col(df, 'A').map(self.normalize_label),
+                'Pi (MPa)': _cm_col(df, 'B'),
+                'Pf (MPa)': _cm_col(df, 'C'),
+                'PDR (MPa/s)': _cm_col(df, 'D'),
+            })
+            return out.dropna(subset=['Label'])
         except Exception:
             return pd.DataFrame(columns=['Label','Pi (MPa)','Pf (MPa)','PDR (MPa/s)'])
 
-    def _read_oc(self, path):
+    def _read_oc_pos(self, path):
         if not path or not os.path.exists(path):
+            print(f"DEBUG OC: No path or file doesn't exist: {path}")
             return pd.DataFrame(columns=['Label','OC (%)'])
+        # Estrategia:
+        # 1. Intentar leer valores ya calculados (data_only=True) con openpyxl (si el archivo tiene valores cacheados).
+        # 2. Si vienen todos None/NaN, fallback a lectura positional previa (por si hay valores escritos directamente).
         try:
-            # Try first sheet
-            df = pd.read_excel(path)
-            if 'Label' not in df.columns:
-                # look for a sheet with Label
-                with pd.ExcelFile(path) as xls:
-                    for name in xls.sheet_names:
-                        tmp = pd.read_excel(xls, sheet_name=name)
-                        if 'Label' in tmp.columns:
-                            df = tmp
-                            break
-            if 'OC (%)' not in df.columns:
-                # look for a percent OC column variant
-                for c in df.columns:
-                    if 'OC' in str(c):
-                        df = df.rename(columns={c:'OC (%)'})
-                        break
-            return df[['Label','OC (%)']].dropna(subset=['Label'])
-        except Exception:
+            import openpyxl
+            wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+            ws = wb[wb.sheetnames[0]]
+            headers = []
+            for c in ws[1]:
+                v = c.value
+                if isinstance(v, str):
+                    v = v.strip()
+                headers.append(v)
+            header_map = {str(h).strip().lower(): idx+1 for idx, h in enumerate(headers) if h is not None}
+            # Posibles nombres para %OC
+            oc_candidates = ['%oc', 'oc (%)', 'oc%', 'oc %', 'oc(%)']
+            oc_col_idx = None
+            for cand in oc_candidates:
+                if cand in header_map:
+                    oc_col_idx = header_map[cand]
+                    break
+            # Fallback posicional (K = 11) si no se detectó
+            if oc_col_idx is None and len(headers) >= 11:
+                oc_col_idx = 11
+            label_idx = header_map.get('label', 1)
+            labels = []
+            oc_vals = []
+            # Recorrer filas
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                label_val = row[label_idx-1] if label_idx-1 < len(row) else None
+                if label_val in (None, "", "nan"):
+                    continue
+                oc_raw = None
+                if oc_col_idx is not None and oc_col_idx-1 < len(row):
+                    oc_raw = row[oc_col_idx-1]
+                # Normalizar etiqueta
+                label_norm = self.normalize_label(str(label_val)) if label_val is not None else None
+                # Convertir valor OC
+                oc_num = None
+                if isinstance(oc_raw, (int, float)):
+                    oc_num = float(oc_raw)
+                elif isinstance(oc_raw, str):
+                    txt = oc_raw.strip().replace('%', '').replace(',', '.')
+                    try:
+                        oc_num = float(txt)
+                    except Exception:
+                        oc_num = None
+                labels.append(label_norm)
+                oc_vals.append(oc_num)
+            wb.close()
+            df_out = pd.DataFrame({'Label': labels, 'OC (%)': oc_vals})
+            print(f"DEBUG OC WB: Leídos {len(df_out)} registros desde cache (data_only). Primeros: {df_out.head().to_dict(orient='records')}")
+            # Si todos NaN/None -> fallback
+            if not df_out.empty and df_out['OC (%)'].notna().any():
+                return df_out.dropna(subset=['Label'])
+            print("DEBUG OC WB: Todos los valores %OC son None/NaN tras data_only, fallback a pandas posicional")
+        except Exception as e:
+            print(f"DEBUG OC WB ERROR: {e}. Fallback a pandas posicional")
+
+        # Fallback original (posicional) - puede devolver NaN si son fórmulas sin cache.
+        try:
+            with pd.ExcelFile(path, engine='openpyxl') as xls:
+                df = pd.read_excel(xls, sheet_name=xls.sheet_names[0], engine='openpyxl')
+            print(f"DEBUG OC Fallback: shape={df.shape} cols={list(df.columns)}")
+            out = pd.DataFrame({
+                'Label': _cm_col(df, 'A').map(self.normalize_label),
+                'OC (%)': pd.to_numeric(_cm_col(df, 'K'), errors='coerce'),
+            })
+            print(f"DEBUG OC Fallback: primeras filas {out.head().to_dict(orient='records')}")
+            return out.dropna(subset=['Label'])
+        except Exception as e2:
+            print(f"DEBUG OC Fallback ERROR: {e2}")
             return pd.DataFrame(columns=['Label','OC (%)'])
 
-    def _read_dsc(self, path):
+    def _read_dsc_pos(self, path):
         if not path or not os.path.exists(path):
-            return pd.DataFrame(columns=['Label','DSC Tm (Â°C)','DSC Xc (%)','DSC Tg (Â°C)'])
+            return pd.DataFrame(columns=['Label','DSC Tm (\u00B0C)','DSC Xc (%)','DSC Tg (\u00B0C)'])
         try:
             with pd.ExcelFile(path) as xls:
-                df=None
-                for name in xls.sheet_names:
-                    if 'DSC' in name:
-                        df = pd.read_excel(xls, sheet_name=name)
-                        break
-                if df is None:
-                    df = pd.read_excel(path)
-            # Map possible columns
-            colmap={}
-            for c in df.columns:
-                cn=str(c)
-                if cn.lower().startswith('sample'):
-                    colmap[c]='Label'
-                elif 'Tm' in cn:
-                    colmap[c]='DSC Tm (Â°C)'
-                elif 'Xc' in cn:
-                    colmap[c]='DSC Xc (%)'
-                elif 'Tg' in cn:
-                    colmap[c]='DSC Tg (Â°C)'
-            df=df.rename(columns=colmap)
-            keep=['Label','DSC Tm (Â°C)','DSC Xc (%)','DSC Tg (Â°C)']
-            for k in keep:
-                if k not in df.columns: df[k]=pd.NA
-            return df[keep].dropna(subset=['Label'])
+                names = {n.lower(): n for n in xls.sheet_names}
+                sheet = names.get('dsc_results') or names.get('dsc_tg_results') or xls.sheet_names[0]
+                df = pd.read_excel(xls, sheet_name=sheet, engine='openpyxl')
+            if sheet.lower() == 'dsc_results':
+                out = pd.DataFrame({
+                    'Label': _cm_col(df, 'A').map(self.normalize_label),
+                    'DSC Xc (%)': _cm_col(df, 'C'),
+                    'DSC Tm (\u00B0C)': _cm_col(df, 'F'),
+                })
+            elif sheet.lower() == 'dsc_tg_results':
+                out = pd.DataFrame({
+                    'Label': _cm_col(df, 'A').map(self.normalize_label),
+                    'DSC Tg (\u00B0C)': _cm_col(df, 'C'),
+                })
+            else:
+                out = pd.DataFrame({'Label': _cm_col(df, 'A').map(self.normalize_label)})
+            return out.dropna(subset=['Label'])
         except Exception:
-            return pd.DataFrame(columns=['Label','DSC Tm (Â°C)','DSC Xc (%)','DSC Tg (Â°C)'])
+            return pd.DataFrame(columns=['Label','DSC Tm (\u00B0C)','DSC Xc (%)','DSC Tg (\u00B0C)'])
 
-    def _read_sem(self, path):
+    def _read_sem_pos(self, path):
         if not path or not os.path.exists(path):
-            return pd.DataFrame(columns=['Label','n SEM images','ø (µm)','Desvest ø (µm)','RSD ø (%)','Nᵥ (cells·cm^3)','Desvest Nᵥ (cells·cm^3)','RSD Nᵥ (%)'])
+            return pd.DataFrame(columns=['Label','n SEM images','\u00F8 (\u00B5m)','Desvest \u00F8 (\u00B5m)','RSD \u00F8 (%)','N\u1D65 (cells\u00B7cm^3)','Desvest N\u1D65 (cells\u00B7cm^3)','RSD N\u1D65 (%)'])
         try:
             with pd.ExcelFile(path) as xls:
-                df = pd.read_excel(xls, sheet_name=xls.sheet_names[0])
-            # Ensure Label exists
-            if 'Label' not in df.columns:
-                return pd.DataFrame(columns=['Label'])
-            keep=['Label','n SEM images','ø (µm)','Desvest ø (µm)','RSD ø (%)','Nᵥ (cells·cm^3)','Desvest Nᵥ (cells·cm^3)','RSD Nᵥ (%)']
-            for k in keep:
-                if k not in df.columns: df[k]=pd.NA
-            return df[keep].dropna(subset=['Label'])
+                df = pd.read_excel(xls, sheet_name=xls.sheet_names[0], engine='openpyxl')
+            out = pd.DataFrame({
+                'Label': _cm_col(df, 'A').map(self.normalize_label),
+                'n SEM images': _cm_col(df, 'B'),
+                '\u00F8 (\u00B5m)': _cm_col(df, 'C'),
+                'Desvest \u00F8 (\u00B5m)': _cm_col(df, 'D'),
+                'RSD \u00F8 (%)': _cm_col(df, 'E'),
+                'N\u1D65 (cells\u00B7cm^3)': _cm_col(df, 'F'),
+                'Desvest N\u1D65 (cells\u00B7cm^3)': _cm_col(df, 'G'),
+                'RSD N\u1D65 (%)': _cm_col(df, 'H'),
+            })
+            return out.dropna(subset=['Label'])
         except Exception:
-            return pd.DataFrame(columns=['Label','n SEM images','ø (µm)','Desvest ø (µm)','RSD ø (%)','Nᵥ (cells·cm^3)','Desvest Nᵥ (cells·cm^3)','RSD Nᵥ (%)'])
+            return pd.DataFrame(columns=['Label','n SEM images','\u00F8 (\u00B5m)','Desvest \u00F8 (\u00B5m)','RSD \u00F8 (%)','N\u1D65 (cells\u00B7cm^3)','Desvest N\u1D65 (cells\u00B7cm^3)','RSD N\u1D65 (%)'])
 
     def merge_for_foam(self, foam, files_map):
-        # Read sources
-        doe = self._read_doe(files_map.get('doe'), foam)
-        density = self._read_density(files_map.get('density'), foam)
-        pdr = self._read_pdr(files_map.get('pdr'))
-        oc = self._read_oc(files_map.get('oc'))
-        dsc = self._read_dsc(files_map.get('dsc'))
-        sem = self._read_sem(files_map.get('sem'))
-        # Build label set (DoE + any other provided)
+        print(f"DEBUG MERGE: Starting merge for foam {foam}")
+        print(f"DEBUG MERGE: Files map = {files_map}")
+        doe = self._read_doe_pos(files_map.get('doe'), foam)
+        density = self._read_density_pos(files_map.get('density'), foam)
+        pdr = self._read_pdr_pos(files_map.get('pdr'))
+        oc = self._read_oc_pos(files_map.get('oc'))
+        print(f"DEBUG MERGE: OC data shape: {oc.shape}")
+        print(f"DEBUG MERGE: OC data columns: {oc.columns.tolist()}")
+        print(f"DEBUG MERGE: OC data:\\n{oc}")
+        dsc = self._read_dsc_pos(files_map.get('dsc'))
+        sem = self._read_sem_pos(files_map.get('sem'))
+
         label_sets = []
         for df in [doe, density, pdr, oc, dsc, sem]:
             if not df.empty and 'Label' in df.columns:
@@ -1116,48 +1112,54 @@ class CombineModule:
         all_labels = set().union(*label_sets) if label_sets else set()
         if not all_labels:
             return pd.DataFrame()
-        # Index by Label for quick join
+
         def idx(df):
-            if df.empty:
-                return df
-            tmp = df.copy()
-            tmp['Label'] = tmp['Label'].map(self.normalize_label)
-            return tmp.set_index('Label')
-        i_doe = idx(doe)
-        i_den = idx(density)
-        i_pdr = idx(pdr)
-        i_oc = idx(oc)
-        i_dsc = idx(dsc)
-        i_sem = idx(sem)
-        # Assemble rows
+            if not df.empty and 'Label' in df.columns:
+                tmp = df.copy()
+                tmp['Label'] = tmp['Label'].map(self.normalize_label)
+                return tmp.set_index('Label')
+            return df
+        i_doe, i_den, i_pdr, i_oc, i_dsc, i_sem = map(idx, [doe, density, pdr, oc, dsc, sem])
+
         rows = []
         for lbl in sorted(all_labels):
-            row = {'Label': lbl}
-            if lbl in i_doe.index:
-                row.update(i_doe.loc[lbl][['m(g)', 'Water (g)', 'T (°C)', 'P CO2 (bar)', 't (min)']].to_dict())
-            if lbl in i_pdr.index:
+            row = {'Label': lbl, 'Polymer': foam}
+            if not doe.empty and lbl in i_doe.index:
+                sel = i_doe.loc[lbl]
+                if isinstance(sel, pd.DataFrame):
+                    sel = sel.iloc[0]
+                row.update(sel[['Additive', 'Additive %', 'm(g)', 'Water (g)', 'T (\u00B0C)', 'P CO2 (bar)', 't (min)']].to_dict())
+            if not pdr.empty and lbl in i_pdr.index:
                 row.update(i_pdr.loc[lbl][['Pi (MPa)', 'Pf (MPa)', 'PDR (MPa/s)']].to_dict())
-            if lbl in i_sem.index:
-                row.update(i_sem.loc[lbl][['n SEM images', 'ø (µm)', 'Desvest ø (µm)', 'RSD ø (%)', 'Nᵥ (cells·cm^3)', 'Desvest Nᵥ (cells·cm^3)', 'RSD Nᵥ (%)']].to_dict())
-            if lbl in i_den.index:
-                density_cols = DENSITY_DATA_COLUMNS
-                row.update(i_den.loc[lbl][density_cols].to_dict())
-            if lbl in i_oc.index:
-                row.update(i_oc.loc[lbl][['OC (%)']].to_dict())
-            if lbl in i_dsc.index:
-                for k in ['DSC Tm (°C)', 'DSC Xc (%)', 'DSC Tg (°C)']:
-                    if k in i_dsc.columns:
-                        row[k] = i_dsc.loc[lbl][k]
-            parsed = self._parse_formulation(lbl, fallback_polymer=foam)
-            for k, v in parsed.items():
-                row[k] = v
+            if not sem.empty and lbl in i_sem.index:
+                sem_cols = [
+                    'n SEM images',
+                    '\u00F8 (\u00B5m)',
+                    'Desvest \u00F8 (\u00B5m)',
+                    'RSD \u00F8 (%)',
+                    'N\u1D65 (cells\u00B7cm^3)',
+                    'Desvest N\u1D65 (cells\u00B7cm^3)',
+                    'RSD N\u1D65 (%)'
+                ]
+                for c in sem_cols:
+                    if c in i_sem.columns:
+                        row[c] = i_sem.loc[lbl][c]
+            if not density.empty and lbl in i_den.index:
+                for c in DENSITY_DATA_COLUMNS:
+                    if c in i_den.columns:
+                        row[c] = i_den.loc[lbl][c]
+            if not oc.empty and lbl in i_oc.index:
+                print(f"DEBUG MERGE OC: Adding OC data for label {lbl}")
+                oc_data = i_oc.loc[lbl][['OC (%)']].to_dict()
+                print(f"DEBUG MERGE OC: OC data = {oc_data}")
+                row.update(oc_data)
+            if not dsc.empty and lbl in i_dsc.index:
+                for c in ['DSC Tm (\u00B0C)', 'DSC Xc (%)', 'DSC Tg (\u00B0C)']:
+                    if c in i_dsc.columns:
+                        row[c] = i_dsc.loc[lbl][c]
             rows.append(row)
+
         df = pd.DataFrame(rows)
-        if RHO_FOAM_G in df.columns:
-            df[RHO_FOAM_KG] = _normalize_numeric_series(df[RHO_FOAM_G]) * 1000
-        if DESV_RHO_FOAM_G in df.columns:
-            df[DESV_RHO_FOAM_KG] = _normalize_numeric_series(df[DESV_RHO_FOAM_G]) * 1000
-        # Ensure all final columns exist and order
         df = _ensure_psat_column(df)
         for col in self.new_column_order:
             if col not in df.columns:
@@ -1174,7 +1176,7 @@ class CombineModule:
                     foam_folders[item] = item_path
         return foam_folders
 
-# ===== Position-based readers and merge override (canonical columns) =====
+# ===== Position-based helpers (canonical columns) =====
 def _cm_excel_col_idx(letters: str) -> int:
     letters = str(letters).strip().upper()
     num = 0
@@ -1191,269 +1193,3 @@ def _cm_col(df: pd.DataFrame, letters: str):
         return pd.Series([pd.NA] * len(df))
     return df.iloc[:, idx]
 
-def _cm_read_doe_pos(self, path, foam):
-    columns = ['Polymer', 'Additive', 'Additive %', 'Label', 'm(g)', 'Water (g)', 'T (\u00B0C)', 'P CO2 (bar)', 'Psat (MPa)', 't (min)']
-    if not path or not os.path.exists(path):
-        return pd.DataFrame(columns=columns)
-    try:
-        df = pd.read_excel(path, sheet_name=foam, engine='openpyxl')
-        out = pd.DataFrame({
-            'Label': _cm_col(df, 'A').map(self.normalize_label),
-            'Additive': _cm_col(df, 'B'),
-            'Additive %': pd.to_numeric(_cm_col(df, 'C'), errors='coerce'),
-            'm(g)': _cm_col(df, 'D'),
-            'Water (g)': _cm_col(df, 'E'),
-            'T (\u00B0C)': _cm_col(df, 'F'),
-            'P CO2 (bar)': _cm_col(df, 'G'),
-            't (min)': _cm_col(df, 'H'),
-        })
-        out['Polymer'] = foam
-        out['Label'] = out['Label'].fillna("").astype(str).str.strip()
-        out = out[out['Label'] != ""]
-        out = out[~out['Label'].duplicated(keep='first')]
-        out['Additive'] = out['Additive'].fillna("")
-        out = _ensure_psat_column(out)
-        for col in columns:
-            if col not in out.columns:
-                out[col] = pd.NA
-        return out[columns]
-    except Exception:
-        return pd.DataFrame(columns=columns)
-
-def _cm_read_density_pos(self, path, foam):
-    fallback = ['Label'] + DENSITY_DATA_COLUMNS
-    if not path or not os.path.exists(path):
-        return pd.DataFrame(columns=fallback)
-    try:
-        df = pd.read_excel(path, sheet_name=foam, engine='openpyxl')
-        out = pd.DataFrame({
-            'Label': _cm_col(df, 'B').map(self.normalize_label),
-            RHO_FOAM_G: _cm_col(df, 'F'),
-            DESV_RHO_FOAM_G: _cm_col(df, 'G'),
-            PDER_RHO_FOAM: _cm_col(df, 'H'),
-            RHO_REL: _cm_col(df, 'I'),
-            EXPANSION_COL: _cm_col(df, 'J'),
-        })
-        out[RHO_FOAM_KG] = _normalize_numeric_series(out[RHO_FOAM_G]) * 1000
-        out[DESV_RHO_FOAM_KG] = _normalize_numeric_series(out[DESV_RHO_FOAM_G]) * 1000
-        return out[['Label'] + DENSITY_DATA_COLUMNS].dropna(subset=['Label'])
-    except Exception:
-        return pd.DataFrame(columns=fallback)
-
-def _cm_read_pdr_pos(self, path):
-    if not path or not os.path.exists(path):
-        return pd.DataFrame(columns=['Label','Pi (MPa)','Pf (MPa)','PDR (MPa/s)'])
-    try:
-        with pd.ExcelFile(path) as xls:
-            sheet = 'Registros' if 'Registros' in xls.sheet_names else xls.sheet_names[0]
-            df = pd.read_excel(xls, sheet_name=sheet, engine='openpyxl')
-        out = pd.DataFrame({
-            'Label': _cm_col(df, 'A').map(self.normalize_label),
-            'Pi (MPa)': _cm_col(df, 'B'),
-            'Pf (MPa)': _cm_col(df, 'C'),
-            'PDR (MPa/s)': _cm_col(df, 'D'),
-        })
-        return out.dropna(subset=['Label'])
-    except Exception:
-        return pd.DataFrame(columns=['Label','Pi (MPa)','Pf (MPa)','PDR (MPa/s)'])
-
-def _cm_read_oc_pos(self, path):
-    if not path or not os.path.exists(path):
-        print(f"DEBUG OC: No path or file doesn't exist: {path}")
-        return pd.DataFrame(columns=['Label','OC (%)'])
-    # Estrategia:
-    # 1. Intentar leer valores ya calculados (data_only=True) con openpyxl (si el archivo tiene valores cacheados).
-    # 2. Si vienen todos None/NaN, fallback a lectura positional previa (por si hay valores escritos directamente).
-    try:
-        import openpyxl
-        wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
-        ws = wb[wb.sheetnames[0]]
-        headers = []
-        for c in ws[1]:
-            v = c.value
-            if isinstance(v, str):
-                v = v.strip()
-            headers.append(v)
-        header_map = {str(h).strip().lower(): idx+1 for idx, h in enumerate(headers) if h is not None}
-        # Posibles nombres para %OC
-        oc_candidates = ['%oc', 'oc (%)', 'oc%', 'oc %', 'oc(%)']
-        oc_col_idx = None
-        for cand in oc_candidates:
-            if cand in header_map:
-                oc_col_idx = header_map[cand]
-                break
-        # Fallback posicional (K = 11) si no se detectó
-        if oc_col_idx is None and len(headers) >= 11:
-            oc_col_idx = 11
-        label_idx = header_map.get('label', 1)
-        labels = []
-        oc_vals = []
-        # Recorrer filas
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            label_val = row[label_idx-1] if label_idx-1 < len(row) else None
-            if label_val in (None, "", "nan"):
-                # Permitimos huecos intermedios: saltar fila vacía, pero si muchas vacías seguidas se puede cortar
-                continue
-            oc_raw = None
-            if oc_col_idx is not None and oc_col_idx-1 < len(row):
-                oc_raw = row[oc_col_idx-1]
-            # Normalizar etiqueta
-            label_norm = self.normalize_label(str(label_val)) if label_val is not None else None
-            # Convertir valor OC
-            oc_num = None
-            if isinstance(oc_raw, (int, float)):
-                oc_num = float(oc_raw)
-            elif isinstance(oc_raw, str):
-                txt = oc_raw.strip().replace('%', '').replace(',', '.')
-                try:
-                    oc_num = float(txt)
-                except Exception:
-                    oc_num = None
-            labels.append(label_norm)
-            oc_vals.append(oc_num)
-        wb.close()
-        df_out = pd.DataFrame({'Label': labels, 'OC (%)': oc_vals})
-        print(f"DEBUG OC WB: Leídos {len(df_out)} registros desde cache (data_only). Primeros: {df_out.head().to_dict(orient='records')}")
-        # Si todos NaN/None -> fallback
-        if not df_out.empty and df_out['OC (%)'].notna().any():
-            return df_out.dropna(subset=['Label'])
-        print("DEBUG OC WB: Todos los valores %OC son None/NaN tras data_only, fallback a pandas posicional")
-    except Exception as e:
-        print(f"DEBUG OC WB ERROR: {e}. Fallback a pandas posicional")
-
-    # Fallback original (posicional) – puede devolver NaN si son fórmulas sin cache.
-    try:
-        with pd.ExcelFile(path, engine='openpyxl') as xls:
-            df = pd.read_excel(xls, sheet_name=xls.sheet_names[0], engine='openpyxl')
-        print(f"DEBUG OC Fallback: shape={df.shape} cols={list(df.columns)}")
-        out = pd.DataFrame({
-            'Label': _cm_col(df, 'A').map(self.normalize_label),
-            'OC (%)': pd.to_numeric(_cm_col(df, 'K'), errors='coerce'),
-        })
-        print(f"DEBUG OC Fallback: primeras filas {out.head().to_dict(orient='records')}")
-        return out.dropna(subset=['Label'])
-    except Exception as e2:
-        print(f"DEBUG OC Fallback ERROR: {e2}")
-        return pd.DataFrame(columns=['Label','OC (%)'])
-
-def _cm_read_dsc_pos(self, path):
-    if not path or not os.path.exists(path):
-        return pd.DataFrame(columns=['Label','DSC Tm (\u00B0C)','DSC Xc (%)','DSC Tg (\u00B0C)'])
-    try:
-        with pd.ExcelFile(path) as xls:
-            names = {n.lower(): n for n in xls.sheet_names}
-            sheet = names.get('dsc_results') or names.get('dsc_tg_results') or xls.sheet_names[0]
-            df = pd.read_excel(xls, sheet_name=sheet, engine='openpyxl')
-        if sheet.lower() == 'dsc_results':
-            out = pd.DataFrame({
-                'Label': _cm_col(df, 'A').map(self.normalize_label),
-                'DSC Xc (%)': _cm_col(df, 'C'),
-                'DSC Tm (\u00B0C)': _cm_col(df, 'F'),
-            })
-        elif sheet.lower() == 'dsc_tg_results':
-            out = pd.DataFrame({
-                'Label': _cm_col(df, 'A').map(self.normalize_label),
-                'DSC Tg (\u00B0C)': _cm_col(df, 'C'),
-            })
-        else:
-            out = pd.DataFrame({'Label': _cm_col(df, 'A').map(self.normalize_label)})
-        return out.dropna(subset=['Label'])
-    except Exception:
-        return pd.DataFrame(columns=['Label','DSC Tm (\u00B0C)','DSC Xc (%)','DSC Tg (\u00B0C)'])
-
-def _cm_read_sem_pos(self, path):
-    if not path or not os.path.exists(path):
-        return pd.DataFrame(columns=['Label','n SEM images','\u00F8 (\u00B5m)','Desvest \u00F8 (\u00B5m)','RSD \u00F8 (%)','N\u1D65 (cells\u00B7cm^3)','Desvest N\u1D65 (cells\u00B7cm^3)','RSD N\u1D65 (%)'])
-    try:
-        with pd.ExcelFile(path) as xls:
-            df = pd.read_excel(xls, sheet_name=xls.sheet_names[0], engine='openpyxl')
-        out = pd.DataFrame({
-            'Label': _cm_col(df, 'A').map(self.normalize_label),
-            'n SEM images': _cm_col(df, 'B'),
-            '\u00F8 (\u00B5m)': _cm_col(df, 'C'),
-            'Desvest \u00F8 (\u00B5m)': _cm_col(df, 'D'),
-            'RSD \u00F8 (%)': _cm_col(df, 'E'),
-            'N\u1D65 (cells\u00B7cm^3)': _cm_col(df, 'F'),
-            'Desvest N\u1D65 (cells\u00B7cm^3)': _cm_col(df, 'G'),
-            'RSD N\u1D65 (%)': _cm_col(df, 'H'),
-        })
-        return out.dropna(subset=['Label'])
-    except Exception:
-        return pd.DataFrame(columns=['Label','n SEM images','\u00F8 (\u00B5m)','Desvest \u00F8 (\u00B5m)','RSD \u00F8 (%)','N\u1D65 (cells\u00B7cm^3)','Desvest N\u1D65 (cells\u00B7cm^3)','RSD N\u1D65 (%)'])
-
-def _cm_merge_for_foam_pos(self, foam, files_map):
-    print(f"DEBUG MERGE: Starting merge for foam {foam}")
-    print(f"DEBUG MERGE: Files map = {files_map}")
-    doe = _cm_read_doe_pos(self, files_map.get('doe'), foam)
-    density = _cm_read_density_pos(self, files_map.get('density'), foam)
-    pdr = _cm_read_pdr_pos(self, files_map.get('pdr'))
-    oc = _cm_read_oc_pos(self, files_map.get('oc'))
-    print(f"DEBUG MERGE: OC data shape: {oc.shape}")
-    print(f"DEBUG MERGE: OC data columns: {oc.columns.tolist()}")
-    print(f"DEBUG MERGE: OC data:\\n{oc}")
-    dsc = _cm_read_dsc_pos(self, files_map.get('dsc'))
-    sem = _cm_read_sem_pos(self, files_map.get('sem'))
-
-    label_sets = []
-    for df in [doe, density, pdr, oc, dsc, sem]:
-        if not df.empty and 'Label' in df.columns:
-            label_sets.append(set(df['Label'].map(self.normalize_label)))
-    all_labels = set().union(*label_sets) if label_sets else set()
-    if not all_labels:
-        return pd.DataFrame()
-
-    def idx(df):
-        if not df.empty and 'Label' in df.columns:
-            tmp = df.copy()
-            tmp['Label'] = tmp['Label'].map(self.normalize_label)
-            return tmp.set_index('Label')
-        return df
-    i_doe, i_den, i_pdr, i_oc, i_dsc, i_sem = map(idx, [doe, density, pdr, oc, dsc, sem])
-
-    rows = []
-    for lbl in sorted(all_labels):
-        row = {'Label': lbl, 'Polymer': foam}
-        if not doe.empty and lbl in i_doe.index:
-            sel = i_doe.loc[lbl]
-            if isinstance(sel, pd.DataFrame):
-                sel = sel.iloc[0]
-            row.update(sel[['Additive', 'Additive %', 'm(g)', 'Water (g)', 'T (\u00B0C)', 'P CO2 (bar)', 't (min)']].to_dict())
-        if not pdr.empty and lbl in i_pdr.index:
-            row.update(i_pdr.loc[lbl][['Pi (MPa)', 'Pf (MPa)', 'PDR (MPa/s)']].to_dict())
-        if not sem.empty and lbl in i_sem.index:
-            sem_cols = [
-                'n SEM images',
-                '\u00F8 (\u00B5m)',
-                'Desvest \u00F8 (\u00B5m)',
-                'RSD \u00F8 (%)',
-                'N\u1D65 (cells\u00B7cm^3)',
-                'Desvest N\u1D65 (cells\u00B7cm^3)',
-                'RSD N\u1D65 (%)'
-            ]
-            for c in sem_cols:
-                if c in i_sem.columns:
-                    row[c] = i_sem.loc[lbl][c]
-        if not density.empty and lbl in i_den.index:
-            for c in DENSITY_DATA_COLUMNS:
-                if c in i_den.columns:
-                    row[c] = i_den.loc[lbl][c]
-        if not oc.empty and lbl in i_oc.index:
-            print(f"DEBUG MERGE OC: Adding OC data for label {lbl}")
-            oc_data = i_oc.loc[lbl][['OC (%)']].to_dict()
-            print(f"DEBUG MERGE OC: OC data = {oc_data}")
-            row.update(oc_data)
-        if not dsc.empty and lbl in i_dsc.index:
-            for c in ['DSC Tm (\u00B0C)', 'DSC Xc (%)', 'DSC Tg (\u00B0C)']:
-                if c in i_dsc.columns:
-                    row[c] = i_dsc.loc[lbl][c]
-        rows.append(row)
-
-    df = pd.DataFrame(rows)
-    df = _ensure_psat_column(df)
-    for col in self.new_column_order:
-        if col not in df.columns:
-            df[col] = pd.NA
-    return df[self.new_column_order]
-
-# Override the original merge with the position-based one
-CombineModule.merge_for_foam = _cm_merge_for_foam_pos

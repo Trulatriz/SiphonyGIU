@@ -116,15 +116,17 @@ class HistogramCombinerModule:
                 "2. Choose where to save the combined SEM results\n"
                 "3. Click 'Combine'")
         ttk.Label(main_frame, text=desc, wraplength=700, justify=tk.LEFT).pack(pady=(0, 20))
+        warning_text = ("¡IMPORTANTE!: SI ALGÚN DATO APARECE VACÍO (NaN) EN EL RESULTADO, ES NECESARIO ABRIR EL ARCHIVO "
+                        "'histogram_*.xlsx' CORRESPONDIENTE EN EXCEL Y GUARDARLO MANUALMENTE PARA RECALCULAR LA CACHÉ.")
         tk.Label(
             main_frame,
-            text=("¡IMPORTANTE!: SI ALGÚN DATO APARECE VACÍO (NaN) EN EL RESULTADO, ES NECESARIO ABRIR EL ARCHIVO "
-                  "'histogram_*.xlsx' CORRESPONDIENTE EN EXCEL Y GUARDARLO MANUALMENTE PARA RECALCULAR LA CACHÉ."),
+            text=warning_text,
             fg="red",
             font=("Arial", 10, "bold"),
             wraplength=700,
             justify=tk.LEFT,
-        ).pack(pady=(0, 20))
+            bg=main_frame.cget("background"),
+        ).pack(pady=(0, 20), anchor=tk.W)
 
         in_frame = ttk.LabelFrame(main_frame, text="Input Folder (SEM Results)", padding=15)
         in_frame.pack(fill=tk.X, pady=(0, 12))
@@ -232,22 +234,38 @@ class HistogramCombinerModule:
             expected_norm = canonical_histogram_key(expected)
             label_norm = canonical_label_key(label)
             label_token = primary_label_token(label)
+            normalized_sheets = []
+            for sn in sheet_names:
+                sn_str = str(sn)
+                key = canonical_histogram_key(sn_str)
+                hist_idx = key.rfind("HISTOGRAM")
+                suffix = key[hist_idx + len("HISTOGRAM"):] if hist_idx != -1 else key
+                sn_upper = sn_str.upper()
+                hist_idx_raw = sn_upper.rfind("HISTOGRAM")
+                suffix_raw = sn_str[hist_idx_raw + len("HISTOGRAM"):] if hist_idx_raw != -1 else sn_str
+                normalized_sheets.append({
+                    "name": sn,
+                    "key": key,
+                    "suffix": suffix,
+                    "suffix_raw": suffix_raw,
+                    "suffix_tokens": extract_label_tokens(suffix_raw),
+                    "sheet_tokens": extract_label_tokens(sn_str),
+                    "sheet_label": canonical_label_key(sn_str),
+                })
+
             target = None
             loose_candidate = None
             label_only_candidate = None
             # Prefer the last matching sheet (others may have similar names)
-            for sn in sheet_names:
-                key = canonical_histogram_key(sn)
-                hist_idx = key.rfind("HISTOGRAM")
-                suffix = key[hist_idx + len("HISTOGRAM"):] if hist_idx != -1 else key
-                sn_upper = str(sn).upper()
-                hist_idx_raw = sn_upper.rfind("HISTOGRAM")
-                suffix_raw = sn[hist_idx_raw + len("HISTOGRAM"):] if hist_idx_raw != -1 else sn
+            for sheet in normalized_sheets:
+                key = sheet["key"]
+                suffix = sheet["suffix"]
+                suffix_raw = sheet["suffix_raw"]
                 if key == expected_norm:
-                    target = sn  # keep last exact match
+                    target = sheet["name"]  # keep last exact match
                     continue
                 if suffix == label_norm:
-                    target = sn
+                    target = sheet["name"]
                     continue
                 if suffix.startswith(label_norm) and label_norm:
                     remainder = suffix[len(label_norm):]
@@ -259,20 +277,17 @@ class HistogramCombinerModule:
                     if remainder and remainder[0].isdigit() and '-' not in label:
                         # Skip if remainder starts with digits (likely a different sample)
                         continue
-                    loose_candidate = sn
+                    loose_candidate = sheet["name"]
                     continue
-                suffix_tokens = extract_label_tokens(suffix_raw)
-                if label_token and label_token in suffix_tokens:
-                    target = sn
+                if label_token and label_token in sheet["suffix_tokens"]:
+                    target = sheet["name"]
                     continue
                 # Keep token-based loose matching to connect labels like "HDPE 20251124" with sheet "20251124"
-                sheet_tokens = extract_label_tokens(sn)
-                if label_token and label_token in sheet_tokens:
-                    loose_candidate = sn
+                if label_token and label_token in sheet["sheet_tokens"]:
+                    loose_candidate = sheet["name"]
                     continue
-                sheet_label = canonical_label_key(sn)
-                if not label_only_candidate and sheet_label == label_norm:
-                    label_only_candidate = sn
+                if not label_only_candidate and sheet["sheet_label"] == label_norm:
+                    label_only_candidate = sheet["name"]
             if not target:
                 target = loose_candidate or label_only_candidate
             if not target:
