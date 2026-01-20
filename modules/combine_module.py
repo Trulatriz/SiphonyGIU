@@ -40,7 +40,6 @@ DESV_RHO_FOAM_KG = "Desvest \u03C1 foam (kg/m^3)"
 PDER_RHO_FOAM = "%DER \u03C1 foam (g/cm^3)"
 RHO_REL = "\u03C1\u1D63"  # ρ with subscript r
 EXPANSION_COL = "X"
-POROSITY_COL = "Porosity (%)"
 
 BASE_NEW_COLUMN_ORDER = [
     'Polymer', 'Additive', 'Additive %', 'Label',
@@ -48,12 +47,12 @@ BASE_NEW_COLUMN_ORDER = [
     'Pi (MPa)', 'Pf (MPa)', 'PDR (MPa/s)',
     'n SEM images', '\u00F8 (\u00B5m)', 'Desvest \u00F8 (\u00B5m)', 'RSD \u00F8 (%)',
     'N\u1D65 (cells\u00B7cm^3)', 'Desvest N\u1D65 (cells\u00B7cm^3)', 'RSD N\u1D65 (%)',
-    RHO_FOAM_G, RHO_FOAM_KG, DESV_RHO_FOAM_G, DESV_RHO_FOAM_KG, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL, POROSITY_COL,
+    RHO_FOAM_G, RHO_FOAM_KG, DESV_RHO_FOAM_G, DESV_RHO_FOAM_KG, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL,
     'OC (%)',
     'DSC Tm (\u00B0C)', 'DSC Xc (%)', 'DSC Tg (\u00B0C)'
 ]
 
-DENSITY_DATA_COLUMNS = [RHO_FOAM_G, RHO_FOAM_KG, DESV_RHO_FOAM_G, DESV_RHO_FOAM_KG, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL, POROSITY_COL]
+DENSITY_DATA_COLUMNS = [RHO_FOAM_G, RHO_FOAM_KG, DESV_RHO_FOAM_G, DESV_RHO_FOAM_KG, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL]
 
 DOE_HEADER_CANDIDATES = {
     'Polymer': ['Polymer', 'Pol\u00EDmero'],
