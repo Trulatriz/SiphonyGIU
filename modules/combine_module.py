@@ -43,7 +43,7 @@ EXPANSION_COL = "X"
 POROSITY_COL = "Porosity (%)"
 
 BASE_NEW_COLUMN_ORDER = [
-    'Polymer', 'Base Polymer', 'Additive', 'Additive %', 'Replicate', 'Label',
+    'Polymer', 'Additive', 'Additive %', 'Label',
     'm(g)', 'Water (g)', 'T (\u00B0C)', 'P CO2 (bar)', 'Psat (MPa)', 't (min)',
     'Pi (MPa)', 'Pf (MPa)', 'PDR (MPa/s)',
     'n SEM images', '\u00F8 (\u00B5m)', 'Desvest \u00F8 (\u00B5m)', 'RSD \u00F8 (%)',
@@ -54,6 +54,51 @@ BASE_NEW_COLUMN_ORDER = [
 ]
 
 DENSITY_DATA_COLUMNS = [RHO_FOAM_G, RHO_FOAM_KG, DESV_RHO_FOAM_G, DESV_RHO_FOAM_KG, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL, POROSITY_COL]
+
+DOE_HEADER_CANDIDATES = {
+    'Polymer': ['Polymer', 'Pol\u00EDmero'],
+    'Additive': ['Additive', 'Aditivo'],
+    'Additive %': ['Additive %', '% Additive', 'Additive%'],
+    'Label': ['Label', 'Sample', 'Muestra'],
+    'm(g)': ['m(g)', 'Mass (g)', 'm g'],
+    'Water (g)': ['Water (g)', 'Water', 'Agua (g)'],
+    'T (\u00B0C)': ['T (\u00B0C)', 'Temperature (\u00B0C)', 'T C'],
+    'P CO2 (bar)': ['P CO2 (bar)', 'PCO2 (bar)', 'P CO2'],
+    'Psat (MPa)': ['Psat (MPa)', 'Psat'],
+    't (min)': ['t (min)', 'Time (min)', 't min'],
+}
+
+DOE_FALLBACK_LETTERS = {
+    'Label': 'A',
+    'Additive': 'B',
+    'm(g)': 'C',
+    'Water (g)': 'D',
+    'T (\u00B0C)': 'E',
+    'P CO2 (bar)': 'F',
+    't (min)': 'G',
+}
+
+def _cm_clean_header(name):
+    if name is None:
+        return ""
+    return re.sub(r"[^a-z0-9]+", "", str(name).lower())
+
+def _cm_find_header_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
+    normalized = {_cm_clean_header(col): col for col in df.columns}
+    for cand in candidates:
+        key = _cm_clean_header(cand)
+        if key in normalized:
+            return normalized[key]
+    return None
+
+def _cm_get_doe_series(df: pd.DataFrame, target: str) -> pd.Series:
+    col_name = _cm_find_header_column(df, DOE_HEADER_CANDIDATES.get(target, []))
+    if col_name:
+        return df[col_name]
+    letter = DOE_FALLBACK_LETTERS.get(target)
+    if letter:
+        return _cm_col(df, letter)
+    return pd.Series([pd.NA] * len(df))
 
 
 def _normalize_numeric_series(series: pd.Series) -> pd.Series:
@@ -123,51 +168,29 @@ class CombineModule:
         self.new_column_order = list(BASE_NEW_COLUMN_ORDER)
         
     def normalize_label(self, s):
-        """Normalize label and enforce explicit replicate (missing -> R1)."""
+        """Extract the experimental label (date token) without replicate suffixes."""
         if s is None:
             return ""
         label = str(s).strip()
         label = re.sub(r"\.(xlsx|xls|csv|txt)$", "", label, flags=re.IGNORECASE)
-        # Split replicate suffix; if absent, default to R1
-        m = re.match(r"^(.*?)(?:-R(\d+))?$", label, flags=re.IGNORECASE)
-        if m:
-            base = m.group(1).rstrip("-_ ")
-            rep = m.group(2) if m.group(2) else "1"
-            return f"{base}-R{rep}"
+        # Prefer last block that looks like YYYYMMDD or YYYYMMDD-#
+        matches = re.findall(r"(\d{4,}(?:-\d+)?)", label)
+        if matches:
+            return matches[-1]
+        # Fallback to last whitespace-separated chunk
+        parts = label.split()
+        if parts:
+            return parts[-1]
         return label
 
     def _parse_formulation(self, label: str, fallback_polymer: str | None = None) -> dict:
-        """Extract base polymer, additive, loading %, replicate from a label."""
-        parts = {"Base Polymer": fallback_polymer or "", "Additive": "", "Additive %": pd.NA, "Replicate": pd.NA}
-        if not label:
-            return parts
-        clean = str(label).strip()
-        # Remove replicate to parse formulation
-        clean_no_rep = re.sub(r"-R\d+$", "", clean, flags=re.IGNORECASE)
-        tokens = [t for t in clean_no_rep.split("-") if t]
-        if tokens:
-            parts["Base Polymer"] = tokens[0]
-        # Attempt to read additive and loading if present
-        if len(tokens) >= 2:
-            parts["Additive"] = tokens[1]
-        if len(tokens) >= 3:
-            loading_raw = tokens[2]
-            m = re.search(r"([-+]?[0-9]*\.?[0-9]+)", loading_raw.replace(",", "."))
-            if m:
-                try:
-                    parts["Additive %"] = float(m.group(1))
-                except Exception:
-                    parts["Additive %"] = pd.NA
-        # Replicate from normalized label
-        rep_match = re.search(r"-R(\d+)$", str(label), flags=re.IGNORECASE)
-        if rep_match:
-            try:
-                parts["Replicate"] = int(rep_match.group(1))
-            except Exception:
-                parts["Replicate"] = rep_match.group(1)
-        else:
-            parts["Replicate"] = 1
-        return parts
+        """Fallback metadata when DoE data is missing."""
+        base = fallback_polymer or ""
+        return {
+            "Polymer": base,
+            "Additive": "",
+            "Additive %": pd.NA,
+        }
 
     def create_widgets(self):
         """Create the GUI widgets with tabbed interface for better organization"""
@@ -723,19 +746,6 @@ class CombineModule:
         finally:
             self.progress.stop()
 
-    def normalize_label(self, label):
-        """Normalize label like in original Combine.py with explicit replicate."""
-        if label is None:
-            return ""
-        label = str(label).strip()
-        label = re.sub(r"\.(xlsx|xls|csv|txt)$", "", label, flags=re.IGNORECASE)
-        m = re.match(r"^(.*?)(?:-R(\d+))?$", label, flags=re.IGNORECASE)
-        if m:
-            base = m.group(1).rstrip("-_ ")
-            rep = m.group(2) if m.group(2) else "1"
-            return f"{base}-R{rep}"
-        return label
-
     def extract_sample_labels(self, file_path, sheet_name=None):
         """Extract sample labels from an Excel file using original Combine.py logic"""
         try:
@@ -1190,20 +1200,26 @@ def _cm_col(df: pd.DataFrame, letters: str):
 
 def _cm_read_doe_pos(self, path, foam):
     if not path or not os.path.exists(path):
-        return pd.DataFrame(columns=['Label','m(g)','Water (g)','T (\u00B0C)','P CO2 (bar)','t (min)'])
+        return pd.DataFrame(columns=['Polymer','Additive','Additive %','Label','m(g)','Water (g)','T (\u00B0C)','P CO2 (bar)','Psat (MPa)','t (min)'])
     try:
         df = pd.read_excel(path, sheet_name=foam, engine='openpyxl')
-        out = pd.DataFrame({
-            'Label': _cm_col(df, 'A').map(self.normalize_label),
-            'm(g)': _cm_col(df, 'B'),
-            'Water (g)': _cm_col(df, 'C'),
-            'T (\u00B0C)': _cm_col(df, 'D'),
-            'P CO2 (bar)': _cm_col(df, 'E'),
-            't (min)': _cm_col(df, 'F'),
-        })
-        return out.dropna(subset=['Label'])
+        data = {}
+        for name in DOE_HEADER_CANDIDATES.keys():
+            series = _cm_get_doe_series(df, name)
+            if name == 'Label':
+                data[name] = series.map(self.normalize_label)
+            else:
+                data[name] = series
+        out = pd.DataFrame(data)
+        out['Label'] = out['Label'].fillna("").astype(str).str.strip()
+        out = out[out['Label'] != ""]
+        out = out[~out['Label'].duplicated(keep='first')]
+        out['Polymer'] = out['Polymer'].fillna(foam)
+        out['Additive'] = out['Additive'].fillna("")
+        out['Additive %'] = pd.to_numeric(out['Additive %'], errors='coerce')
+        return out
     except Exception:
-        return pd.DataFrame(columns=['Label','m(g)','Water (g)','T (\u00B0C)','P CO2 (bar)','t (min)'])
+        return pd.DataFrame(columns=['Polymer','Additive','Additive %','Label','m(g)','Water (g)','T (\u00B0C)','P CO2 (bar)','Psat (MPa)','t (min)'])
 
 def _cm_read_density_pos(self, path, foam):
     fallback = ['Label'] + DENSITY_DATA_COLUMNS
@@ -1400,11 +1416,27 @@ def _cm_merge_for_foam_pos(self, foam, files_map):
     for lbl in sorted(all_labels):
         row = {'Label': lbl}
         if not doe.empty and lbl in i_doe.index:
-            row.update(i_doe.loc[lbl][['m(g)', 'Water (g)', 'T (°C)', 'P CO2 (bar)', 't (min)']].to_dict())
+            doe_cols = ['Polymer', 'Additive', 'Additive %',
+                        'm(g)', 'Water (g)', 'T (\u00B0C)', 'P CO2 (bar)', 'Psat (MPa)', 't (min)']
+            available = [c for c in doe_cols if c in i_doe.columns]
+            if available:
+                sel = i_doe.loc[lbl]
+                if isinstance(sel, pd.DataFrame):
+                    sel = sel.iloc[0]
+                row.update(sel[available].to_dict())
         if not pdr.empty and lbl in i_pdr.index:
             row.update(i_pdr.loc[lbl][['Pi (MPa)', 'Pf (MPa)', 'PDR (MPa/s)']].to_dict())
         if not sem.empty and lbl in i_sem.index:
-            for c in ['n SEM images', 'ø (µm)', 'Desvest ø (µm)', 'RSD ø (%)', 'Nᵥ (cells·cm^3)', 'Desvest Nᵥ (cells·cm^3)', 'RSD Nᵥ (%)']:
+            sem_cols = [
+                'n SEM images',
+                '\u00F8 (\u00B5m)',
+                'Desvest \u00F8 (\u00B5m)',
+                'RSD \u00F8 (%)',
+                'N\u1D65 (cells\u00B7cm^3)',
+                'Desvest N\u1D65 (cells\u00B7cm^3)',
+                'RSD N\u1D65 (%)'
+            ]
+            for c in sem_cols:
                 if c in i_sem.columns:
                     row[c] = i_sem.loc[lbl][c]
         if not density.empty and lbl in i_den.index:
@@ -1417,12 +1449,13 @@ def _cm_merge_for_foam_pos(self, foam, files_map):
             print(f"DEBUG MERGE OC: OC data = {oc_data}")
             row.update(oc_data)
         if not dsc.empty and lbl in i_dsc.index:
-            for c in ['DSC Tm (°C)', 'DSC Xc (%)', 'DSC Tg (°C)']:
+            for c in ['DSC Tm (\u00B0C)', 'DSC Xc (%)', 'DSC Tg (\u00B0C)']:
                 if c in i_dsc.columns:
                     row[c] = i_dsc.loc[lbl][c]
         parsed = self._parse_formulation(lbl, fallback_polymer=foam)
         for k, v in parsed.items():
-            row[k] = v
+            if k not in row or pd.isna(row[k]) or row[k] == "":
+                row[k] = v
         rows.append(row)
 
     df = pd.DataFrame(rows)
