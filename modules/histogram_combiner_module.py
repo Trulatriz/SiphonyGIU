@@ -116,6 +116,15 @@ class HistogramCombinerModule:
                 "2. Choose where to save the combined SEM results\n"
                 "3. Click 'Combine'")
         ttk.Label(main_frame, text=desc, wraplength=700, justify=tk.LEFT).pack(pady=(0, 20))
+        tk.Label(
+            main_frame,
+            text=("¡IMPORTANTE!: SI ALGÚN DATO APARECE VACÍO (NaN) EN EL RESULTADO, ES NECESARIO ABRIR EL ARCHIVO "
+                  "'histogram_*.xlsx' CORRESPONDIENTE EN EXCEL Y GUARDARLO MANUALMENTE PARA RECALCULAR LA CACHÉ."),
+            fg="red",
+            font=("Arial", 10, "bold"),
+            wraplength=700,
+            justify=tk.LEFT,
+        ).pack(pady=(0, 20))
 
         in_frame = ttk.LabelFrame(main_frame, text="Input Folder (SEM Results)", padding=15)
         in_frame.pack(fill=tk.X, pady=(0, 12))
