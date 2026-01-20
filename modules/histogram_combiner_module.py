@@ -265,6 +265,7 @@ class HistogramCombinerModule:
                 if label_token and label_token in suffix_tokens:
                     target = sn
                     continue
+                # Keep token-based loose matching to connect labels like "HDPE 20251124" with sheet "20251124"
                 sheet_tokens = extract_label_tokens(sn)
                 if label_token and label_token in sheet_tokens:
                     loose_candidate = sn
