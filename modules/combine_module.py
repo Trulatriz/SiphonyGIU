@@ -1207,18 +1207,17 @@ def _cm_read_doe_pos(self, path, foam):
         out = pd.DataFrame({
             'Label': _cm_col(df, 'A').map(self.normalize_label),
             'Additive': _cm_col(df, 'B'),
-            'm(g)': _cm_col(df, 'C'),
-            'Water (g)': _cm_col(df, 'D'),
-            'T (\u00B0C)': _cm_col(df, 'E'),
-            'P CO2 (bar)': _cm_col(df, 'F'),
-            't (min)': _cm_col(df, 'G'),
+            'Additive %': pd.to_numeric(_cm_col(df, 'C'), errors='coerce'),
+            'm(g)': _cm_col(df, 'D'),
+            'Water (g)': _cm_col(df, 'E'),
+            'T (\u00B0C)': _cm_col(df, 'F'),
+            'P CO2 (bar)': _cm_col(df, 'G'),
+            't (min)': _cm_col(df, 'H'),
         })
-        out['Additive %'] = pd.to_numeric(_cm_get_doe_series(df, 'Additive %'), errors='coerce')
-        out['Polymer'] = _cm_get_doe_series(df, 'Polymer')
+        out['Polymer'] = foam
         out['Label'] = out['Label'].fillna("").astype(str).str.strip()
         out = out[out['Label'] != ""]
         out = out[~out['Label'].duplicated(keep='first')]
-        out['Polymer'] = out['Polymer'].fillna(foam)
         out['Additive'] = out['Additive'].fillna("")
         out = _ensure_psat_column(out)
         for col in columns:
@@ -1423,13 +1422,10 @@ def _cm_merge_for_foam_pos(self, foam, files_map):
     for lbl in sorted(all_labels):
         row = {'Label': lbl, 'Polymer': foam}
         if not doe.empty and lbl in i_doe.index:
-            doe_cols = ['Additive', 'm(g)', 'Water (g)', 'T (\u00B0C)', 'P CO2 (bar)', 't (min)']
             sel = i_doe.loc[lbl]
             if isinstance(sel, pd.DataFrame):
                 sel = sel.iloc[0]
-            row.update(sel[doe_cols].to_dict())
-            if 'Additive %' in i_doe.columns:
-                row['Additive %'] = sel.get('Additive %')
+            row.update(sel[['Additive', 'Additive %', 'm(g)', 'Water (g)', 'T (\u00B0C)', 'P CO2 (bar)', 't (min)']].to_dict())
         if not pdr.empty and lbl in i_pdr.index:
             row.update(i_pdr.loc[lbl][['Pi (MPa)', 'Pf (MPa)', 'PDR (MPa/s)']].to_dict())
         if not sem.empty and lbl in i_sem.index:
