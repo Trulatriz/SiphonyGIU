@@ -168,19 +168,11 @@ class CombineModule:
         self.new_column_order = list(BASE_NEW_COLUMN_ORDER)
         
     def normalize_label(self, s):
-        """Extract the experimental label (date token) without replicate suffixes."""
+        """Return the label text as-is (trimmed) with file extensions removed."""
         if s is None:
             return ""
         label = str(s).strip()
         label = re.sub(r"\.(xlsx|xls|csv|txt)$", "", label, flags=re.IGNORECASE)
-        # Prefer last block that looks like YYYYMMDD or YYYYMMDD-#
-        matches = re.findall(r"(\d{4,}(?:-\d+)?)", label)
-        if matches:
-            return matches[-1]
-        # Fallback to last whitespace-separated chunk
-        parts = label.split()
-        if parts:
-            return parts[-1]
         return label
 
     def _parse_formulation(self, label: str, fallback_polymer: str | None = None) -> dict:
