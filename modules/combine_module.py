@@ -168,11 +168,14 @@ class CombineModule:
         self.new_column_order = list(BASE_NEW_COLUMN_ORDER)
         
     def normalize_label(self, s):
-        """Return the label text as-is (trimmed) with file extensions removed."""
+        """Return a cleaned label, extracting numeric token when present without adding replicate suffixes."""
         if s is None:
             return ""
         label = str(s).strip()
         label = re.sub(r"\.(xlsx|xls|csv|txt)$", "", label, flags=re.IGNORECASE)
+        matches = re.findall(r"(\d{4,}(?:-\d+)?)", label)
+        if matches:
+            return matches[-1]
         return label
 
     def _parse_formulation(self, label: str, fallback_polymer: str | None = None) -> dict:
@@ -975,8 +978,6 @@ class CombineModule:
                     colmap[c] = RHO_REL
                 elif cn.strip() == 'X':
                     colmap[c] = EXPANSION_COL
-                elif 'porosity' in cn_lower:
-                    colmap[c] = POROSITY_COL
             df = df.rename(columns=colmap)
 
             legacy_rel_cols = [c for c in df.columns if str(c).strip().replace(' ', '') in ('ρr', 'ρᵣ', 'ρr', 'rho_r')]
@@ -986,7 +987,7 @@ class CombineModule:
                 if legacy != RHO_REL and legacy in df.columns:
                     df = df.drop(columns=[legacy])
 
-            for k in [RHO_FOAM_G, DESV_RHO_FOAM_G, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL, POROSITY_COL]:
+            for k in [RHO_FOAM_G, DESV_RHO_FOAM_G, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL]:
                 if k not in df.columns:
                     df[k] = pd.NA
 
@@ -1232,7 +1233,6 @@ def _cm_read_density_pos(self, path, foam):
             PDER_RHO_FOAM: _cm_col(df, 'H'),
             RHO_REL: _cm_col(df, 'I'),
             EXPANSION_COL: _cm_col(df, 'J'),
-            POROSITY_COL: _cm_col(df, 'K'),
         })
         out[RHO_FOAM_KG] = _normalize_numeric_series(out[RHO_FOAM_G]) * 1000
         out[DESV_RHO_FOAM_KG] = _normalize_numeric_series(out[DESV_RHO_FOAM_G]) * 1000
