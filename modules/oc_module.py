@@ -5,6 +5,8 @@ import os
 import re
 import glob
 import warnings
+import openpyxl
+import importlib.util
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.widgets import SpanSelector
@@ -545,47 +547,85 @@ class OCModule:
 
     def _parse_picnometry_file(self, file_path):
         """Extract mass and measurement table from a picnometry Excel/CSV file."""
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext == ".xls":
+            if importlib.util.find_spec("xlrd") is None:
+                raise ImportError("Reading .xls requires xlrd>=2.0.1")
+            df = pd.read_excel(file_path, header=None, engine="xlrd")
+            mass = self._extract_mass(df=df)
+            table = self._extract_table(df=df)
+            return mass, table
+        # Default to openpyxl
         wb = openpyxl.load_workbook(file_path, data_only=True, read_only=True)
         ws = wb[wb.sheetnames[0]]
-        mass = self._extract_mass(ws)
-        df = self._extract_table(ws)
+        mass = self._extract_mass(ws=ws)
+        table = self._extract_table(ws=ws)
         wb.close()
-        return mass, df
+        return mass, table
 
-    def _extract_mass(self, ws):
+    def _extract_mass(self, ws=None, df=None):
         """Find 'Sample mass:' row and parse numeric value."""
-        for row in ws.iter_rows(values_only=True):
-            if not row:
-                continue
-            first = row[0]
-            if isinstance(first, str) and "sample mass" in first.lower():
-                val = row[1] if len(row) > 1 else None
-                parsed = self._to_float(val)
-                if parsed is not None:
-                    return parsed
-        # Fallback to B14 if not found
-        try:
-            fallback = ws["B14"].value
-            return self._to_float(fallback)
-        except Exception:
-            return None
+        if df is not None:
+            for idx, row in df.iterrows():
+                if row.empty:
+                    continue
+                first = row.iloc[0]
+                if isinstance(first, str) and "sample mass" in first.lower():
+                    val = row.iloc[1] if len(row) > 1 else None
+                    parsed = self._to_float(val)
+                    if parsed is not None:
+                        return parsed
+            try:
+                return self._to_float(df.iloc[13, 1])
+            except Exception:
+                return None
+        if ws is not None:
+            for row in ws.iter_rows(values_only=True):
+                if not row:
+                    continue
+                first = row[0]
+                if isinstance(first, str) and "sample mass" in first.lower():
+                    val = row[1] if len(row) > 1 else None
+                    parsed = self._to_float(val)
+                    if parsed is not None:
+                        return parsed
+            try:
+                fallback = ws["B14"].value
+                return self._to_float(fallback)
+            except Exception:
+                return None
+        return None
 
-    def _extract_table(self, ws):
+    def _extract_table(self, ws=None, df=None):
         """Read measurement table starting at row 35 until an empty row."""
         records = []
-        for row in ws.iter_rows(min_row=35, values_only=True):
-            cells = list(row[:4])
-            if all((c is None) or (isinstance(c, str) and not c.strip()) for c in cells):
-                break
-            cycle, p1, p2, vol = cells if len(cells) == 4 else (None, None, None, None)
-            records.append({
-                "Cycle #": self._to_float(cycle),
-                "P1 Pressure (psig)": self._to_float(p1),
-                "P2 Pressure (psig)": self._to_float(p2),
-                "Volume (cm3)": self._to_float(vol),
-            })
-        df = pd.DataFrame(records)
-        return df.dropna(subset=["P1 Pressure (psig)", "Volume (cm3)"])
+        if df is not None:
+            start_idx = 34  # zero-based for row 35
+            for _, row in df.iloc[start_idx:].iterrows():
+                cells = list(row.iloc[:4])
+                if all((c is None) or (isinstance(c, str) and not str(c).strip()) for c in cells):
+                    break
+                cycle, p1, p2, vol = cells if len(cells) >= 4 else (None, None, None, None)
+                records.append({
+                    "Cycle #": self._to_float(cycle),
+                    "P1 Pressure (psig)": self._to_float(p1),
+                    "P2 Pressure (psig)": self._to_float(p2),
+                    "Volume (cm3)": self._to_float(vol),
+                })
+        elif ws is not None:
+            for row in ws.iter_rows(min_row=35, values_only=True):
+                cells = list(row[:4])
+                if all((c is None) or (isinstance(c, str) and not c.strip()) for c in cells):
+                    break
+                cycle, p1, p2, vol = cells if len(cells) == 4 else (None, None, None, None)
+                records.append({
+                    "Cycle #": self._to_float(cycle),
+                    "P1 Pressure (psig)": self._to_float(p1),
+                    "P2 Pressure (psig)": self._to_float(p2),
+                    "Volume (cm3)": self._to_float(vol),
+                })
+        df_out = pd.DataFrame(records)
+        return df_out.dropna(subset=["P1 Pressure (psig)", "Volume (cm3)"])
 
     def _to_float(self, value):
         if value is None:
