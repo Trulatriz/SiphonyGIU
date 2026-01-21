@@ -994,9 +994,9 @@ class CombineModule:
                 if cand in header_map:
                     oc_col_idx = header_map[cand]
                     break
-            # Fallback posicional (K = 11) si no se detectó
-            if oc_col_idx is None and len(headers) >= 11:
-                oc_col_idx = 11
+            # Fallback posicional (J = 10) si no se detectó
+            if oc_col_idx is None and len(headers) >= 10:
+                oc_col_idx = 10
             label_idx = header_map.get('label', 1)
             labels = []
             oc_vals = []
@@ -1037,10 +1037,22 @@ class CombineModule:
             with pd.ExcelFile(path, engine='openpyxl') as xls:
                 df = pd.read_excel(xls, sheet_name=xls.sheet_names[0], engine='openpyxl')
             print(f"DEBUG OC Fallback: shape={df.shape} cols={list(df.columns)}")
-            out = pd.DataFrame({
-                'Label': _cm_col(df, 'A').map(self.normalize_label),
-                'OC (%)': pd.to_numeric(_cm_col(df, 'K'), errors='coerce'),
-            })
+            labels = _cm_col(df, 'A').map(self.normalize_label)
+            oc_series = pd.to_numeric(_cm_col(df, 'J'), errors='coerce')
+            # Si %OC viene vacío (por fórmulas sin cache), calcularlo a partir de columnas derivadas
+            if oc_series.isna().all():
+                vext = pd.to_numeric(_cm_col(df, 'D'), errors='coerce')
+                vpyc = pd.to_numeric(_cm_col(df, 'E'), errors='coerce')
+                one_minus_rho = pd.to_numeric(_cm_col(df, 'H'), errors='coerce')
+                vext_one_minus_rho = pd.to_numeric(_cm_col(df, 'I'), errors='coerce')
+                vext_minus_vpyc = pd.to_numeric(_cm_col(df, 'G'), errors='coerce')
+                if vext_one_minus_rho.isna().all():
+                    vext_one_minus_rho = vext * one_minus_rho
+                if vext_minus_vpyc.isna().all():
+                    vext_minus_vpyc = vext - vpyc
+                oc_series = (vext_minus_vpyc / vext_one_minus_rho) * 100
+                oc_series = oc_series.where((vext_one_minus_rho.notna()) & (vext_one_minus_rho != 0))
+            out = pd.DataFrame({'Label': labels, 'OC (%)': oc_series})
             print(f"DEBUG OC Fallback: primeras filas {out.head().to_dict(orient='records')}")
             return out.dropna(subset=['Label'])
         except Exception as e2:
