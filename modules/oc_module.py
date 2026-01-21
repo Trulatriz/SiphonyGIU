@@ -1074,64 +1074,25 @@ class OCModule:
             if col not in df.columns:
                 df[col] = pd.NA
 
-        # Calcular Vext = m / densidad
-        if all(c in df.columns for c in ["m (g)", "Density (g/cm3)"]):
-            df["Vext (cm3)"] = df.apply(
-                lambda r: (r["m (g)"] / r["Density (g/cm3)"])
-                if pd.notna(r["m (g)"]) and pd.notna(r["Density (g/cm3)"]) and r["Density (g/cm3)"] not in (0, 0.0)
-                else pd.NA,
-                axis=1,
-            )
-
-        # Calcular Vext - Vpyc
-        if all(c in df.columns for c in ["Vext (cm3)", "Vpyc (cm3)"]):
-            df["Vext - Vpyc (cm3)"] = df.apply(
-                lambda r: (r["Vext (cm3)"] - r["Vpyc (cm3)"])
-                if pd.notna(r["Vext (cm3)"]) and pd.notna(r["Vpyc (cm3)"])
-                else pd.NA,
-                axis=1,
-            )
-
-        # Calcular 1 - ρr
-        if "ρr" in df.columns:
-            df["1-ρr"] = df["ρr"].apply(lambda v: 1 - v if pd.notna(v) else pd.NA)
-
-        # Calcular Vext(1-ρr)
-        if all(c in df.columns for c in ["Vext (cm3)", "1-ρr"]):
-            df["Vext(1-ρr) (cm3)"] = df.apply(
-                lambda r: (r["Vext (cm3)"] * r["1-ρr"])
-                if pd.notna(r["Vext (cm3)"]) and pd.notna(r["1-ρr"])
-                else pd.NA,
-                axis=1,
-            )
-
-        # Calcular %OC = (Vext - Vpyc) / (Vext*(1-ρr)) * 100
-        if all(c in df.columns for c in ["Vext - Vpyc (cm3)", "Vext(1-ρr) (cm3)"]):
-            def _calc_oc(r):
-                num = r["Vext - Vpyc (cm3)"]
-                den = r["Vext(1-ρr) (cm3)"]
-                if pd.notna(num) and pd.notna(den) and den not in (0, 0.0):
-                    return (num / den) * 100
-                return pd.NA
-            df["%OC"] = df.apply(_calc_oc, axis=1)
-
-        # Debug detallado
-        print("DEBUG OC PY: Calculadas columnas derivadas")
-        for col in ["Vext (cm3)", "Vext - Vpyc (cm3)", "1-ρr", "Vext(1-ρr) (cm3)", "%OC"]:
-            if col in df.columns:
-                vals = df[col].head(5).tolist()
-                print(f"DEBUG OC PY: {col} -> {vals}")
+        # Rellenar fórmulas por fila (encabezado en fila 1)
+        for idx in df.index:
+            excel_row = idx + 2
+            df.at[idx, "Vext (cm3)"] = f"=IFERROR(C{excel_row}/B{excel_row},\"\")"
+            df.at[idx, "Vext - Vpyc (cm3)"] = f"=IF(AND(D{excel_row}<>\"\",E{excel_row}<>\"\"),D{excel_row}-E{excel_row},\"\")"
+            df.at[idx, "1-ρr"] = f"=IF(F{excel_row}<>\"\",1-F{excel_row},\"\")"
+            df.at[idx, "Vext(1-ρr) (cm3)"] = f"=IF(AND(D{excel_row}<>\"\",I{excel_row}<>\"\"),D{excel_row}*I{excel_row},\"\")"
+            df.at[idx, "%OC"] = f"=IF(AND(H{excel_row}<>\"\",J{excel_row}<>\"\",J{excel_row}<>0),(H{excel_row}/J{excel_row})*100,\"\")"
 
         order = [
             "Label", "Density (g/cm3)", "m (g)", "Vext (cm3)", "Vpyc (cm3)",
-            "ρr", "Vext - Vpyc (cm3)", "1-ρr", "Vext(1-ρr) (cm3)", "%OC", "R2", "Comment Analysis",
+            "ρr", "R2", "Vext - Vpyc (cm3)", "1-ρr", "Vext(1-ρr) (cm3)", "%OC", "Comment Analysis",
         ]
         existing_order = [c for c in order if c in df.columns]
         df = df[existing_order]
 
-        # Guardar valores numéricos (sin fórmulas) para que pandas los lea directamente
+        # Guardar (fórmulas incluidas)
         df.to_excel(output_file, index=False, engine="openpyxl")
-        print(f"Saved results (numeric) to {output_file}")
+        print(f"Saved results (formulas) to {output_file}")
 
 
 def main():
