@@ -672,9 +672,9 @@ class OCModule:
         vol = df["Volume (cm3)"].to_numpy(dtype=float)
         colors = ["#000000"] * len(p1)
         scatter = ax.scatter(p1, vol, c=colors, s=35, alpha=0.8, picker=True, pickradius=5)
-        line_plot, = ax.plot([], [], color="#E69F00", linewidth=2, alpha=0.8)
-        extrap_plot, = ax.plot([], [], color="#E69F00", linewidth=2, alpha=0.8, linestyle="--")
-        intercept_marker, = ax.plot([], [], marker="*", markersize=10, color="#E69F00", alpha=0.9)
+        line_plot, = ax.plot([], [], color="#E69F00", linewidth=2, alpha=0.8, zorder=2)
+        extrap_plot, = ax.plot([], [], color="#E69F00", linewidth=2, alpha=0.8, linestyle="--", zorder=1.5)
+        intercept_marker, = ax.plot([], [], marker="*", markersize=12, color="#0072B2", alpha=0.95, zorder=3)
         ax.grid(True, linestyle="--", alpha=0.3)
 
         stats_var = tk.StringVar(value="Select points to compute Vpyc")
@@ -685,7 +685,8 @@ class OCModule:
             transform=ax.transAxes,
             ha="right",
             va="top",
-            bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.8, edgecolor="#0072B2"),
+            color="#0072B2",
         )
 
         selection_mask = None
