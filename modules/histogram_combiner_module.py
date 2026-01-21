@@ -125,7 +125,6 @@ class HistogramCombinerModule:
             font=("Arial", 10, "bold"),
             wraplength=700,
             justify=tk.LEFT,
-            bg=main_frame.cget("background"),
         ).pack(pady=(0, 20), anchor=tk.W)
 
         in_frame = ttk.LabelFrame(main_frame, text="Input Folder (SEM Results)", padding=15)
