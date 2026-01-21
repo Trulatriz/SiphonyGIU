@@ -394,7 +394,6 @@ class OCModule:
                         "Density (g/cm3)",
                         "m (g)",
                         "Vext (cm3)",
-                        "Vpyc unfixed (cm3)",
                         "Vpyc (cm3)",
                         "ρr",
                         "R2",
@@ -412,7 +411,6 @@ class OCModule:
                             "\u03C1 foam (g/cm^3)",
                             "m (g)",
                             "Vext (cm3)",
-                            "Vpyc unfixed (cm3)",
                             "Vpyc (cm3)",
                             "\u03C1r",
                             "R2",
@@ -516,24 +514,12 @@ class OCModule:
             if density_df is not None:
                 target_label = str(label)
                 if target_label in density_df.index:
-                    row = density_df.loc[target_label]
-                else:
-                    row = None
-                if row is not None:
-                    try:
-                        density = row.iloc[self._density_pos]
-                    except Exception:
-                        density = row.iloc[0] if len(row) > 0 else pd.NA
-                    try:
-                        rho_r = row.iloc[self._rho_r_pos]
-                    except Exception:
-                        rho_r = row.iloc[1] if len(row) > 1 else pd.NA
+                    density, rho_r = _resolve_density_rho(self, density_df, target_label)
 
             result = {
                 "Label": label,
                 "Density (g/cm3)": density,
                 "m (g)": mass,
-                "Vpyc unfixed (cm3)": vpyc,
                 "Vpyc (cm3)": vpyc,
                 "ρr": rho_r,
                 "Comment Analysis": validated.get("comment", ""),
@@ -552,6 +538,14 @@ class OCModule:
             if importlib.util.find_spec("xlrd") is None:
                 raise ImportError("Reading .xls requires xlrd>=2.0.1")
             df = pd.read_excel(file_path, header=None, engine="xlrd")
+            mass = self._extract_mass(df=df)
+            table = self._extract_table(df=df)
+            return mass, table
+        if ext == ".csv":
+            try:
+                df = pd.read_csv(file_path, header=None, encoding="latin1")
+            except Exception:
+                df = pd.read_csv(file_path, header=None, encoding="utf-8", errors="replace")
             mass = self._extract_mass(df=df)
             table = self._extract_table(df=df)
             return mass, table
@@ -697,7 +691,11 @@ class OCModule:
             result_holder["R2"] = r2
             result_holder["mask"] = mask
 
-        initial_mask = np.ones_like(p1, dtype=bool)
+        if len(p1) >= 3:
+            initial_mask = np.zeros_like(p1, dtype=bool)
+            initial_mask[:3] = True
+        else:
+            initial_mask = np.ones_like(p1, dtype=bool)
         update_selection(initial_mask)
 
         def on_span(xmin, xmax):
@@ -936,7 +934,7 @@ class OCModule:
             manual_volume = self.edit_volume_var.get()
             detected_volume = new_data.get('detected_balls_volume', 0.0)
             if abs(manual_volume - detected_volume) > 1e-9:
-                vpyc_original = new_data.get("Vpyc unfixed (cm3)")
+                vpyc_original = new_data.get("Vpyc (cm3)")
                 if vpyc_original is not None:
                     new_data["Vpyc (cm3)"] = vpyc_original - manual_volume
                 new_data["detected_balls_volume"] = manual_volume
@@ -947,7 +945,7 @@ class OCModule:
             vars_dict['volume'].set(new_data.get("detected_balls_volume", 0.0))
         else:
             new_data["detected_balls_volume"] = 0.0
-            new_data["Vpyc (cm3)"] = new_data.get("Vpyc unfixed (cm3)")
+            new_data["Vpyc (cm3)"] = new_data.get("Vpyc (cm3)")
             new_data["Comment Analysis"] = INSTRUMENT_PRESSTECH
             vars_dict['volume'].set(0.0)
             self.edit_volume_var.set(0.0)
@@ -977,15 +975,12 @@ class OCModule:
 
             if instrument_choice == INSTRUMENT_PRESSTECH:
                 data["detected_balls_volume"] = 0.0
-                vpyc_original = data.get("Vpyc unfixed (cm3)")
-                if vpyc_original is not None:
-                    data["Vpyc (cm3)"] = vpyc_original
                 data["Comment Analysis"] = INSTRUMENT_PRESSTECH
                 continue
 
             new_balls_volume = vars_dict['volume'].get()
-            vpyc_original = data["Vpyc unfixed (cm3)"]
-            vpyc_corrected = vpyc_original - new_balls_volume
+            vpyc_original = data.get("Vpyc (cm3)")
+            vpyc_corrected = vpyc_original - new_balls_volume if vpyc_original is not None else None
 
             detected_volume = data.get("detected_balls_volume", 0.0)
             changed = abs(new_balls_volume - detected_volume) > 1e-9
@@ -1028,9 +1023,9 @@ class OCModule:
                     "Density (g/cm3)",
                     "m (g)",
                     "Vext (cm3)",
-                    "Vpyc unfixed (cm3)",
                     "Vpyc (cm3)",
                     "ρr",
+                    "R2",
                     "Vext - Vpyc (cm3)",
                     "1-ρr",
                     "Vext(1-ρr) (cm3)",
@@ -1068,7 +1063,7 @@ class OCModule:
 
         # Asegurar tipos numéricos
         num_cols = [
-            "Density (g/cm3)", "m (g)", "Vpyc unfixed (cm3)", "Vpyc (cm3)", "ρr"
+            "Density (g/cm3)", "m (g)", "Vpyc (cm3)", "ρr", "R2"
         ]
         for c in num_cols:
             if c in df.columns:
@@ -1128,7 +1123,7 @@ class OCModule:
                 print(f"DEBUG OC PY: {col} -> {vals}")
 
         order = [
-            "Label", "Density (g/cm3)", "m (g)", "Vext (cm3)", "Vpyc unfixed (cm3)", "Vpyc (cm3)",
+            "Label", "Density (g/cm3)", "m (g)", "Vext (cm3)", "Vpyc (cm3)",
             "ρr", "Vext - Vpyc (cm3)", "1-ρr", "Vext(1-ρr) (cm3)", "%OC", "R2", "Comment Analysis",
         ]
         existing_order = [c for c in order if c in df.columns]
