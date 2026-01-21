@@ -14,6 +14,8 @@ import matplotlib
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
+from .ui_utils import Tooltip
+
 from .plot_shared import (
     OKABE_ITO,
     RHO_FOAM_G,
@@ -78,31 +80,6 @@ def _natural_sort_key(val):
                 pass
     # Fallback to string representation
     return str(val)
-
-
-class _Tooltip:
-    def __init__(self, widget, text):
-        self.widget = widget
-        self.text = text
-        self.tip = None
-        self.widget.bind("<Enter>", self._show)
-        self.widget.bind("<Leave>", self._hide)
-
-    def _show(self, _event=None):
-        if self.tip is not None:
-            return
-        x = self.widget.winfo_rootx() + 10
-        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
-        self.tip = tk.Toplevel(self.widget)
-        self.tip.wm_overrideredirect(True)
-        self.tip.wm_geometry(f"+{x}+{y}")
-        label = ttk.Label(self.tip, text=self.text, background="lightyellow", relief="solid", borderwidth=1)
-        label.pack(ipadx=4, ipady=2)
-
-    def _hide(self, _event=None):
-        if self.tip is not None:
-            self.tip.destroy()
-            self.tip = None
 
 
 @dataclass
@@ -248,7 +225,7 @@ class PlotModule:
 
         self.err_chk = ttk.Checkbutton(sel, text="Error bars", variable=self.errorbar_var, command=self._on_option_change)
         self.err_chk.grid(row=0, column=6, sticky=tk.W)
-        _Tooltip(
+        Tooltip(
             self.err_chk,
             "Available only for Y in {Ø (µm), Nᵥ (cells·cm³), ρf (g/cm³), ρf (kg/m³)} when the matching deviation column is present."
         )
@@ -267,7 +244,7 @@ class PlotModule:
         ttk.Label(sel, text="Y =").grid(row=1, column=1, sticky=tk.E, pady=(6, 0))
         self.hline_entry = ttk.Entry(sel, textvariable=self.hline_value_var, width=12, state="disabled")
         self.hline_entry.grid(row=1, column=2, sticky=(tk.W, tk.E), padx=(4, 12), pady=(6, 0))
-        _Tooltip(self.hline_entry, "Draws a red horizontal guide across the plot at the specified Y value.")
+        Tooltip(self.hline_entry, "Draws a red horizontal guide across the plot at the specified Y value.")
 
         self.vline_chk = ttk.Checkbutton(
             sel,
@@ -279,7 +256,7 @@ class PlotModule:
         ttk.Label(sel, text="X =").grid(row=1, column=5, sticky=tk.E, pady=(6, 0))
         self.vline_entry = ttk.Entry(sel, textvariable=self.vline_value_var, width=12, state="disabled")
         self.vline_entry.grid(row=1, column=6, sticky=(tk.W, tk.E), padx=(4, 0), pady=(6, 0))
-        _Tooltip(self.vline_entry, "Draws a red vertical guide across the plot at the specified X value.")
+        Tooltip(self.vline_entry, "Draws a red vertical guide across the plot at the specified X value.")
 
         # Second-row display option: connect or not connect points
         self.connect_chk = ttk.Checkbutton(
@@ -623,27 +600,25 @@ class PlotModule:
             self.file_var.set(filename)
 
     def _load_file(self):
-        path = self.file_var.get().strip()
-        if not path:
+        raw = self.file_var.get().strip()
+        if not raw:
             messagebox.showwarning("Missing file", "Please select an All_Results_*.xlsx file.")
             return
-        if os.path.isdir(path):
-            import glob
-            cand = sorted(glob.glob(os.path.join(path, "All_Results_*.xlsx")))
-            if not cand:
-                messagebox.showwarning("Not found", "No All_Results_*.xlsx in the selected folder.")
-                return
-            path = cand[-1]
-            self.file_var.set(path)
-        elif ("*" in path) or ("?" in path):
-            import glob
-            matches = sorted(glob.glob(path))
-            if not matches:
-                messagebox.showwarning("Not found", f"No files match pattern:\n{path}")
-                return
-            path = matches[-1]
-            self.file_var.set(path)
-        if not os.path.exists(path):
+        import glob
+
+        candidates = []
+        if os.path.isdir(raw):
+            candidates = sorted(glob.glob(os.path.join(raw, "All_Results_*.xlsx")))
+        else:
+            candidates = sorted(glob.glob(raw)) if ("*" in raw or "?" in raw) else [raw]
+
+        if not candidates:
+            messagebox.showwarning("Not found", f"No files match pattern or folder:\n{raw}")
+            return
+
+        path = candidates[-1]
+        self.file_var.set(path)
+        if not os.path.isfile(path):
             messagebox.showerror("File not found", path)
             return
 
@@ -730,7 +705,7 @@ class PlotModule:
         self.err_chk.configure(state=state)
         if not can_err:
             self.errorbar_var.set(False)
-            _Tooltip(self.err_chk, "Enable only for Y in {\u00F8, N\u1D65, \u03C1f (g/cm^3), \u03C1f (kg/m^3)} with deviation column present.")
+            Tooltip(self.err_chk, "Enable only for Y in {\u00F8, N\u1D65, \u03C1f (g/cm^3), \u03C1f (kg/m^3)} with deviation column present.")
 
     def _on_reference_line_toggle(self):
         self._update_reference_line_controls()

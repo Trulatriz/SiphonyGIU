@@ -5,6 +5,7 @@ import os
 import re
 import glob
 import warnings
+from pathlib import Path
 from openpyxl.styles import Font, PatternFill
 from .foam_type_manager import FoamTypeManager, FoamTypeSelector
 
@@ -392,32 +393,34 @@ class DSCModule:
                 self.file_tree.set(item, "status", status)
                 return
 
+    def _parse_dsc_text(self, full_text: str):
+        """Extract sample name, mass, and the results section from a DSC report."""
+        sample_name, mass = None, None
+        sample_match = re.search(r"Sample:\s*(.*?),\s*([\d,\.]+)\s*mg", full_text)
+        if sample_match:
+            sample_name_raw = sample_match.group(1).replace("DSC", "").strip()
+            mass = float(sample_match.group(2).replace(",", "."))
+            foam_types_to_remove = self.foam_manager.get_foam_types()
+            sample_name = sample_name_raw
+            for foam_type in foam_types_to_remove:
+                if sample_name_raw.upper().startswith(foam_type.upper()):
+                    sample_name = re.sub(rf"^{re.escape(foam_type)}\s*", "", sample_name_raw, flags=re.IGNORECASE).strip()
+                    break
+
+        sections = full_text.split("Results:")
+        results_body = sections[1] if len(sections) > 1 else None
+        return sample_name, mass, results_body
+
     def process_semicrystalline_file(self, file_path):
         """Process a single DSC file for semicrystalline polymers"""
-        fname = os.path.basename(file_path)
+        fname = Path(file_path).name
         try:
-            sample_name, mass = None, None
-            
             with open(file_path, 'r', encoding='latin-1') as f:
                 full_text = f.read()
 
-            # Extract sample name and mass
-            sample_match = re.search(r'Sample:\s*(.*?),\s*([\d,\.]+)\s*mg', full_text)
-            if sample_match:
-                sample_name_raw = sample_match.group(1).replace('DSC', '').strip()
-                mass = float(sample_match.group(2).replace(',', '.'))
-                
-                # Clean foam type prefixes
-                foam_types_to_remove = self.foam_manager.get_foam_types()
-                sample_name = sample_name_raw
-                for foam_type in foam_types_to_remove:
-                    if sample_name_raw.upper().startswith(foam_type.upper()):
-                        sample_name = re.sub(rf'^{re.escape(foam_type)}\s*', '', sample_name_raw, flags=re.IGNORECASE).strip()
-                        break
+            sample_name, mass, results_body = self._parse_dsc_text(full_text)
 
-            # Extract results
-            results_section = full_text.split('Results:')
-            if len(results_section) < 2:
+            if not results_body:
                 print(f"Warning: No 'Results:' section found in {fname}")
                 return False, None
                 
@@ -428,7 +431,7 @@ class DSCModule:
                 r"Peak\s+(-?[\d,\.]+)\s*°C",
                 re.DOTALL
             )
-            matches = pattern.findall(results_section[1])
+            matches = pattern.findall(results_body)
             
             if sample_name and matches and len(matches) == 3:
                 results_values = [float(val.replace(',', '.')) for block in matches for val in block]
@@ -460,62 +463,47 @@ class DSCModule:
 
     def process_amorphous_file(self, file_path):
         """Process a single DSC file for amorphous polymers"""
-        fname = os.path.basename(file_path)
+        fname = Path(file_path).name
         try:
-            sample_name, mass = None, None
-            
             with open(file_path, 'r', encoding='latin-1') as f:
                 full_text = f.read()
 
-            # Extract sample name and mass
-            sample_match = re.search(r'Sample:\s*(.*?),\s*([\d,\.]+)\s*mg', full_text)
-            if sample_match:
-                sample_name_raw = sample_match.group(1).replace('DSC', '').strip()
-                mass = float(sample_match.group(2).replace(',', '.'))
+            sample_name, mass, results_body = self._parse_dsc_text(full_text)
 
-                # Clean foam type prefixes for amorphous
-                foam_types_to_remove = self.foam_manager.get_foam_types()
-                sample_name = sample_name_raw
-                for foam_type in foam_types_to_remove:
-                    if sample_name_raw.upper().startswith(foam_type.upper()):
-                        sample_name = re.sub(rf'^{re.escape(foam_type)}\s*', '', sample_name_raw, flags=re.IGNORECASE).strip()
-                        break
-
-            # Extract glass transition results
-            results_section = full_text.split('Results:')
-            if len(results_section) < 2:
+            if not results_body:
                 print(f"Warning: No 'Results:' section found in {fname}")
                 return False, None
-                
+
             pattern = re.compile(
-                r"Glass Transition.*?" +
-                r"Midpoint ISO\s+([\d,\.]+)\s*°C.*?" +
+                r"Glass Transition.*?"
+                r"Midpoint ISO\s+([\d,\.]+)\s*\u00b0C.*?"
                 r"Delta cp\s+([\d,\.]+)\s*Jg\^-1K\^-1",
                 re.DOTALL
             )
-            matches = pattern.findall(results_section[1])
-            
+            matches = pattern.findall(results_body)
+
             if sample_name and matches and len(matches) >= 1:
                 results_values = [float(val.replace(',', '.')) for block in matches for val in block]
                 while len(results_values) < 4:  # Fill missing 2nd cycle
                     results_values.extend([None, None])
-                    
+
                 result = {
                     'Sample': sample_name,
                     'Mass (mg)': mass,
-                    '1st Heat Tg (°C)': results_values[0],
-                    '1st Heat Δcp (J/gK)': results_values[1],
-                    '2nd Heat Tg (°C)': results_values[2] if results_values[2] is not None else None,
-                    '2nd Heat Δcp (J/gK)': results_values[3] if results_values[3] is not None else None
+                    '1st Heat Tg (\u00b0C)': results_values[0],
+                    '1st Heat \u0394cp (J/gK)': results_values[1],
+                    '2nd Heat Tg (\u00b0C)': results_values[2] if results_values[2] is not None else None,
+                    '2nd Heat \u0394cp (J/gK)': results_values[3] if results_values[3] is not None else None
                 }
                 return True, result
             else:
                 print(f"Warning: Could not extract glass transition data from {fname}")
                 return False, None
-                
+
         except Exception as e:
             print(f"ERROR processing {fname}: {e}")
             return False, None
+
 
     def get_output_filename(self):
         """Generate output filename based on analysis type and foam type"""

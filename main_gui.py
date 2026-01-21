@@ -4,6 +4,8 @@ import os
 import sys
 from pathlib import Path
 
+from modules.ui_utils import setup_toplevel, Tooltip
+
 # Import modules for each functionality
 from modules.combine_module import CombineModule
 from modules.dsc_module import DSCModule
@@ -239,35 +241,7 @@ class PressTechGUI:
                 tooltip_map[b] = "Spearman heatmaps with column selection"
 
         for button, text in tooltip_map.items():
-            self.create_tooltip(button, text)
-
-    def create_tooltip(self, widget, text):
-        """Create and attach a simple tooltip to a widget"""
-        def show_tooltip(event):
-            tooltip = tk.Toplevel(self.root)
-            tooltip.wm_overrideredirect(True)
-            tooltip.wm_geometry(f"+{event.x_root+10}+{event.y_root+10}")
-            label = ttk.Label(
-                tooltip,
-                text=text,
-                background="lightyellow",
-                relief="solid",
-                borderwidth=1,
-                font=('Arial', 9)
-            )
-            label.pack()
-            widget.tooltip = tooltip
-
-        def hide_tooltip(_event):
-            if hasattr(widget, 'tooltip') and widget.tooltip:
-                try:
-                    widget.tooltip.destroy()
-                except Exception:
-                    pass
-                widget.tooltip = None
-
-        widget.bind("<Enter>", show_tooltip)
-        widget.bind("<Leave>", hide_tooltip)
+            Tooltip(button, text)
     
     def create_status_bar(self):
         """Create status bar at the bottom"""
@@ -348,11 +322,7 @@ class PressTechGUI:
 
     def show_foam_specific_dialog(self):
         """Open foam-specific analysis dialog with Back to main screen."""
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Foam-Specific Analysis")
-        dialog.transient(self.root)
-        dialog.grab_set()
-        dialog.resizable(False, False)
+        dialog = setup_toplevel(self.root, "Foam-Specific Analysis", resizable=False)
 
         frame = ttk.Frame(dialog, padding=20)
         frame.grid(row=0, column=0)
@@ -374,10 +344,6 @@ class PressTechGUI:
         back_btn = ttk.Button(frame, text="⬅️ Back", command=dialog.destroy)
         back_btn.grid(row=4, column=0, columnspan=2, pady=(12, 0))
 
-        dialog.update_idletasks()
-        x = self.root.winfo_rootx() + (self.root.winfo_width() // 2) - (dialog.winfo_width() // 2)
-        y = self.root.winfo_rooty() + (self.root.winfo_height() // 2) - (dialog.winfo_height() // 2)
-        dialog.geometry(f"+{x}+{y}")
     
     def update_status(self, message):
         """Update status bar message"""
@@ -388,7 +354,7 @@ class PressTechGUI:
         """Open Smart Combine Results module"""
         self.update_status("Opening Smart Combine Results module...")
         try:
-            combine_window = tk.Toplevel(self.root)
+            combine_window = setup_toplevel(self.root, "Smart Combine Results")
             # Pass current paper path to CombineModule
             current_paper_path = getattr(self, 'current_paper_path', None)
             CombineModule(combine_window, current_paper_path)
@@ -399,12 +365,7 @@ class PressTechGUI:
     
     def open_cell_analysis(self):
         """Obtain SEM results: show a single entry to instructions with link"""
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Obtain SEM Results")
-        dialog.transient(self.root)
-        dialog.grab_set()
-        dialog.geometry("450x240")
-        dialog.resizable(False, False)
+        dialog = setup_toplevel(self.root, "Obtain SEM Results", geometry="450x240", resizable=False)
         
         # Center the dialog
         dialog.geometry("+%d+%d" % (self.root.winfo_rootx() + 50, self.root.winfo_rooty() + 50))
@@ -443,11 +404,7 @@ class PressTechGUI:
     
     def show_cell_analysis_instructions(self):
         """Show instructions for Cell Size and Cell Density analysis"""
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Cell Size & Cell Density - Instructions")
-        dialog.transient(self.root)
-        dialog.grab_set()
-        dialog.geometry("700x600")
+        dialog = setup_toplevel(self.root, "Cell Size & Cell Density - Instructions", geometry="700x600")
         
         # Main frame with scrollbar
         main_frame = ttk.Frame(dialog)
@@ -542,16 +499,12 @@ class PressTechGUI:
         canvas.bind_all("<MouseWheel>", _on_mousewheel)
         
         # Center dialog
-        dialog.update_idletasks()
-        x = self.root.winfo_rootx() + (self.root.winfo_width() // 2) - (dialog.winfo_width() // 2)
-        y = self.root.winfo_rooty() + (self.root.winfo_height() // 2) - (dialog.winfo_height() // 2)
-        dialog.geometry(f"+{x}+{y}")
     
     def open_dsc(self):
         """Open DSC Analysis module"""
         self.update_status("Opening DSC Analysis module...")
         try:
-            dsc_window = tk.Toplevel(self.root)
+            dsc_window = setup_toplevel(self.root, "DSC Analysis")
             DSCModule(dsc_window)
             self.update_status("DSC Analysis module opened")
         except Exception as e:
@@ -562,7 +515,7 @@ class PressTechGUI:
         """Open SEM Image Editor module"""
         self.update_status("Opening SEM Image Editor module...")
         try:
-            sem_window = tk.Toplevel(self.root)
+            sem_window = setup_toplevel(self.root, "SEM Image Editor")
             SEMModule(sem_window)
             self.update_status("SEM Image Editor module opened")
         except Exception as e:
@@ -573,7 +526,7 @@ class PressTechGUI:
         """Open Open-Cell Content module"""
         self.update_status("Opening Open-Cell Content module...")
         try:
-            oc_window = tk.Toplevel(self.root)
+            oc_window = setup_toplevel(self.root, "Open-Cell Content")
             # Pass current paper path and foam type to OCModule
             current_paper_path = getattr(self, 'current_paper_path', None)
             current_foam_type = getattr(self, 'current_foam_type', None)
@@ -587,7 +540,7 @@ class PressTechGUI:
         """Open Pressure Drop Rate module"""
         self.update_status("Opening Pressure Drop Rate module...")
         try:
-            pdr_window = tk.Toplevel(self.root)
+            pdr_window = setup_toplevel(self.root, "Pressure Drop Rate")
             PDRModule(pdr_window)
             self.update_status("Pressure Drop Rate module opened")
         except Exception as e:
@@ -609,7 +562,7 @@ class PressTechGUI:
         """Launch scatter module with independent variables on X axis."""
         self.update_status("Opening independent vs dependent scatter plots...")
         try:
-            win = tk.Toplevel(self.root)
+            win = setup_toplevel(self.root, "Publication Plots (Scatter)")
             default_glob = self._default_all_results_glob()
             PlotModule(win, self.settings, default_all_results_glob=default_glob)
             self.update_status("Scatter plots (independent vs dependent) opened")
@@ -621,7 +574,7 @@ class PressTechGUI:
         """Launch scatter module with dependent variables on both axes."""
         self.update_status("Opening dependent vs dependent scatter plots...")
         try:
-            win = tk.Toplevel(self.root)
+            win = setup_toplevel(self.root, "Dependent vs Dependent Scatter")
             default_glob = self._default_all_results_glob()
             DependentScatterModule(win, self.settings, default_all_results_glob=default_glob)
             self.update_status("Scatter plots (dependent vs dependent) opened")
@@ -632,11 +585,7 @@ class PressTechGUI:
     def open_publication_plots(self):
         """Prompt for scatter plot type before launching the corresponding module."""
         self.update_status("Select scatter plot type...")
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Scatter Plots")
-        dialog.transient(self.root)
-        dialog.grab_set()
-        dialog.resizable(False, False)
+        dialog = setup_toplevel(self.root, "Scatter Plots", resizable=False)
 
         frame = ttk.Frame(dialog, padding=20)
         frame.grid(row=0, column=0)
@@ -760,11 +709,7 @@ Developed for advanced polymer foam research.
         import tkinter as tk
         from tkinter import ttk
         
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Select Analysis Type")
-        dialog.transient(self.root)
-        dialog.grab_set()
-        dialog.resizable(False, False)
+        dialog = setup_toplevel(self.root, "Select Analysis Type", resizable=False)
         
         frame = ttk.Frame(dialog, padding=20)
         frame.grid(row=0, column=0)
@@ -800,11 +745,7 @@ Developed for advanced polymer foam research.
         from tkinter import ttk
         
         parent_dialog.withdraw()
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Foam-Specific Analysis")
-        dialog.transient(self.root)
-        dialog.grab_set()
-        dialog.resizable(False, False)
+        dialog = setup_toplevel(self.root, "Foam-Specific Analysis", resizable=False)
         
         frame = ttk.Frame(dialog, padding=20)
         frame.grid(row=0, column=0)

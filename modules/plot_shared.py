@@ -1,6 +1,6 @@
 import pandas as pd
 
-# Okabe–Ito color-blind–safe palette
+# Okabe-Ito color-blind-safe palette
 OKABE_ITO = [
     "#000000",  # black
     "#E69F00",  # orange
@@ -12,23 +12,23 @@ OKABE_ITO = [
     "#CC79A7",  # reddish purple
 ]
 
-RHO_FOAM_G = "\u03C1 foam (g/cm^3)"
-RHO_FOAM_KG = "\u03C1 foam (kg/m^3)"
-RHO_REL = "\u03C1\u1D63"
-DESV_RHO_FOAM_G = "Desvest \u03C1 foam (g/cm^3)"
-DESV_RHO_FOAM_KG = "Desvest \u03C1 foam (kg/m^3)"
+RHO_FOAM_G = "\u03c1 foam (g/cm^3)"
+RHO_FOAM_KG = "\u03c1 foam (kg/m^3)"
+RHO_REL = "\u03c1\u1d63"
+DESV_RHO_FOAM_G = "Desvest \u03c1 foam (g/cm^3)"
+DESV_RHO_FOAM_KG = "Desvest \u03c1 foam (kg/m^3)"
 
 # Exact canonical column names from CombineModule.new_column_order
 INDEPENDENT_OPTIONS = [
     ("m(g)", "m(g)", r"$m\;(\mathrm{g})$"),
     ("Water (g)", "Water (g)", r"$\mathrm{Water}\;(\mathrm{g})$"),
-    ("Tsat (\u00B0C)", "T (\u00B0C)", r"$T_{\mathrm{sat}}\;({}^\circ\mathrm{C})$"),
+    ("Tsat (\u00b0C)", "T (\u00b0C)", r"$T_{\mathrm{sat}}\;({}^\circ\mathrm{C})$"),
     ("Psat (MPa)", "Psat (MPa)", r"$P_{\mathrm{sat}}\;(\mathrm{MPa})$"),
     ("tsat (min)", "t (min)", r"$t_{\mathrm{sat}}\;(\mathrm{min})$"),
     ("PDR (MPa/s)", "PDR (MPa/s)", r"$\mathrm{PDR}\;(\mathrm{MPa}/\mathrm{s})$"),
-    ("Additive %", "Additive %", r"\\text{Additive }(\\%)"),
-    ("Additive", "Additive", r"\\text{Additive}"),
-    ("Base Polymer", "Base Polymer", r"\\text{Base Polymer}"),
+    ("Additive %", "Additive %", r"\text{Additive }(\%)"),
+    ("Additive", "Additive", r"\text{Additive}"),
+    ("Base Polymer", "Base Polymer", r"\text{Base Polymer}"),
 ]
 
 INDEPENDENTS = [display for display, _column, _latex in INDEPENDENT_OPTIONS]
@@ -38,17 +38,17 @@ INDEPENDENT_COLUMNS = [column for _display, column, _latex in INDEPENDENT_OPTION
 INDEPENDENT_LATEX = {display: latex for display, _column, latex in INDEPENDENT_OPTIONS}
 
 DEPENDENT_OPTIONS = [
-    ("\u00F8 (\u00B5m)", "\u00F8 (\u00B5m)", r"$\varnothing\;(\mu\mathrm{m})$"),
-    ("N\u1D65 (cells\u00B7cm^3)", "N\u1D65 (cells\u00B7cm^3)", r"$N_{\mathrm{v}}\;(\mathrm{cells}/\mathrm{cm}^3)$"),
-    ("\u03C1f (g/cm^3)", RHO_FOAM_G, r"$\rho_{f}\;(\mathrm{g}/\mathrm{cm}^3)$"),
-    ("\u03C1f (kg/m^3)", RHO_FOAM_KG, r"$\rho_{f}\;(\mathrm{kg}/\mathrm{m}^3)$"),
-    ("\u03C1\u1D63", RHO_REL, r"$\rho_{r}$"),
+    ("\u00f8 (\u00b5m)", "\u00f8 (\u00b5m)", r"$\varnothing\;(\mu\mathrm{m})$"),
+    ("N\u1d65 (cells\u00b7cm^3)", "N\u1d65 (cells\u00b7cm^3)", r"$N_{\mathrm{v}}\;(\mathrm{cells}/\mathrm{cm}^3)$"),
+    ("\u03c1f (g/cm^3)", RHO_FOAM_G, r"$\rho_{f}\;(\mathrm{g}/\mathrm{cm}^3)$"),
+    ("\u03c1f (kg/m^3)", RHO_FOAM_KG, r"$\rho_{f}\;(\mathrm{kg}/\mathrm{m}^3)$"),
+    ("\u03c1\u1d63", RHO_REL, r"$\rho_{r}$"),
     ("PDR (MPa/s)", "PDR (MPa/s)", r"$\mathrm{PDR}\;(\mathrm{MPa}/\mathrm{s})$"),
     ("X", "X", r"$X$"),
     ("Ov (%)", "OC (%)", r"$O_{\mathrm{v}}\;(\%)$"),
-    ("Tm (\u00B0C)", "DSC Tm (\u00B0C)", r"$T_{\mathrm{m}}\;({}^\circ\mathrm{C})$"),
-    ("Tg (\u00B0C)", "DSC Tg (\u00B0C)", r"$T_{\mathrm{g}}\;({}^\circ\mathrm{C})$"),
-    ("\u03C7c (%)", "DSC Xc (%)", r"$\chi_{c}\;(\%)$"),
+    ("Tm (\u00b0C)", "DSC Tm (\u00b0C)", r"$T_{\mathrm{m}}\;({}^\circ\mathrm{C})$"),
+    ("Tg (\u00b0C)", "DSC Tg (\u00b0C)", r"$T_{\mathrm{g}}\;({}^\circ\mathrm{C})$"),
+    ("\u03c7c (%)", "DSC Xc (%)", r"$\chi_{c}\;(\%)$"),
 ]
 
 DEPENDENT_LABELS = [label for label, _column, _latex in DEPENDENT_OPTIONS]
@@ -59,41 +59,22 @@ DEPENDENT_COLUMNS = [column for _label, column, _latex in DEPENDENT_OPTIONS]
 DEPENDENTS = DEPENDENT_LABELS
 
 DEPENDENT_TO_DEVIATION = {
-    "\u00F8 (\u00B5m)": "Desvest \u00F8 (\u00B5m)",
-    "N\u1D65 (cells\u00B7cm^3)": "Desvest N\u1D65 (cells\u00B7cm^3)",
-    "\u03C1f (g/cm^3)": DESV_RHO_FOAM_G,
-    "\u03C1f (kg/m^3)": DESV_RHO_FOAM_KG,
+    "\u00f8 (\u00b5m)": "Desvest \u00f8 (\u00b5m)",
+    "N\u1d65 (cells\u00b7cm^3)": "Desvest N\u1d65 (cells\u00b7cm^3)",
+    "\u03c1f (g/cm^3)": DESV_RHO_FOAM_G,
+    "\u03c1f (kg/m^3)": DESV_RHO_FOAM_KG,
 }
 
-DEPENDENT_TO_DEVIATION = {
-    "Ø (µm)": "Desvest Ø (µm)",
-    "Nᵥ (cells·cm^3)": "Desvest Nᵥ (cells·cm^3)",
-    "ρf (g/cm^3)": DESV_RHO_FOAM_G,
-    "ρf (kg/m^3)": DESV_RHO_FOAM_KG,
-}
-
-DEPENDENT_TO_DEVIATION = {
-    "\u00F8 (\u00B5m)": "Desvest \u00F8 (\u00B5m)",
-    "N\u1D65 (cells\u00B7cm^3)": "Desvest N\u1D65 (cells\u00B7cm^3)",
-    "\u03C1f (g/cm^3)": DESV_RHO_FOAM_G,
-    "\u03C1f (kg/m^3)": DESV_RHO_FOAM_KG,
-}
-
-DEVIATIONS = {
-    "\u00F8 (\u00B5m)": "Desvest \u00F8 (\u00B5m)",
-    "N\u1D65 (cells\u00B7cm^3)": "Desvest N\u1D65 (cells\u00B7cm^3)",
-    "\u03C1f (g/cm^3)": DESV_RHO_FOAM_G,
-    "\u03C1f (kg/m^3)": DESV_RHO_FOAM_KG,
-}
+DEVIATIONS = DEPENDENT_TO_DEVIATION.copy()
 
 LEGACY_DEPENDENT_LABELS = {
-    "\u03C1f (g/cm^3)": RHO_FOAM_G,
-    "\u03C1f (kg/m^3)": RHO_FOAM_KG,
+    "\u03c1f (g/cm^3)": RHO_FOAM_G,
+    "\u03c1f (kg/m^3)": RHO_FOAM_KG,
     "Ov (%)": "OC (%)",
-    "Tm (\u00B0C)": "DSC Tm (\u00B0C)",
-    "Tg (\u00B0C)": "DSC Tg (\u00B0C)",
-    "\u03C7c (%)": "DSC Xc (%)",
-    "DSC Xc (\u00B0C)": "DSC Xc (%)",
+    "Tm (\u00b0C)": "DSC Tm (\u00b0C)",
+    "Tg (\u00b0C)": "DSC Tg (\u00b0C)",
+    "\u03c7c (%)": "DSC Xc (%)",
+    "DSC Xc (\u00b0C)": "DSC Xc (%)",
 }
 
 
@@ -125,11 +106,11 @@ def augment_density_columns(df: pd.DataFrame) -> pd.DataFrame:
     result = df.copy()
 
     if RHO_REL not in result.columns:
-        for legacy in ("ρᵣ", "ρr", "rho_r"):
+        for legacy in ("\u03c1\u1d63", "rho_r"):
             if legacy in result.columns:
                 result[RHO_REL] = result[legacy]
                 break
-    for legacy in ("ρr", "rho_r"):
+    for legacy in ("\u03c1\u1d63", "rho_r"):
         if legacy in result.columns and legacy != RHO_REL:
             result = result.drop(columns=[legacy])
 
