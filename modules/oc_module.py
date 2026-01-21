@@ -512,8 +512,8 @@ class OCModule:
             density = pd.NA
             rho_r = pd.NA
             if density_df is not None:
-                norm_index = {self._norm_label_key(idx): idx for idx in density_df.index}
-                target_label = self._norm_label_key(label)
+                norm_index = {self._normalize_label_for_match(idx): idx for idx in density_df.index}
+                target_label = self._normalize_label_for_match(label)
                 if target_label in norm_index:
                     density, rho_r = _resolve_density_rho(self, density_df, norm_index[target_label])
 
@@ -638,14 +638,16 @@ class OCModule:
                     return None
         return None
 
-    def _norm_label_key(self, text):
-        """Normalize labels to improve matching (strip, drop trailing .0, uppercase)."""
-        if text is None:
+    def _normalize_label_for_match(self, s):
+        """Mimic combine_module.normalize_label: strip, drop extension, pick numeric token if present."""
+        if s is None:
             return ""
-        s = str(text).strip()
-        if s.endswith(".0"):
-            s = s[:-2]
-        return s.upper()
+        label = str(s).strip()
+        label = re.sub(r"\.(xlsx|xls|csv|txt)$", "", label, flags=re.IGNORECASE)
+        matches = re.findall(r"(\d{4,}(?:-\d+)?)", label)
+        if matches:
+            return matches[-1]
+        return label
 
     def _show_validation_window(self, label, df, foam_class, file_path=None):
         """Interactive selection and regression/average for pycnometry."""
