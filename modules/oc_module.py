@@ -732,7 +732,8 @@ class OCModule:
                 ymin = min(np.nanmin(vol), vpyc)
                 ymax = max(np.nanmax(vol), vpyc)
                 margin = abs(ymax) * 0.3 if ymax != 0 else 0.3
-                ax.set_ylim(ymin - margin * 0.1, ymax + margin)
+                lower = max(0, ymin - margin * 0.1)
+                ax.set_ylim(lower, ymax + margin)
             # Info box update
             if vpyc is None or np.isnan(vpyc):
                 info_box.set_text("")
