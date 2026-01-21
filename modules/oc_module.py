@@ -512,9 +512,10 @@ class OCModule:
             density = pd.NA
             rho_r = pd.NA
             if density_df is not None:
-                target_label = str(label)
-                if target_label in density_df.index:
-                    density, rho_r = _resolve_density_rho(self, density_df, target_label)
+                norm_index = {self._norm_label_key(idx): idx for idx in density_df.index}
+                target_label = self._norm_label_key(label)
+                if target_label in norm_index:
+                    density, rho_r = _resolve_density_rho(self, density_df, norm_index[target_label])
 
             result = {
                 "Label": label,
@@ -636,6 +637,15 @@ class OCModule:
                 except Exception:
                     return None
         return None
+
+    def _norm_label_key(self, text):
+        """Normalize labels to improve matching (strip, drop trailing .0, uppercase)."""
+        if text is None:
+            return ""
+        s = str(text).strip()
+        if s.endswith(".0"):
+            s = s[:-2]
+        return s.upper()
 
     def _show_validation_window(self, label, df, foam_class, file_path=None):
         """Interactive selection and regression/average for pycnometry."""
@@ -1073,6 +1083,12 @@ class OCModule:
         for col in ["Vext (cm3)", "Vext - Vpyc (cm3)", "1-ρr", "Vext(1-ρr) (cm3)", "%OC"]:
             if col not in df.columns:
                 df[col] = pd.NA
+
+        # Forzar dtype object para permitir fórmulas
+        cols_to_fix = ["Vext (cm3)", "Vext - Vpyc (cm3)", "1-ρr", "Vext(1-ρr) (cm3)", "%OC"]
+        for col in cols_to_fix:
+            if col in df.columns:
+                df[col] = df[col].astype(object)
 
         # Rellenar fórmulas por fila (encabezado en fila 1)
         for idx in df.index:
