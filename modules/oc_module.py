@@ -685,6 +685,15 @@ class OCModule:
             va="top",
             bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
         )
+        r2_box = ax.text(
+            0.02,
+            0.95,
+            "",
+            transform=ax.transAxes,
+            ha="left",
+            va="top",
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+        )
 
         selection_mask = None
 
@@ -694,10 +703,12 @@ class OCModule:
             selected_p1 = p1[mask]
             selected_vol = vol[mask]
             vpyc = None
+            r2 = None
             if len(selected_p1) >= 1:
                 if foam_class == FOAM_CLASS_FLEX and len(selected_p1) >= 2:
                     res = linregress(selected_p1, selected_vol)
                     vpyc = res.intercept
+                    r2 = res.rvalue ** 2
                     xs = np.linspace(0, selected_p1.max(), 100)
                     ys = res.slope * xs + res.intercept
                     line_plot.set_data(xs, ys)
@@ -708,7 +719,8 @@ class OCModule:
             if vpyc is None or np.isnan(vpyc):
                 stats_var.set("Select at least 2 points for Flexible or 1 for Rigid")
             else:
-                stats_var.set(f"Vpyc={vpyc:.4f} cm³")
+                r2_txt = f" | R²={r2:.4f}" if r2 is not None else ""
+                stats_var.set(f"Vpyc={vpyc:.4f} cm³{r2_txt}")
             result_holder["Vpyc (cm3)"] = vpyc
             result_holder["mask"] = mask
             # Y-lims to ensure intercept visible
@@ -721,8 +733,10 @@ class OCModule:
             # Info box update
             if vpyc is None or np.isnan(vpyc):
                 info_box.set_text("")
+                r2_box.set_text("")
             else:
                 info_box.set_text(rf"$V_{{pyc}} \ (cm^3) = {vpyc:.4f}$")
+                r2_box.set_text(f"R² = {r2:.4f}" if r2 is not None else "")
 
         if len(p1) >= 3:
             initial_mask = np.zeros_like(p1, dtype=bool)
