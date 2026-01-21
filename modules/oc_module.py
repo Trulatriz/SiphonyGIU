@@ -673,6 +673,8 @@ class OCModule:
         colors = ["#000000"] * len(p1)
         scatter = ax.scatter(p1, vol, c=colors, s=35, alpha=0.8, picker=True, pickradius=5)
         line_plot, = ax.plot([], [], color="#E69F00", linewidth=2, alpha=0.8)
+        extrap_plot, = ax.plot([], [], color="#E69F00", linewidth=2, alpha=0.8, linestyle="--")
+        intercept_marker, = ax.plot([], [], marker="*", markersize=10, color="#E69F00", alpha=0.9)
         ax.grid(True, linestyle="--", alpha=0.3)
 
         stats_var = tk.StringVar(value="Select points to compute Vpyc")
@@ -700,12 +702,18 @@ class OCModule:
                     res = linregress(selected_p1, selected_vol)
                     vpyc = res.intercept
                     r2 = res.rvalue ** 2
-                    xs = np.linspace(0, selected_p1.max(), 100)
-                    ys = res.slope * xs + res.intercept
-                    line_plot.set_data(xs, ys)
+                    xs_fit = np.linspace(selected_p1.min(), selected_p1.max(), 100)
+                    ys_fit = res.slope * xs_fit + res.intercept
+                    xs_extra = np.linspace(0, selected_p1.min(), 30)
+                    ys_extra = res.slope * xs_extra + res.intercept
+                    line_plot.set_data(xs_fit, ys_fit)
+                    extrap_plot.set_data(xs_extra, ys_extra)
+                    intercept_marker.set_data([0], [vpyc])
                 else:
                     vpyc = float(np.nanmean(selected_vol))
                     line_plot.set_data([selected_p1.min(), selected_p1.max()], [vpyc, vpyc])
+                    extrap_plot.set_data([0, selected_p1.min()], [vpyc, vpyc])
+                    intercept_marker.set_data([0], [vpyc])
             fig.canvas.draw_idle()
             if vpyc is None or np.isnan(vpyc):
                 stats_var.set("Select at least 2 points for Flexible or 1 for Rigid")
