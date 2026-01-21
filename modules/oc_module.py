@@ -667,16 +667,6 @@ class OCModule:
         ax.set_xlabel("Pressure (psig)")
         ax.set_ylabel("Pycnometric volume (cm³)")
         ax.set_xlim(0, 9)
-        fig.text(
-            0.5,
-            0.02,
-            "Haga clic y arrastre para seleccionar un rango, o haga clic en puntos individuales para seleccionar/deseleccionar. Pulse 'Confirmar' al terminar.",
-            color="red",
-            ha="center",
-            va="bottom",
-            fontsize=10,
-            fontweight="bold",
-        )
 
         p1 = df["P1 Pressure (psig)"].to_numpy(dtype=float)
         vol = df["Volume (cm3)"].to_numpy(dtype=float)
