@@ -3,7 +3,7 @@
     "HDPE",
     "rHDPE"
   ],
-  "current_foam_type": "rHDPE",
+  "current_foam_type": "HDPE",
   "module_paths": {
     "OC": {
       "HDPE_TW": {
@@ -36,7 +36,8 @@
     "DSC": {},
     "SEM": {
       "HDPE_additives": {
-        "HDPE": {}
+        "HDPE": {},
+        "rHDPE": {}
       }
     }
   },
