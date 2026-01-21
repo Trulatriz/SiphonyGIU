@@ -493,7 +493,7 @@ class OCModule:
     def process_single_file(self, file_path, density_df, foam_class):
         fname = os.path.basename(file_path)
         try:
-            label = os.path.splitext(fname)[0]
+            label = self.normalize_label(os.path.splitext(fname)[0])
             for sep in (" ", "-", "_"):
                 prefix = f"{self.current_foam_type}{sep}"
                 if label.startswith(prefix):
@@ -512,8 +512,8 @@ class OCModule:
             density = pd.NA
             rho_r = pd.NA
             if density_df is not None:
-                norm_index = {self._normalize_label_for_match(idx): idx for idx in density_df.index}
-                target_label = self._normalize_label_for_match(label)
+                norm_index = {self.normalize_label(idx): idx for idx in density_df.index}
+                target_label = self.normalize_label(label)
                 if target_label in norm_index:
                     density, rho_r = _resolve_density_rho(self, density_df, norm_index[target_label])
 
@@ -649,6 +649,10 @@ class OCModule:
             return matches[-1]
         return label
 
+    def normalize_label(self, s):
+        """Normalize label same as combine_module: strip, drop extension, extract numeric token."""
+        return self._normalize_label_for_match(s)
+
     def _show_validation_window(self, label, df, foam_class, file_path=None):
         """Interactive selection and regression/average for pycnometry."""
         result_holder = {}
@@ -663,7 +667,7 @@ class OCModule:
 
         fig = Figure(figsize=(7, 4), dpi=100)
         ax = fig.add_subplot(111)
-        ax.set_xlabel("P1 Pressure (psig)")
+        ax.set_xlabel("Pressure (psig)")
         ax.set_ylabel("Pycnometric volume (cm³)")
 
         p1 = df["P1 Pressure (psig)"].to_numpy(dtype=float)
@@ -687,7 +691,7 @@ class OCModule:
                     res = linregress(selected_p1, selected_vol)
                     vpyc = res.intercept
                     r2 = res.rvalue ** 2
-                    xs = np.linspace(selected_p1.min(), selected_p1.max(), 100)
+                    xs = np.linspace(0, selected_p1.max(), 100)
                     ys = res.slope * xs + res.intercept
                     line_plot.set_data(xs, ys)
                 else:
@@ -717,7 +721,7 @@ class OCModule:
                 return
             update_selection(mask)
 
-        SpanSelector(ax, on_span, "horizontal", useblit=True, props=dict(alpha=0.15, facecolor="#E69F00"))
+        self.span = SpanSelector(ax, on_span, "horizontal", useblit=True, props=dict(alpha=0.15, facecolor="#E69F00"))
 
         canvas = FigureCanvasTkAgg(fig, master=frame)
         canvas.draw()
