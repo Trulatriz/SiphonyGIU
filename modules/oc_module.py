@@ -685,11 +685,10 @@ class OCModule:
             va="top",
             bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
         )
-        r2_box = ax.text(
+        fig_r2_box = fig.text(
             0.02,
-            0.95,
+            0.98,
             "",
-            transform=ax.transAxes,
             ha="left",
             va="top",
             bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
@@ -733,10 +732,10 @@ class OCModule:
             # Info box update
             if vpyc is None or np.isnan(vpyc):
                 info_box.set_text("")
-                r2_box.set_text("")
+                fig_r2_box.set_text("")
             else:
                 info_box.set_text(rf"$V_{{pyc}} \ (cm^3) = {vpyc:.4f}$")
-                r2_box.set_text(f"R² = {r2:.4f}" if r2 is not None else "")
+                fig_r2_box.set_text(f"R² = {r2:.4f}" if r2 is not None else "")
 
         if len(p1) >= 3:
             initial_mask = np.zeros_like(p1, dtype=bool)
