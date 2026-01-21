@@ -74,7 +74,8 @@ class HistogramCombinerModule:
 
         self.window = tk.Toplevel(self.parent)
         self.window.title("Combine SEM Results")
-        self.window.geometry("750x600")
+        self.window.geometry("780x640")
+        self.window.minsize(720, 620)
         self.window.transient(self.parent)
         self.window.grab_set()
         self.window.resizable(True, True)
