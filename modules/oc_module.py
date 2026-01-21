@@ -666,7 +666,7 @@ class OCModule:
         ax = fig.add_subplot(111)
         ax.set_xlabel("Pressure (psig)")
         ax.set_ylabel("Pycnometric volume (cm³)")
-        ax.set_xlim(left=0)
+        ax.set_xlim(0, 9)
         fig.text(
             0.5,
             0.02,
