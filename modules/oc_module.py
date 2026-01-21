@@ -5,13 +5,18 @@ import os
 import re
 import glob
 import warnings
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.widgets import SpanSelector
+from scipy.stats import linregress
+import numpy as np
 from .foam_type_manager import FoamTypeManager, FoamTypeSelector
 
 # Suppress warnings for better user experience
 warnings.filterwarnings("ignore", category=FutureWarning, module="pandas")
 
-INSTRUMENT_PRESSTECH = "Pycnometer PressTech"
-INSTRUMENT_CELLMAT = "Pycnometer CellMat"
+FOAM_CLASS_FLEX = "Flexible"
+FOAM_CLASS_RIGID = "Rigid"
 
 
 class OCModule:
@@ -30,9 +35,9 @@ class OCModule:
         else:
             self.current_foam_type = self.foam_manager.get_current_foam_type()
 
-        # Instrument selection
-        self.instrument_options = [INSTRUMENT_PRESSTECH, INSTRUMENT_CELLMAT]
-        self.instrument_var = tk.StringVar(value=INSTRUMENT_PRESSTECH)
+        # Foam class selection (Flexible / Rigid)
+        self.instrument_options = [FOAM_CLASS_FLEX, FOAM_CLASS_RIGID]
+        self.instrument_var = tk.StringVar(value=FOAM_CLASS_FLEX)
         self.current_instrument = self.instrument_var.get()
 
         # Paths / state
@@ -67,9 +72,9 @@ class OCModule:
         # Foam type selector
         self.foam_selector = FoamTypeSelector(main, self.foam_manager, self.on_foam_type_changed)
 
-        instrument_frame = ttk.LabelFrame(main, text="Instrument", padding="10")
+        instrument_frame = ttk.LabelFrame(main, text="Foam Type", padding="10")
         instrument_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(4, 10))
-        ttk.Label(instrument_frame, text="Select instrument:").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(instrument_frame, text="Select Foam Type:").grid(row=0, column=0, sticky=tk.W)
         instrument_combo = ttk.Combobox(
             instrument_frame,
             textvariable=self.instrument_var,
@@ -390,6 +395,7 @@ class OCModule:
                         "Vpyc unfixed (cm3)",
                         "Vpyc (cm3)",
                         "ρr",
+                        "R2",
                         "Vext - Vpyc (cm3)",
                         "1-ρr",
                         "Vext(1-ρr) (cm3)",
@@ -407,6 +413,7 @@ class OCModule:
                             "Vpyc unfixed (cm3)",
                             "Vpyc (cm3)",
                             "\u03C1r",
+                            "R2",
                             "Vext - Vpyc (cm3)",
                             "1-\u03C1r",
                             "Vext(1-\u03C1r) (cm3)",
@@ -440,10 +447,10 @@ class OCModule:
         try:
             density_df = self._load_density_dataframe()
         except Exception as e:
-            messagebox.showerror("Error", str(e))
-            return
+            density_df = None
+            messagebox.showwarning("Warning", f"Density file not loaded: {e}")
 
-        instrument_choice = self.instrument_var.get()
+        foam_class = self.instrument_var.get()
 
         self.progress["maximum"] = len(selected_files)
         self.progress["value"] = 0
@@ -454,12 +461,12 @@ class OCModule:
             fname = os.path.basename(path)
             self.status_var.set(f"Processing {fname}…")
             self.root.update()
-            ok, data = self.process_single_file(path, density_df, instrument=instrument_choice)
+            ok, data = self.process_single_file(path, density_df, foam_class=foam_class)
             if ok and data:
                 # Add extra info for review
                 data['filename'] = fname
                 data['filepath'] = path
-                data['instrument'] = data.get('instrument', instrument_choice)
+                data['foam_class'] = data.get('foam_class', foam_class)
                 self.processed_data.append(data)
                 self._set_tree_status(fname, "✅ Processed")
             else:
@@ -469,9 +476,8 @@ class OCModule:
             self.root.update()
 
         if self.processed_data:
-            # Show review window instead of saving directly
-            self.show_review_window()
-            self.status_var.set(f"Processed: {len(self.processed_data)} files ready for review")
+            self.save_results(self.processed_data)
+            self.status_var.set(f"Processed and saved {len(self.processed_data)} files")
         else:
             self.status_var.set("No files were successfully processed")
 
@@ -484,7 +490,7 @@ class OCModule:
                 self.file_tree.set(item, "status", status)
                 return
 
-    def process_single_file(self, file_path, density_df):
+    def process_single_file(self, file_path, density_df, foam_class):
         fname = os.path.basename(file_path)
         try:
             label = os.path.splitext(fname)[0]
@@ -494,116 +500,208 @@ class OCModule:
                     label = label[len(prefix):]
                     break
 
-            # Decide engine by extension
-            engine = "openpyxl"
-            if fname.lower().endswith(".xls"):
-                import importlib.util
-                if importlib.util.find_spec("xlrd") is not None:
-                    engine = "xlrd"
+            mass, df = self._parse_picnometry_file(file_path)
+            if mass is None or df is None or df.empty:
+                raise ValueError("Could not extract mass or data table")
+
+            validated = self._show_validation_window(label, df, foam_class, file_path)
+            if not validated:
+                return False, None
+
+            vpyc = validated["Vpyc (cm3)"]
+            density = pd.NA
+            rho_r = pd.NA
+            if density_df is not None:
+                target_label = str(label)
+                if target_label in density_df.index:
+                    row = density_df.loc[target_label]
                 else:
-                    raise ImportError("Missing optional dependency 'xlrd'. Please install xlrd>=2.0.1 to read .xls files.")
-
-            # Suppress xlrd warnings during Excel file reading
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                m_raw = pd.read_excel(file_path, header=None, usecols="B", skiprows=13, nrows=1, engine=engine).iloc[0, 0]
-                vpyc_raw = pd.read_excel(file_path, header=None, usecols="G", skiprows=40, nrows=1, engine=engine).iloc[0, 0]
-                comment_raw = pd.read_excel(file_path, header=None, usecols="A", skiprows=19, nrows=1, engine=engine).iloc[0, 0]
-
-            # Parse balls volume from comment
-            balls_volume, comment_analysis = self._parse_balls(comment_raw)
-            m = self.clean_numeric_value(m_raw)
-            vpyc_original = self.clean_numeric_value(vpyc_raw)
-            if m is None or vpyc_original is None:
-                return False, None
-            vpyc = vpyc_original - balls_volume
-
-            if label not in density_df.index:
-                return False, None
-            density_row = density_df.loc[label]
-            density = density_row['Av Exp ρ foam (g/cm3)']
-            rho_r = density_row['ρr']
-
-            # Override density and rho_r by fixed Excel columns (F and I)
-            try:
-                density = density_row.iloc[self._density_pos]
-            except Exception:
-                pass
-            try:
-                rho_r = density_row.iloc[self._rho_r_pos]
-            except Exception:
-                pass
+                    row = None
+                if row is not None:
+                    try:
+                        density = row.iloc[self._density_pos]
+                    except Exception:
+                        density = row.iloc[0] if len(row) > 0 else pd.NA
+                    try:
+                        rho_r = row.iloc[self._rho_r_pos]
+                    except Exception:
+                        rho_r = row.iloc[1] if len(row) > 1 else pd.NA
 
             result = {
                 "Label": label,
                 "Density (g/cm3)": density,
-                "m (g)": m,
-                "Vpyc unfixed (cm3)": vpyc_original,
+                "m (g)": mass,
+                "Vpyc unfixed (cm3)": vpyc,
                 "Vpyc (cm3)": vpyc,
                 "ρr": rho_r,
-                "Comment Analysis": comment_analysis,
-                # Additional data for review
-                "raw_comment": str(comment_raw),
-                "detected_balls_volume": balls_volume,
+                "Comment Analysis": validated.get("comment", ""),
+                "R2": validated.get("R2"),
+                "foam_class": foam_class,
             }
             return True, result
         except Exception as e:
             print(f"ERROR processing {fname}: {e}")
             return False, None
 
-    def _parse_balls(self, comment_raw):
-        """Parse comment and return (balls_volume, analysis)."""
-        # Defaults
-        balls_volume = 0.0
-        original = "" if comment_raw is None else str(comment_raw).strip()
-        analysis = f"Original: '{original}'"
+    def _parse_picnometry_file(self, file_path):
+        """Extract mass and measurement table from a picnometry Excel/CSV file."""
+        wb = openpyxl.load_workbook(file_path, data_only=True, read_only=True)
+        ws = wb[wb.sheetnames[0]]
+        mass = self._extract_mass(ws)
+        df = self._extract_table(ws)
+        wb.close()
+        return mass, df
 
-        if not original:
-            return balls_volume, analysis + " | No comment"
+    def _extract_mass(self, ws):
+        """Find 'Sample mass:' row and parse numeric value."""
+        for row in ws.iter_rows(values_only=True):
+            if not row:
+                continue
+            first = row[0]
+            if isinstance(first, str) and "sample mass" in first.lower():
+                val = row[1] if len(row) > 1 else None
+                parsed = self._to_float(val)
+                if parsed is not None:
+                    return parsed
+        # Fallback to B14 if not found
+        try:
+            fallback = ws["B14"].value
+            return self._to_float(fallback)
+        except Exception:
+            return None
 
-        text = original.lower().replace(',', '.')
-        # Remove units artifacts like 'cm', 'cm3', 'cm^3'
-        text = re.sub(r"cm\^?\d*", "", text)
+    def _extract_table(self, ws):
+        """Read measurement table starting at row 35 until an empty row."""
+        records = []
+        for row in ws.iter_rows(min_row=35, values_only=True):
+            cells = list(row[:4])
+            if all((c is None) or (isinstance(c, str) and not c.strip()) for c in cells):
+                break
+            cycle, p1, p2, vol = cells if len(cells) == 4 else (None, None, None, None)
+            records.append({
+                "Cycle #": self._to_float(cycle),
+                "P1 Pressure (psig)": self._to_float(p1),
+                "P2 Pressure (psig)": self._to_float(p2),
+                "Volume (cm3)": self._to_float(vol),
+            })
+        df = pd.DataFrame(records)
+        return df.dropna(subset=["P1 Pressure (psig)", "Volume (cm3)"])
 
-        nums = [float(n) for n in re.findall(r"[-+]?\d*\.?\d+", text)]
-        
-        if not nums:
-            return balls_volume, analysis + " | No numbers found"
-        
-        # Strategy: Look for the largest decimal number as it's most likely the volume
-        # Volume is typically a precise decimal measurement, while counts are small integers
-        
-        # Separate decimals from integers
-        decimals = [n for n in nums if abs(n - round(n)) > 1e-9 and n > 0]
-        integers = [n for n in nums if abs(n - round(n)) <= 1e-9 and n > 0]
-        
-        if decimals:
-            # If we have decimal numbers, choose the largest one as volume
-            balls_volume = max(decimals)
-        elif integers:
-            # If only integers, look for larger ones (volume could be an integer)
-            # But prefer larger numbers over small counts
-            larger_ints = [n for n in integers if n > 10]  # Volumes are typically > 10 when integers
-            if larger_ints:
-                balls_volume = max(larger_ints)
-            else:
-                # If all are small integers, take the largest
-                balls_volume = max(integers)
-        
-        analysis += f" | Detected balls volume: {balls_volume:.6f} cm\u00B3"
-        return balls_volume, analysis
-
-    def clean_numeric_value(self, value):
+    def _to_float(self, value):
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
         if isinstance(value, str):
-            m = re.search(r"[-+]?\d+([.,]\d*)?|\d*[.,]\d+", value)
+            txt = value.strip().replace("g", "").replace("cm3", "").replace("cm³", "").replace(" ", "")
+            txt = txt.replace(",", ".")
+            m = re.search(r"[-+]?\d*\.?\d+", txt)
             if m:
                 try:
-                    return float(m.group(0).replace(',', '.'))
+                    return float(m.group(0))
                 except Exception:
                     return None
-        elif isinstance(value, (int, float)):
-            return float(value)
         return None
+
+    def _show_validation_window(self, label, df, foam_class, file_path=None):
+        """Interactive selection and regression/average for pycnometry."""
+        result_holder = {}
+
+        top = tk.Toplevel(self.root)
+        top.title(f"Validate Pycnometry - {label}")
+        top.transient(self.root)
+        top.grab_set()
+
+        frame = ttk.Frame(top, padding=10)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        fig = Figure(figsize=(7, 4), dpi=100)
+        ax = fig.add_subplot(111)
+        ax.set_xlabel("P1 Pressure (psig)")
+        ax.set_ylabel("Pycnometric volume (cm³)")
+
+        p1 = df["P1 Pressure (psig)"].to_numpy(dtype=float)
+        vol = df["Volume (cm3)"].to_numpy(dtype=float)
+        colors = ["#000000"] * len(p1)
+        scatter = ax.scatter(p1, vol, c=colors, s=35, alpha=0.8)
+        line_plot, = ax.plot([], [], color="#E69F00", linewidth=2, alpha=0.8)
+        ax.grid(True, linestyle="--", alpha=0.3)
+
+        stats_var = tk.StringVar(value="Select points to compute Vpyc")
+
+        def update_selection(mask):
+            sel_colors = ["#E69F00" if m else "#000000" for m in mask]
+            scatter.set_color(sel_colors)
+            selected_p1 = p1[mask]
+            selected_vol = vol[mask]
+            vpyc = None
+            r2 = None
+            if len(selected_p1) >= 1:
+                if foam_class == FOAM_CLASS_FLEX and len(selected_p1) >= 2:
+                    res = linregress(selected_p1, selected_vol)
+                    vpyc = res.intercept
+                    r2 = res.rvalue ** 2
+                    xs = np.linspace(selected_p1.min(), selected_p1.max(), 100)
+                    ys = res.slope * xs + res.intercept
+                    line_plot.set_data(xs, ys)
+                else:
+                    vpyc = float(np.nanmean(selected_vol))
+                    line_plot.set_data([selected_p1.min(), selected_p1.max()], [vpyc, vpyc])
+            fig.canvas.draw_idle()
+            if vpyc is None or np.isnan(vpyc):
+                stats_var.set("Select at least 2 points for Flexible or 1 for Rigid")
+            else:
+                r2_txt = f" | R²={r2:.4f}" if r2 is not None else ""
+                stats_var.set(f"Vpyc={vpyc:.4f} cm³{r2_txt}")
+            result_holder["Vpyc (cm3)"] = vpyc
+            result_holder["R2"] = r2
+            result_holder["mask"] = mask
+
+        initial_mask = np.ones_like(p1, dtype=bool)
+        update_selection(initial_mask)
+
+        def on_span(xmin, xmax):
+            lo, hi = sorted([xmin, xmax])
+            mask = (p1 >= lo) & (p1 <= hi)
+            if not mask.any():
+                return
+            update_selection(mask)
+
+        SpanSelector(ax, on_span, "horizontal", useblit=True, props=dict(alpha=0.15, facecolor="#E69F00"))
+
+        canvas = FigureCanvasTkAgg(fig, master=frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        NavigationToolbar2Tk(canvas, frame)
+
+        info = ttk.Label(frame, textvariable=stats_var, font=("Arial", 10, "bold"))
+        info.pack(pady=(6, 6))
+
+        btns = ttk.Frame(frame)
+        btns.pack(pady=(4, 0))
+
+        def confirm():
+            vpyc_val = result_holder.get("Vpyc (cm3)")
+            if vpyc_val is None or np.isnan(vpyc_val):
+                messagebox.showerror("Error", "Please select points to compute Vpyc.")
+                return
+            selected_mask = result_holder.get("mask")
+            n_points = int(selected_mask.sum()) if selected_mask is not None else len(p1)
+            result_holder["comment"] = f"Validated ({foam_class}) with {n_points} points"
+            png_path = os.path.join(self.output_folder or os.path.dirname(file_path), f"{label}_pycnometry.png")
+            os.makedirs(os.path.dirname(png_path), exist_ok=True)
+            fig.savefig(png_path, dpi=150, bbox_inches="tight")
+            top.destroy()
+
+        def cancel():
+            result_holder.clear()
+            top.destroy()
+
+        ttk.Button(btns, text="Validate/Confirm", command=confirm).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btns, text="Cancel", command=cancel).pack(side=tk.LEFT)
+
+        top.wait_window()
+        return result_holder if result_holder else None
 
     # ---------- Helpers: Excel column letters to iloc position ----------
     def _excel_col_to_number(self, letters):
@@ -991,7 +1089,7 @@ class OCModule:
 
         order = [
             "Label", "Density (g/cm3)", "m (g)", "Vext (cm3)", "Vpyc unfixed (cm3)", "Vpyc (cm3)",
-            "ρr", "Vext - Vpyc (cm3)", "1-ρr", "Vext(1-ρr) (cm3)", "%OC", "Comment Analysis",
+            "ρr", "Vext - Vpyc (cm3)", "1-ρr", "Vext(1-ρr) (cm3)", "%OC", "R2", "Comment Analysis",
         ]
         existing_order = [c for c in order if c in df.columns]
         df = df[existing_order]
