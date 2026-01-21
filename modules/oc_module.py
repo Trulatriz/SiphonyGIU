@@ -669,7 +669,7 @@ class OCModule:
         ax = fig.add_subplot(111)
         ax.set_xlabel("Pressure (psig)")
         ax.set_ylabel("Pycnometric volume (cm³)")
-        ax.set_xlim(left=0)
+        ax.set_xlim(0, 9)
         ax.text(
             0.5,
             1.02,
@@ -731,7 +731,7 @@ class OCModule:
             if vpyc is not None and not np.isnan(vpyc):
                 ymin = min(np.nanmin(vol), vpyc)
                 ymax = max(np.nanmax(vol), vpyc)
-                margin = abs(ymax) * 0.2 if ymax != 0 else 0.2
+                margin = abs(ymax) * 0.3 if ymax != 0 else 0.3
                 ax.set_ylim(ymin - margin * 0.1, ymax + margin)
             # Info box update
             if vpyc is None or np.isnan(vpyc):
