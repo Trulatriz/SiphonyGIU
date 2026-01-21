@@ -669,6 +669,18 @@ class OCModule:
         ax = fig.add_subplot(111)
         ax.set_xlabel("Pressure (psig)")
         ax.set_ylabel("Pycnometric volume (cm³)")
+        ax.set_xlim(left=0)
+        ax.text(
+            0.5,
+            1.02,
+            "Haga clic y arrastre horizontalmente para seleccionar los puntos de medida",
+            color="red",
+            ha="center",
+            va="bottom",
+            transform=ax.transAxes,
+            fontsize=10,
+            fontweight="bold",
+        )
 
         p1 = df["P1 Pressure (psig)"].to_numpy(dtype=float)
         vol = df["Volume (cm3)"].to_numpy(dtype=float)
@@ -678,6 +690,15 @@ class OCModule:
         ax.grid(True, linestyle="--", alpha=0.3)
 
         stats_var = tk.StringVar(value="Select points to compute Vpyc")
+        info_box = ax.text(
+            0.98,
+            0.95,
+            "",
+            transform=ax.transAxes,
+            ha="right",
+            va="top",
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+        )
 
         def update_selection(mask):
             sel_colors = ["#E69F00" if m else "#000000" for m in mask]
@@ -706,6 +727,17 @@ class OCModule:
             result_holder["Vpyc (cm3)"] = vpyc
             result_holder["R2"] = r2
             result_holder["mask"] = mask
+            # Y-lims to ensure intercept visible
+            if vpyc is not None and not np.isnan(vpyc):
+                ymin = min(np.nanmin(vol), vpyc)
+                ymax = max(np.nanmax(vol), vpyc)
+                margin = abs(ymax) * 0.2 if ymax != 0 else 0.2
+                ax.set_ylim(ymin - margin * 0.1, ymax + margin)
+            # Info box update
+            if vpyc is None or np.isnan(vpyc):
+                info_box.set_text("")
+            else:
+                info_box.set_text(rf"$V_{{pyc}} (cm^3) = {vpyc:.4f}$")
 
         if len(p1) >= 3:
             initial_mask = np.zeros_like(p1, dtype=bool)
