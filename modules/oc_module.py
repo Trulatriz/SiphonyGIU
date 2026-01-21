@@ -396,7 +396,6 @@ class OCModule:
                         "Vext (cm3)",
                         "Vpyc (cm3)",
                         "ρr",
-                        "R2",
                         "Vext - Vpyc (cm3)",
                         "1-ρr",
                         "Vext(1-ρr) (cm3)",
@@ -413,7 +412,6 @@ class OCModule:
                             "Vext (cm3)",
                             "Vpyc (cm3)",
                             "\u03C1r",
-                            "R2",
                             "Vext - Vpyc (cm3)",
                             "1-\u03C1r",
                             "Vext(1-\u03C1r) (cm3)",
@@ -524,7 +522,6 @@ class OCModule:
                 "Vpyc (cm3)": vpyc,
                 "ρr": rho_r,
                 "Comment Analysis": validated.get("comment", ""),
-                "R2": validated.get("R2"),
                 "foam_class": foam_class,
             }
             return True, result
@@ -669,15 +666,14 @@ class OCModule:
         ax = fig.add_subplot(111)
         ax.set_xlabel("Pressure (psig)")
         ax.set_ylabel("Pycnometric volume (cm³)")
-        ax.set_xlim(0, 9)
-        ax.text(
+        ax.set_xlim(left=0)
+        fig.text(
             0.5,
-            1.02,
-            "Haga clic y arrastre horizontalmente para seleccionar los puntos de medida",
+            0.02,
+            "Haga clic y arrastre para seleccionar un rango, o haga clic en puntos individuales para seleccionar/deseleccionar. Pulse 'Confirmar' al terminar.",
             color="red",
             ha="center",
             va="bottom",
-            transform=ax.transAxes,
             fontsize=10,
             fontweight="bold",
         )
@@ -708,12 +704,10 @@ class OCModule:
             selected_p1 = p1[mask]
             selected_vol = vol[mask]
             vpyc = None
-            r2 = None
             if len(selected_p1) >= 1:
                 if foam_class == FOAM_CLASS_FLEX and len(selected_p1) >= 2:
                     res = linregress(selected_p1, selected_vol)
                     vpyc = res.intercept
-                    r2 = res.rvalue ** 2
                     xs = np.linspace(0, selected_p1.max(), 100)
                     ys = res.slope * xs + res.intercept
                     line_plot.set_data(xs, ys)
@@ -724,23 +718,21 @@ class OCModule:
             if vpyc is None or np.isnan(vpyc):
                 stats_var.set("Select at least 2 points for Flexible or 1 for Rigid")
             else:
-                r2_txt = f" | R²={r2:.4f}" if r2 is not None else ""
-                stats_var.set(f"Vpyc={vpyc:.4f} cm³{r2_txt}")
+                stats_var.set(f"Vpyc={vpyc:.4f} cm³")
             result_holder["Vpyc (cm3)"] = vpyc
-            result_holder["R2"] = r2
             result_holder["mask"] = mask
             # Y-lims to ensure intercept visible
             if vpyc is not None and not np.isnan(vpyc):
                 ymin = min(np.nanmin(vol), vpyc)
                 ymax = max(np.nanmax(vol), vpyc)
-                margin = abs(ymax) * 0.3 if ymax != 0 else 0.3
-                lower = ymin - margin * 0.1
-                ax.set_ylim(lower, ymax + margin)
+                y_span = ymax - ymin if ymax != ymin else abs(ymax) if ymax != 0 else 1.0
+                margin = 0.15 * y_span
+                ax.set_ylim(ymin - margin, ymax + margin)
             # Info box update
             if vpyc is None or np.isnan(vpyc):
                 info_box.set_text("")
             else:
-                info_box.set_text(rf"$V_{{pyc}} (cm^3) = {vpyc:.4f}$")
+                info_box.set_text(rf"$V_{{pyc}} \ (cm^3) = {vpyc:.4f}$")
 
         if len(p1) >= 3:
             initial_mask = np.zeros_like(p1, dtype=bool)
@@ -1095,7 +1087,6 @@ class OCModule:
                     "Vext (cm3)",
                     "Vpyc (cm3)",
                     "ρr",
-                    "R2",
                     "Vext - Vpyc (cm3)",
                     "1-ρr",
                     "Vext(1-ρr) (cm3)",
@@ -1133,7 +1124,7 @@ class OCModule:
 
         # Asegurar tipos numéricos
         num_cols = [
-            "Density (g/cm3)", "m (g)", "Vpyc (cm3)", "ρr", "R2"
+            "Density (g/cm3)", "m (g)", "Vpyc (cm3)", "ρr"
         ]
         for c in num_cols:
             if c in df.columns:
@@ -1156,12 +1147,12 @@ class OCModule:
             df.at[idx, "Vext (cm3)"] = f"=IFERROR(C{excel_row}/B{excel_row},\"\")"
             df.at[idx, "Vext - Vpyc (cm3)"] = f"=IF(AND(D{excel_row}<>\"\",E{excel_row}<>\"\"),D{excel_row}-E{excel_row},\"\")"
             df.at[idx, "1-ρr"] = f"=IF(F{excel_row}<>\"\",1-F{excel_row},\"\")"
-            df.at[idx, "Vext(1-ρr) (cm3)"] = f"=IF(AND(D{excel_row}<>\"\",I{excel_row}<>\"\"),D{excel_row}*I{excel_row},\"\")"
-            df.at[idx, "%OC"] = f"=IF(AND(H{excel_row}<>\"\",J{excel_row}<>\"\",J{excel_row}<>0),(H{excel_row}/J{excel_row})*100,\"\")"
+            df.at[idx, "Vext(1-ρr) (cm3)"] = f"=IF(AND(D{excel_row}<>\"\",H{excel_row}<>\"\"),D{excel_row}*H{excel_row},\"\")"
+            df.at[idx, "%OC"] = f"=IF(AND(G{excel_row}<>\"\",I{excel_row}<>\"\",I{excel_row}<>0),(G{excel_row}/I{excel_row})*100,\"\")"
 
         order = [
             "Label", "Density (g/cm3)", "m (g)", "Vext (cm3)", "Vpyc (cm3)",
-            "ρr", "R2", "Vext - Vpyc (cm3)", "1-ρr", "Vext(1-ρr) (cm3)", "%OC", "Comment Analysis",
+            "ρr", "Vext - Vpyc (cm3)", "1-ρr", "Vext(1-ρr) (cm3)", "%OC", "Comment Analysis",
         ]
         existing_order = [c for c in order if c in df.columns]
         df = df[existing_order]
