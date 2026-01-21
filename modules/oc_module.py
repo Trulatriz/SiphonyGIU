@@ -685,7 +685,7 @@ class OCModule:
         p1 = df["P1 Pressure (psig)"].to_numpy(dtype=float)
         vol = df["Volume (cm3)"].to_numpy(dtype=float)
         colors = ["#000000"] * len(p1)
-        scatter = ax.scatter(p1, vol, c=colors, s=35, alpha=0.8)
+        scatter = ax.scatter(p1, vol, c=colors, s=35, alpha=0.8, picker=True, pickradius=5)
         line_plot, = ax.plot([], [], color="#E69F00", linewidth=2, alpha=0.8)
         ax.grid(True, linestyle="--", alpha=0.3)
 
@@ -699,6 +699,8 @@ class OCModule:
             va="top",
             bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
         )
+
+        selection_mask = None
 
         def update_selection(mask):
             sel_colors = ["#E69F00" if m else "#000000" for m in mask]
@@ -732,7 +734,7 @@ class OCModule:
                 ymin = min(np.nanmin(vol), vpyc)
                 ymax = max(np.nanmax(vol), vpyc)
                 margin = abs(ymax) * 0.3 if ymax != 0 else 0.3
-                lower = max(0, ymin - margin * 0.1)
+                lower = ymin - margin * 0.1
                 ax.set_ylim(lower, ymax + margin)
             # Info box update
             if vpyc is None or np.isnan(vpyc):
@@ -745,16 +747,35 @@ class OCModule:
             initial_mask[:3] = True
         else:
             initial_mask = np.ones_like(p1, dtype=bool)
-        update_selection(initial_mask)
+        selection_mask = initial_mask.copy()
+        update_selection(selection_mask)
 
         def on_span(xmin, xmax):
             lo, hi = sorted([xmin, xmax])
             mask = (p1 >= lo) & (p1 <= hi)
             if not mask.any():
                 return
-            update_selection(mask)
+            nonlocal selection_mask
+            selection_mask = mask
+            update_selection(selection_mask)
 
         self.span = SpanSelector(ax, on_span, "horizontal", useblit=True, props=dict(alpha=0.15, facecolor="#E69F00"))
+
+        def on_pick(event):
+            nonlocal selection_mask
+            if event.artist != scatter:
+                return
+            ind = event.ind
+            if len(ind) == 0:
+                return
+            idx = ind[0]
+            selection_mask[idx] = not selection_mask[idx]
+            # evitar máscara vacía
+            if not selection_mask.any():
+                selection_mask[idx] = True
+            update_selection(selection_mask)
+
+        fig.canvas.mpl_connect("pick_event", on_pick)
 
         canvas = FigureCanvasTkAgg(fig, master=frame)
         canvas.draw()
