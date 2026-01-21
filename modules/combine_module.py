@@ -1038,20 +1038,39 @@ class CombineModule:
                 df = pd.read_excel(xls, sheet_name=xls.sheet_names[0], engine='openpyxl')
             print(f"DEBUG OC Fallback: shape={df.shape} cols={list(df.columns)}")
             labels = _cm_col(df, 'A').map(self.normalize_label)
+
+            def _coerce_num(series):
+                return pd.to_numeric(
+                    series.astype(str)
+                    .str.replace(",", ".", regex=False)
+                    .str.extract(r"([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)")[0],
+                    errors='coerce',
+                )
+
+            density = _coerce_num(_cm_col(df, 'B'))
+            mass = _coerce_num(_cm_col(df, 'C'))
+            vext = pd.to_numeric(_cm_col(df, 'D'), errors='coerce')
+            vpyc = pd.to_numeric(_cm_col(df, 'E'), errors='coerce')
+            rho_r = _coerce_num(_cm_col(df, 'F'))
+            vext_minus_vpyc = pd.to_numeric(_cm_col(df, 'G'), errors='coerce')
+            one_minus_rho = pd.to_numeric(_cm_col(df, 'H'), errors='coerce')
+            vext_one_minus_rho = pd.to_numeric(_cm_col(df, 'I'), errors='coerce')
             oc_series = pd.to_numeric(_cm_col(df, 'J'), errors='coerce')
-            # Si %OC viene vacío (por fórmulas sin cache), calcularlo a partir de columnas derivadas
+
+            # Reconstruir derivados si vienen vacíos por ser fórmulas
+            if vext.isna().all():
+                vext = mass / density.replace(0, pd.NA)
+            if one_minus_rho.isna().all():
+                one_minus_rho = 1 - rho_r
+            if vext_minus_vpyc.isna().all():
+                vext_minus_vpyc = vext - vpyc
+            if vext_one_minus_rho.isna().all():
+                vext_one_minus_rho = vext * one_minus_rho
+
             if oc_series.isna().all():
-                vext = pd.to_numeric(_cm_col(df, 'D'), errors='coerce')
-                vpyc = pd.to_numeric(_cm_col(df, 'E'), errors='coerce')
-                one_minus_rho = pd.to_numeric(_cm_col(df, 'H'), errors='coerce')
-                vext_one_minus_rho = pd.to_numeric(_cm_col(df, 'I'), errors='coerce')
-                vext_minus_vpyc = pd.to_numeric(_cm_col(df, 'G'), errors='coerce')
-                if vext_one_minus_rho.isna().all():
-                    vext_one_minus_rho = vext * one_minus_rho
-                if vext_minus_vpyc.isna().all():
-                    vext_minus_vpyc = vext - vpyc
                 oc_series = (vext_minus_vpyc / vext_one_minus_rho) * 100
                 oc_series = oc_series.where((vext_one_minus_rho.notna()) & (vext_one_minus_rho != 0))
+
             out = pd.DataFrame({'Label': labels, 'OC (%)': oc_series})
             print(f"DEBUG OC Fallback: primeras filas {out.head().to_dict(orient='records')}")
             return out.dropna(subset=['Label'])
