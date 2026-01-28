@@ -160,6 +160,7 @@ class PlotModule:
         self.group_var = tk.StringVar(value="<None>")
         self.facet_var = tk.StringVar(value="<None>")
         self.color_var = tk.StringVar(value="<None>")
+        self.ignore_mass_var = tk.BooleanVar(value=True)
         self.errorbar_var = tk.BooleanVar(value=False)
         self.mono_var = tk.BooleanVar(value=False)
         self.connect_lines_var = tk.BooleanVar(value=True)
@@ -283,9 +284,17 @@ class PlotModule:
         const_frame = ttk.LabelFrame(container, text="Fixed Independents (Constancy rule)", padding=10)
         const_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
         const_frame.columnconfigure(1, weight=1)
+        const_frame.columnconfigure(2, weight=0)
         headers = ["Variable", "Exact value (pick one)"]
         for j, h in enumerate(headers):
             ttk.Label(const_frame, text=h, foreground="gray").grid(row=0, column=j, sticky=tk.W, padx=4)
+        self.ignore_mass_chk = ttk.Checkbutton(
+            const_frame,
+            text="Ignore m(g) in constancy rule",
+            variable=self.ignore_mass_var,
+            command=self._on_option_change,
+        )
+        self.ignore_mass_chk.grid(row=0, column=2, sticky=tk.E, padx=4)
 
         # combobox per independent except PDR
         self.constraint_rows = {}
@@ -366,6 +375,7 @@ class PlotModule:
             self.group_combo,
             self.facet_combo,
             self.color_combo,
+            self.ignore_mass_chk,
             self.err_chk,
             self.mono_chk,
             self.connect_chk,
@@ -463,6 +473,7 @@ class PlotModule:
                 self.group_var.set('<None>')
                 self.facet_var.set('<None>')
                 self.color_var.set('<None>')
+                self.ignore_mass_var.set(True)
                 self.errorbar_var.set(False)
                 self.mono_var.set(False)
                 self.hline_enabled_var.set(False)
@@ -525,6 +536,7 @@ class PlotModule:
             'group': self.group_var.get(),
             'facet': self.facet_var.get(),
             'color': self.color_var.get(),
+            'ignore_mass': bool(self.ignore_mass_var.get()),
             'errorbars': bool(self.errorbar_var.get()),
             'monochrome': bool(self.mono_var.get()),
             'connect_lines': bool(self.connect_lines_var.get()),
@@ -571,6 +583,7 @@ class PlotModule:
             color_val = state.get('color')
             if color_val in valid_groups:
                 self.color_var.set(color_val)
+            self.ignore_mass_var.set(bool(state.get('ignore_mass', True)))
             self.errorbar_var.set(bool(state.get('errorbars')))
             self.mono_var.set(bool(state.get('monochrome')))
             self.connect_lines_var.set(bool(state.get('connect_lines', True)))
@@ -858,9 +871,15 @@ class PlotModule:
                 continue
             remaining_pairs.append((display, column))
 
+        ignore_for_constancy = set()
+        if self.ignore_mass_var.get():
+            ignore_for_constancy.add("m(g)")
+
         # Enforce that each remaining has some constraint (unless constant already)
         missing = []
         for display, column in remaining_pairs:
+            if display in ignore_for_constancy:
+                continue
             c: Constraint = constraints.get(display, Constraint())
             if c.exact.strip() == "":
                 if df[column].dropna().nunique() > 1:
@@ -945,6 +964,17 @@ class PlotModule:
             values = [None]
         styles = self._group_styles(len(values), monochrome)
         return {v: styles[i] for i, v in enumerate(values)}
+
+    @staticmethod
+    def _format_label(text: str) -> str:
+        if text is None:
+            return ""
+        label = str(text)
+        if label.startswith("$") and label.endswith("$"):
+            return label
+        if "\\" in label or "^" in label or "_" in label:
+            return f"${label}$"
+        return label
 
     def _plot_panel(
         self,
@@ -1205,6 +1235,15 @@ class PlotModule:
                 fval = None
                 panel_df = filtered
 
+            panel_clean = panel_df.dropna(subset=[x_column, y_column])
+            if panel_clean.empty:
+                ax.set_axis_off()
+                if facet_column and fval is not None:
+                    facet_label = self._format_label(independent_latex(facet_display))
+                    ax.set_title(f"{facet_label} = {fval}")
+                ax.text(0.5, 0.5, "No data", transform=ax.transAxes, ha="center", va="center", fontsize=10, color="gray")
+                continue
+
             self._plot_panel(
                 ax,
                 panel_df,
@@ -1239,9 +1278,9 @@ class PlotModule:
                     zorder=1,
                 )
 
-            x_label = independent_latex(x_display)
+            x_label = self._format_label(independent_latex(x_display))
             y_display_label = DEPENDENT_COLUMN_TO_LABEL.get(y_column, y_label)
-            y_label_text = dependent_latex(y_display_label)
+            y_label_text = self._format_label(dependent_latex(y_display_label))
 
             if len(axes) == 1:
                 ax.set_xlabel(x_label)
@@ -1259,7 +1298,7 @@ class PlotModule:
                     ax.set_ylabel("")
 
             if facet_column and fval is not None:
-                facet_label = independent_latex(facet_display)
+                facet_label = self._format_label(independent_latex(facet_display))
                 ax.set_title(f"{facet_label} = {fval}")
 
         # Optional fixed axis limits
@@ -1281,7 +1320,7 @@ class PlotModule:
         group_handles, group_labels = [], []
         color_handles, color_labels = [], []
         if group_display:
-            group_label = independent_latex(group_display)
+            group_label = self._format_label(independent_latex(group_display))
             for gval in group_values:
                 fallback_style = next(iter(group_style_map.values()))
                 color, marker, linestyle = group_style_map.get(gval, fallback_style)
@@ -1301,7 +1340,7 @@ class PlotModule:
                 group_handles.append(h)
                 group_labels.append(f"{group_label} = {gval}")
         if color_display:
-            color_label = independent_latex(color_display)
+            color_label = self._format_label(independent_latex(color_display))
             for cval in color_values:
                 color = color_map.get(cval, "#000000")
                 h = matplotlib.lines.Line2D(
@@ -1564,6 +1603,7 @@ class PlotModule:
                 "group": group_display,
                 "facet": facet_display,
                 "color": color_display,
+                "ignore_mass": bool(self.ignore_mass_var.get()),
                 "error_bars": bool(self.errorbar_var.get()),
                 "yerr_column": yerr_name if yerr_name in self.df_filtered.columns else None,
                 "dpi": int(self.dpi_var.get()),
