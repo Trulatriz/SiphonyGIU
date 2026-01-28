@@ -93,7 +93,7 @@ Respect headings exactly (including case, units, spaces). Key expectations:
 
 ### 5.3 Scatter Plots (📈)
 1. Load the desired `All_Results` workbook (any sheet containing the required columns).
-2. Select sheet, X/Y axes, grouping column (optional) and constancy filters. Error bars auto-enable when matching deviation columns exist.
+2. Select sheet, X/Y axes, grouping column (optional), **Separate by** (facet panels), **Color by** (series color), and constancy filters. Error bars auto-enable when matching deviation columns exist.
 3. Render scatter to visualize trends with the constancy rule enforced.
 4. Actions:
    - *Render Plot* refreshes the scatter tab.

@@ -158,6 +158,8 @@ class PlotModule:
         self.x_var = tk.StringVar()
         self.y_var = tk.StringVar()
         self.group_var = tk.StringVar(value="<None>")
+        self.facet_var = tk.StringVar(value="<None>")
+        self.color_var = tk.StringVar(value="<None>")
         self.errorbar_var = tk.BooleanVar(value=False)
         self.mono_var = tk.BooleanVar(value=False)
         self.connect_lines_var = tk.BooleanVar(value=True)
@@ -233,6 +235,16 @@ class PlotModule:
         self.mono_chk = ttk.Checkbutton(sel, text="Monochrome preview", variable=self.mono_var, command=self._on_option_change)
         self.mono_chk.grid(row=0, column=7, sticky=tk.W)
 
+        ttk.Label(sel, text="Separate by:").grid(row=1, column=0, sticky=tk.W, pady=(6, 0))
+        self.facet_combo = ttk.Combobox(sel, textvariable=self.facet_var, values=["<None>"] + INDEPENDENTS, state="readonly")
+        self.facet_combo.grid(row=1, column=1, sticky=(tk.W, tk.E), padx=6, pady=(6, 0))
+        self.facet_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_facet_change())
+
+        ttk.Label(sel, text="Color by:").grid(row=1, column=2, sticky=tk.W, pady=(6, 0))
+        self.color_combo = ttk.Combobox(sel, textvariable=self.color_var, values=["<None>"] + INDEPENDENTS, state="readonly")
+        self.color_combo.grid(row=1, column=3, sticky=(tk.W, tk.E), padx=6, pady=(6, 0))
+        self.color_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_color_change())
+
         # Optional reference lines controls
         self.hline_chk = ttk.Checkbutton(
             sel,
@@ -240,10 +252,10 @@ class PlotModule:
             variable=self.hline_enabled_var,
             command=self._on_reference_line_toggle,
         )
-        self.hline_chk.grid(row=1, column=0, sticky=tk.W, pady=(6, 0))
-        ttk.Label(sel, text="Y =").grid(row=1, column=1, sticky=tk.E, pady=(6, 0))
+        self.hline_chk.grid(row=2, column=0, sticky=tk.W, pady=(6, 0))
+        ttk.Label(sel, text="Y =").grid(row=2, column=1, sticky=tk.E, pady=(6, 0))
         self.hline_entry = ttk.Entry(sel, textvariable=self.hline_value_var, width=12, state="disabled")
-        self.hline_entry.grid(row=1, column=2, sticky=(tk.W, tk.E), padx=(4, 12), pady=(6, 0))
+        self.hline_entry.grid(row=2, column=2, sticky=(tk.W, tk.E), padx=(4, 12), pady=(6, 0))
         Tooltip(self.hline_entry, "Draws a red horizontal guide across the plot at the specified Y value.")
 
         self.vline_chk = ttk.Checkbutton(
@@ -252,10 +264,10 @@ class PlotModule:
             variable=self.vline_enabled_var,
             command=self._on_reference_line_toggle,
         )
-        self.vline_chk.grid(row=1, column=4, sticky=tk.W, pady=(6, 0))
-        ttk.Label(sel, text="X =").grid(row=1, column=5, sticky=tk.E, pady=(6, 0))
+        self.vline_chk.grid(row=2, column=4, sticky=tk.W, pady=(6, 0))
+        ttk.Label(sel, text="X =").grid(row=2, column=5, sticky=tk.E, pady=(6, 0))
         self.vline_entry = ttk.Entry(sel, textvariable=self.vline_value_var, width=12, state="disabled")
-        self.vline_entry.grid(row=1, column=6, sticky=(tk.W, tk.E), padx=(4, 0), pady=(6, 0))
+        self.vline_entry.grid(row=2, column=6, sticky=(tk.W, tk.E), padx=(4, 0), pady=(6, 0))
         Tooltip(self.vline_entry, "Draws a red vertical guide across the plot at the specified X value.")
 
         # Second-row display option: connect or not connect points
@@ -265,7 +277,7 @@ class PlotModule:
             variable=self.connect_lines_var,
             command=self._on_option_change,
         )
-        self.connect_chk.grid(row=1, column=7, sticky=tk.W, pady=(6, 0))
+        self.connect_chk.grid(row=2, column=7, sticky=tk.W, pady=(6, 0))
 
         # Constraints frame
         const_frame = ttk.LabelFrame(container, text="Fixed Independents (Constancy rule)", padding=10)
@@ -348,7 +360,16 @@ class PlotModule:
     def _set_controls_state(self, state: str):
         # Only set the state of the primary controls here.
         # Constraint comboboxes are managed separately by _populate_constraint_options/_apply_constraint_enablement.
-        for w in [self.x_combo, self.y_combo, self.group_combo, self.err_chk, self.mono_chk, self.connect_chk]:
+        for w in [
+            self.x_combo,
+            self.y_combo,
+            self.group_combo,
+            self.facet_combo,
+            self.color_combo,
+            self.err_chk,
+            self.mono_chk,
+            self.connect_chk,
+        ]:
             try:
                 w.configure(state=state)
             except Exception:
@@ -440,6 +461,8 @@ class PlotModule:
                 self.x_var.set(INDEPENDENTS[0])
                 self.y_var.set(DEPENDENT_LABELS[0])
                 self.group_var.set('<None>')
+                self.facet_var.set('<None>')
+                self.color_var.set('<None>')
                 self.errorbar_var.set(False)
                 self.mono_var.set(False)
                 self.hline_enabled_var.set(False)
@@ -500,6 +523,8 @@ class PlotModule:
             'x': self.x_var.get(),
             'y': self.y_var.get(),
             'group': self.group_var.get(),
+            'facet': self.facet_var.get(),
+            'color': self.color_var.get(),
             'errorbars': bool(self.errorbar_var.get()),
             'monochrome': bool(self.mono_var.get()),
             'connect_lines': bool(self.connect_lines_var.get()),
@@ -540,6 +565,12 @@ class PlotModule:
             valid_groups = ["<None>"] + INDEPENDENTS
             if group_val in valid_groups:
                 self.group_var.set(group_val)
+            facet_val = state.get('facet')
+            if facet_val in valid_groups:
+                self.facet_var.set(facet_val)
+            color_val = state.get('color')
+            if color_val in valid_groups:
+                self.color_var.set(color_val)
             self.errorbar_var.set(bool(state.get('errorbars')))
             self.mono_var.set(bool(state.get('monochrome')))
             self.connect_lines_var.set(bool(state.get('connect_lines', True)))
@@ -669,6 +700,8 @@ class PlotModule:
         self.x_combo.configure(values=INDEPENDENTS)
         self.y_combo.configure(values=DEPENDENT_LABELS)
         self.group_combo.configure(values=["<None>"] + INDEPENDENTS)
+        self.facet_combo.configure(values=["<None>"] + INDEPENDENTS)
+        self.color_combo.configure(values=["<None>"] + INDEPENDENTS)
 
         self._build_sheet_tabs()
         self._activate_sheet(default_sheet, reset_axes=True, select_tab=True)
@@ -683,13 +716,44 @@ class PlotModule:
         cur_g = self.group_var.get()
         if cur_g == self.x_var.get():
             self.group_var.set("<None>")
+        cur_f = self.facet_var.get()
+        if cur_f == self.x_var.get():
+            self.facet_var.set("<None>")
+        cur_c = self.color_var.get()
+        if cur_c == self.x_var.get():
+            self.color_var.set("<None>")
         self._update_errorbar_state()
         self._apply_constraint_enablement()
         self._persist_current_state()
 
     def _on_group_change(self):
-        # No specific action besides errorbar state
+        if self.group_var.get() == self.x_var.get():
+            self.group_var.set("<None>")
+        if self.group_var.get() == self.facet_var.get():
+            self.group_var.set("<None>")
+        if self.group_var.get() == self.color_var.get():
+            self.group_var.set("<None>")
         self._update_errorbar_state()
+        self._apply_constraint_enablement()
+        self._persist_current_state()
+
+    def _on_facet_change(self):
+        if self.facet_var.get() == self.x_var.get():
+            self.facet_var.set("<None>")
+        if self.facet_var.get() == self.group_var.get():
+            self.facet_var.set("<None>")
+        if self.facet_var.get() == self.color_var.get():
+            self.facet_var.set("<None>")
+        self._apply_constraint_enablement()
+        self._persist_current_state()
+
+    def _on_color_change(self):
+        if self.color_var.get() == self.x_var.get():
+            self.color_var.set("<None>")
+        if self.color_var.get() == self.group_var.get():
+            self.color_var.set("<None>")
+        if self.color_var.get() == self.facet_var.get():
+            self.color_var.set("<None>")
         self._apply_constraint_enablement()
         self._persist_current_state()
 
@@ -745,11 +809,13 @@ class PlotModule:
         self._apply_constraint_enablement()
 
     def _apply_constraint_enablement(self):
-        # Disable combobox for X and Group variables; others enabled (once values loaded)
+        # Disable combobox for X/Group/Facet/Color variables; others enabled (once values loaded)
         x = self.x_var.get()
         g = None if self.group_var.get() == "<None>" else self.group_var.get()
+        f = None if self.facet_var.get() == "<None>" else self.facet_var.get()
+        c = None if self.color_var.get() == "<None>" else self.color_var.get()
         for name, cb in self.constraint_rows.items():
-            if name == x or (g and name == g):
+            if name == x or (g and name == g) or (f and name == f) or (c and name == c):
                 cb.configure(state="disabled")
             else:
                 vals = cb.cget("values")
@@ -765,8 +831,16 @@ class PlotModule:
             res[name] = Constraint(exact=val)
         return res
 
-    def _apply_constancy_rule(self, df: pd.DataFrame, x_display: str, group_display: str | None, constraints: dict):
-        # Exclude X and optional group from constancy rule (and PDR globally)
+    def _apply_constancy_rule(
+        self,
+        df: pd.DataFrame,
+        x_display: str,
+        group_display: str | None,
+        facet_display: str | None,
+        color_display: str | None,
+        constraints: dict,
+    ):
+        # Exclude X, group, facet, and color from constancy rule (and PDR globally)
         remaining_pairs = []
         for display in INDEPENDENTS:
             if display == "PDR (MPa/s)":
@@ -774,6 +848,10 @@ class PlotModule:
             if display == x_display:
                 continue
             if group_display and display == group_display:
+                continue
+            if facet_display and display == facet_display:
+                continue
+            if color_display and display == color_display:
                 continue
             column = INDEPENDENT_TO_COLUMN.get(display, display)
             if column not in df.columns:
@@ -808,26 +886,16 @@ class PlotModule:
 
     def _ensure_n_requirements(self, df: pd.DataFrame, group_col: str | None):
         total = int(len(df))
-        if total < 2:
+        if total < 1:
             detail = ""
             if group_col and total > 0 and group_col in df.columns:
                 counts = df[group_col].value_counts(dropna=False).to_dict()
                 detail = f" (counts by {group_col}: {counts})"
             raise ValueError(
-                f"Insufficient data: at least 2 points required after filtering (n={total})." + detail
+                f"Insufficient data: at least 1 point required after filtering (n={total})." + detail
             )
         if group_col:
-            bad = []
-            counts = {}
-            for g, gdf in df.groupby(group_col):
-                counts[str(g)] = len(gdf)
-                if len(gdf) < 2:
-                    bad.append(f"{g} (n={len(gdf)})")
-            if bad:
-                message = "Groups with < 2 points: " + ", ".join(bad)
-                if counts:
-                    message += f". Counts: {counts}"
-                raise ValueError(message)
+            _ = df[group_col].value_counts(dropna=False).to_dict()
 
     def _prepare_plot_data(self, df: pd.DataFrame, x_name: str, y_name: str, group_name: str | None):
         if group_name:
@@ -858,6 +926,103 @@ class PlotModule:
             style = linestyles[(i // len(OKABE_ITO)) % len(linestyles)] if not monochrome else linestyles[i % len(linestyles)]
             styles.append((color, marker, style))
         return styles
+
+    def _ordered_unique(self, series: pd.Series):
+        vals = series.dropna().unique().tolist()
+        try:
+            return sorted(vals, key=_natural_sort_key)
+        except Exception:
+            return vals
+
+    def _color_map(self, values, monochrome: bool):
+        if monochrome:
+            return {v: "#000000" for v in values}
+        palette = OKABE_ITO
+        return {v: palette[i % len(palette)] for i, v in enumerate(values)}
+
+    def _group_style_map(self, values, monochrome: bool):
+        if not values:
+            values = [None]
+        styles = self._group_styles(len(values), monochrome)
+        return {v: styles[i] for i, v in enumerate(values)}
+
+    def _plot_panel(
+        self,
+        ax,
+        df_panel: pd.DataFrame,
+        x_column: str,
+        y_column: str,
+        group_column: str | None,
+        color_column: str | None,
+        yerr_name: str | None,
+        connect: bool,
+        group_values,
+        color_values,
+        group_style_map,
+        color_map,
+    ):
+        self._style_axes(ax)
+        for gval in group_values:
+            if group_column and gval is not None:
+                gdf = df_panel[df_panel[group_column] == gval]
+            else:
+                gdf = df_panel
+            if gdf.empty:
+                continue
+            for cval in color_values:
+                if color_column and cval is not None:
+                    sdf = gdf[gdf[color_column] == cval]
+                else:
+                    sdf = gdf
+                if sdf.empty:
+                    continue
+                sdf = sdf.dropna(subset=[x_column, y_column]).sort_values(by=x_column)
+                if sdf.empty:
+                    continue
+                fallback_style = next(iter(group_style_map.values()))
+                color, marker, linestyle = group_style_map.get(gval, fallback_style)
+                if color_column:
+                    color = color_map.get(cval, color)
+
+                x = _as_float_array(sdf[x_column])
+                y = _as_float_array(sdf[y_column])
+
+                if connect and len(x) >= 2:
+                    ax.plot(
+                        x,
+                        y,
+                        linestyle=linestyle,
+                        linewidth=1.5,
+                        color=color,
+                        alpha=1.0,
+                        antialiased=True,
+                    )
+
+                ax.scatter(
+                    x,
+                    y,
+                    s=42,
+                    marker=marker,
+                    facecolor=color,
+                    edgecolor="black",
+                    linewidths=0.6,
+                    alpha=0.9,
+                    zorder=3,
+                )
+
+                if self.errorbar_var.get() and yerr_name and (yerr_name in sdf.columns):
+                    yerr = _as_float_array(sdf[yerr_name])
+                    ax.errorbar(
+                        x,
+                        y,
+                        yerr=yerr,
+                        fmt="none",
+                        ecolor=color,
+                        elinewidth=1.1,
+                        capsize=3.5,
+                        alpha=0.8,
+                        zorder=2,
+                    )
 
     def _maybe_jitter(self, x_vals: np.ndarray):
         # Apply small jitter if many overlaps in X
@@ -898,12 +1063,24 @@ class PlotModule:
         grp = self.group_var.get().strip()
         group_display = None if grp == "<None>" else grp
         group_column = INDEPENDENT_TO_COLUMN.get(group_display, group_display) if group_display else None
+        fac = self.facet_var.get().strip()
+        facet_display = None if fac == "<None>" else fac
+        facet_column = INDEPENDENT_TO_COLUMN.get(facet_display, facet_display) if facet_display else None
+        col = self.color_var.get().strip()
+        color_display = None if col == "<None>" else col
+        color_column = INDEPENDENT_TO_COLUMN.get(color_display, color_display) if color_display else None
 
         if x_column not in self.df_all.columns:
             messagebox.showerror("Missing column", f"Column '{x_column}' not found in the selected sheet.")
             return
         if group_column and (group_column not in self.df_all.columns):
             messagebox.showerror("Missing column", f"Grouping column '{group_column}' not found in the selected sheet.")
+            return
+        if facet_column and (facet_column not in self.df_all.columns):
+            messagebox.showerror("Missing column", f"Facet column '{facet_column}' not found in the selected sheet.")
+            return
+        if color_column and (color_column not in self.df_all.columns):
+            messagebox.showerror("Missing column", f"Color column '{color_column}' not found in the selected sheet.")
             return
 
         hline_value = None
@@ -934,7 +1111,14 @@ class PlotModule:
         self.constraints.update(constraints)
         self._persist_current_state()
         try:
-            filtered, _remaining = self._apply_constancy_rule(self.df_all, x_display, group_display, constraints)
+            filtered, _remaining = self._apply_constancy_rule(
+                self.df_all,
+                x_display,
+                group_display,
+                facet_display,
+                color_display,
+                constraints,
+            )
         except ValueError as e:
             messagebox.showerror("Constancy rule", str(e))
             return
@@ -956,101 +1140,151 @@ class PlotModule:
             messagebox.showerror("Not enough points", str(e))
             return
 
-        # Prepare plot
-        self.ax.clear()
-        self._style_axes(self.ax)
+        # Prepare plot (supports faceting + color/group combinations)
+        self.fig.clf()
 
-        groups = self._prepare_plot_data(filtered, x_column, y_column, group_column)
-        styles = self._group_styles(len(groups), self.mono_var.get())
         connect = bool(self.connect_lines_var.get())
+        monochrome = bool(self.mono_var.get())
 
-        for (gidx, (gval, gdf)) in enumerate(groups):
-            color, marker, linestyle = styles[gidx]
+        group_values = self._ordered_unique(filtered[group_column]) if group_column else [None]
+        color_values = self._ordered_unique(filtered[color_column]) if color_column else [None]
+        if group_column and not group_values:
+            group_values = [None]
+        if color_column and not color_values:
+            color_values = [None]
+        group_style_map = self._group_style_map(group_values, monochrome)
+        color_map = self._color_map(color_values, monochrome) if color_column else {}
 
-            x = _as_float_array(gdf[x_column])
-            y = _as_float_array(gdf[y_column])
+        facet_values = self._ordered_unique(filtered[facet_column]) if facet_column else [None]
+        if facet_column and not facet_values:
+            facet_values = [None]
+        n_facets = len(facet_values)
 
-            # Optional connecting lines within each group in ascending X
-            if connect:
-                self.ax.plot(
-                    x,
-                    y,
-                    linestyle=linestyle,
-                    linewidth=1.5,
-                    color=color,
-                    alpha=1.0,
-                    antialiased=True,
+        grid_rows = 1
+        grid_cols = 1
+        if facet_column and n_facets > 1:
+            import math
+            if n_facets <= 2:
+                ncols = n_facets
+            elif n_facets <= 4:
+                ncols = 2
+            else:
+                ncols = 3
+            nrows = max(1, math.ceil(n_facets / ncols))
+            grid_rows = nrows
+            grid_cols = ncols
+            axes = self.fig.subplots(nrows, ncols, sharex=False, sharey=False)
+            if isinstance(axes, np.ndarray):
+                axes = axes.flatten().tolist()
+            elif isinstance(axes, (list, tuple)):
+                flat = []
+                for row in axes:
+                    if isinstance(row, (list, tuple)):
+                        flat.extend(list(row))
+                    else:
+                        flat.append(row)
+                axes = flat
+            else:
+                axes = [axes]
+        else:
+            self.ax = self.fig.add_subplot(111)
+            axes = [self.ax]
+
+        # Plot each panel
+        for idx, ax in enumerate(axes):
+            if idx >= n_facets:
+                ax.set_visible(False)
+                continue
+            if facet_column:
+                fval = facet_values[idx]
+                if fval is None:
+                    panel_df = filtered
+                else:
+                    panel_df = filtered[filtered[facet_column] == fval]
+            else:
+                fval = None
+                panel_df = filtered
+
+            self._plot_panel(
+                ax,
+                panel_df,
+                x_column,
+                y_column,
+                group_column,
+                color_column,
+                yerr_name,
+                connect,
+                group_values,
+                color_values,
+                group_style_map,
+                color_map,
+            )
+
+            if hline_value is not None:
+                ax.axhline(
+                    hline_value,
+                    color="red",
+                    linewidth=1.2,
+                    linestyle="--",
+                    alpha=0.9,
+                    zorder=1,
+                )
+            if vline_value is not None:
+                ax.axvline(
+                    vline_value,
+                    color="red",
+                    linewidth=1.2,
+                    linestyle="--",
+                    alpha=0.9,
+                    zorder=1,
                 )
 
-            # Scatter markers (edge black 0.6pt, size ~ 42pt^2)
-            self.ax.scatter(
-                x,
-                y,
-                s=42,
-                marker=marker,
-                facecolor=color,
-                edgecolor="black",
-                linewidths=0.6,
-                alpha=0.9,
-                zorder=3,
-            )
+            x_label = independent_latex(x_display)
+            y_display_label = DEPENDENT_COLUMN_TO_LABEL.get(y_column, y_label)
+            y_label_text = dependent_latex(y_display_label)
 
-            # Error bars (vertical only)
-            if self.errorbar_var.get() and (yerr_name in gdf.columns):
-                yerr = _as_float_array(gdf[yerr_name])
-                self.ax.errorbar(
-                    x,
-                    y,
-                    yerr=yerr,
-                    fmt="none",
-                    ecolor=color,
-                    elinewidth=1.1,
-                    capsize=3.5,
-                    alpha=0.8,
-                    zorder=2,
-                )
+            if len(axes) == 1:
+                ax.set_xlabel(x_label)
+                ax.set_ylabel(y_label_text)
+            else:
+                row = idx // grid_cols
+                col = idx % grid_cols
+                if row == (grid_rows - 1):
+                    ax.set_xlabel(x_label)
+                else:
+                    ax.set_xlabel("")
+                if col == 0:
+                    ax.set_ylabel(y_label_text)
+                else:
+                    ax.set_ylabel("")
 
-        if hline_value is not None:
-            self.ax.axhline(
-                hline_value,
-                color="red",
-                linewidth=1.2,
-                linestyle="--",
-                alpha=0.9,
-                zorder=1,
-            )
-        if vline_value is not None:
-            self.ax.axvline(
-                vline_value,
-                color="red",
-                linewidth=1.2,
-                linestyle="--",
-                alpha=0.9,
-                zorder=1,
-            )
-
-        # Labels (exact headers with units)
-        self.ax.set_xlabel(independent_latex(x_display))
-        y_display_label = DEPENDENT_COLUMN_TO_LABEL.get(y_column, y_label)
-        self.ax.set_ylabel(dependent_latex(y_display_label))
+            if facet_column and fval is not None:
+                facet_label = independent_latex(facet_display)
+                ax.set_title(f"{facet_label} = {fval}")
 
         # Optional fixed axis limits
         x_min = self._optional_float(self.xmin_var.get())
         x_max = self._optional_float(self.xmax_var.get())
         y_min = self._optional_float(self.ymin_var.get())
         y_max = self._optional_float(self.ymax_var.get())
-        if x_min is not None or x_max is not None:
-            cur = self.ax.get_xlim()
-            self.ax.set_xlim(x_min if x_min is not None else cur[0], x_max if x_max is not None else cur[1])
-        if y_min is not None or y_max is not None:
-            cur = self.ax.get_ylim()
-            self.ax.set_ylim(y_min if y_min is not None else cur[0], y_max if y_max is not None else cur[1])
+        for ax in axes:
+            if not ax.get_visible():
+                continue
+            if x_min is not None or x_max is not None:
+                cur = ax.get_xlim()
+                ax.set_xlim(x_min if x_min is not None else cur[0], x_max if x_max is not None else cur[1])
+            if y_min is not None or y_max is not None:
+                cur = ax.get_ylim()
+                ax.set_ylim(y_min if y_min is not None else cur[0], y_max if y_max is not None else cur[1])
 
-        # Legend
+        # Legends
+        group_handles, group_labels = [], []
+        color_handles, color_labels = [], []
         if group_display:
-            handles, labels = [], []
-            for (gidx, (gval, _)) in enumerate(groups):
-                color, marker, linestyle = styles[gidx]
+            group_label = independent_latex(group_display)
+            for gval in group_values:
+                fallback_style = next(iter(group_style_map.values()))
+                color, marker, linestyle = group_style_map.get(gval, fallback_style)
                 legend_linestyle = linestyle if connect else ""
                 legend_linewidth = 1.5 if connect else 0.0
                 h = matplotlib.lines.Line2D(
@@ -1064,27 +1298,108 @@ class PlotModule:
                     markeredgecolor="black",
                     markeredgewidth=0.6,
                 )
-                handles.append(h)
-                group_label = independent_latex(group_display)
-                labels.append(f"{group_label} = {gval}")
-            leg = self.ax.legend(
-                handles, labels,
-                loc="upper left",
-                bbox_to_anchor=(1.02, 1.0),
-                frameon=False,
-                handlelength=2.0,
-                borderaxespad=0.0,
-            )
+                group_handles.append(h)
+                group_labels.append(f"{group_label} = {gval}")
+        if color_display:
+            color_label = independent_latex(color_display)
+            for cval in color_values:
+                color = color_map.get(cval, "#000000")
+                h = matplotlib.lines.Line2D(
+                    [0],
+                    [0],
+                    color=color,
+                    marker="o",
+                    linestyle="",
+                    linewidth=0.0,
+                    markerfacecolor=color,
+                    markeredgecolor="black",
+                    markeredgewidth=0.6,
+                )
+                color_handles.append(h)
+                color_labels.append(f"{color_label} = {cval}")
+
+        legend_right = 0.78 if (group_handles or color_handles) else 0.95
+        self.fig.subplots_adjust(left=0.12, right=legend_right, bottom=0.12, top=0.95, wspace=0.35, hspace=0.35)
+
+        if len(axes) == 1:
+            ax = axes[0]
+            if group_handles and color_handles:
+                leg1 = ax.legend(
+                    color_handles, color_labels,
+                    loc="upper left",
+                    bbox_to_anchor=(1.02, 1.0),
+                    frameon=False,
+                    handlelength=2.0,
+                    borderaxespad=0.0,
+                )
+                ax.add_artist(leg1)
+                ax.legend(
+                    group_handles, group_labels,
+                    loc="upper left",
+                    bbox_to_anchor=(1.02, 0.55),
+                    frameon=False,
+                    handlelength=2.0,
+                    borderaxespad=0.0,
+                )
+            elif group_handles:
+                ax.legend(
+                    group_handles, group_labels,
+                    loc="upper left",
+                    bbox_to_anchor=(1.02, 1.0),
+                    frameon=False,
+                    handlelength=2.0,
+                    borderaxespad=0.0,
+                )
+            elif color_handles:
+                ax.legend(
+                    color_handles, color_labels,
+                    loc="upper left",
+                    bbox_to_anchor=(1.02, 1.0),
+                    frameon=False,
+                    handlelength=2.0,
+                    borderaxespad=0.0,
+                )
         else:
-            # No legend when not grouped
-            pass
+            if color_handles:
+                self.fig.legend(
+                    color_handles, color_labels,
+                    loc="upper left",
+                    bbox_to_anchor=(0.82, 1.0),
+                    frameon=False,
+                    handlelength=2.0,
+                    borderaxespad=0.0,
+                )
+            if group_handles:
+                self.fig.legend(
+                    group_handles, group_labels,
+                    loc="upper left",
+                    bbox_to_anchor=(0.82, 0.6),
+                    frameon=False,
+                    handlelength=2.0,
+                    borderaxespad=0.0,
+                )
 
-        # Tight layout with room on right for legend
-        self.fig.subplots_adjust(left=0.12, right=0.78, bottom=0.12, top=0.95)
+        # Under-plot annotations: n per group or panel and fixed variables
+        if facet_column:
+            counts = []
+            for fval in facet_values:
+                if fval is None:
+                    fdf = filtered
+                else:
+                    fdf = filtered[filtered[facet_column] == fval]
+                n = len(fdf.dropna(subset=[x_column, y_column]))
+                counts.append(f"{fval}={n}")
+            n_info = "n per panel: " + "/".join(counts) if counts else "n: 0"
+        elif color_column and not group_column:
+            counts = filtered[color_column].value_counts(dropna=False).to_dict()
+            n_info = "n per color: " + "/".join(f"{k}={v}" for k, v in counts.items())
+        elif group_column and not color_column:
+            counts = filtered[group_column].value_counts(dropna=False).to_dict()
+            n_info = "n per group: " + "/".join(f"{k}={v}" for k, v in counts.items())
+        else:
+            n_info = f"n total: {len(filtered.dropna(subset=[x_column, y_column]))}"
 
-        # Under-plot annotations: n per group and fixed variables
-        n_info = self._n_info_text(groups)
-        fixed_info = self._fixed_info_text(group_display, constraints)
+        fixed_info = self._fixed_info_text(group_display, facet_display, color_display, constraints)
         sheet_label = self._sheet_labels.get(self.active_sheet_name, self.active_sheet_name or "<no sheet>")
         self.info_var.set(f"Sheet: {sheet_label}    |    {n_info}    |    Fixed: {fixed_info}")
 
@@ -1096,12 +1411,12 @@ class PlotModule:
         counts = [len(gdf) for _, gdf in groups]
         return "n per group: " + "/".join(str(n) for n in counts)
 
-    def _fixed_info_text(self, group_name, constraints: dict):
+    def _fixed_info_text(self, group_name, facet_name, color_name, constraints: dict):
         parts = []
         for v in INDEPENDENTS:
             if v == "PDR (MPa/s)":
                 continue
-            if v == self.x_var.get() or (group_name and v == group_name):
+            if v == self.x_var.get() or (group_name and v == group_name) or (facet_name and v == facet_name) or (color_name and v == color_name):
                 continue
             c: Constraint = constraints.get(v, Constraint())
             if c.exact.strip() != "":
@@ -1116,8 +1431,12 @@ class PlotModule:
         y = self.y_var.get().replace(" ", "_")
         g = self.group_var.get()
         by = f"_by_{g.replace(' ', '_')}" if g and g != "<None>" else ""
+        f = self.facet_var.get()
+        c = self.color_var.get()
+        facet = f"_facet_{f.replace(' ', '_')}" if f and f != "<None>" else ""
+        color = f"_color_{c.replace(' ', '_')}" if c and c != "<None>" else ""
         ts = _dt.datetime.now().strftime("%Y%m%d-%H%M")
-        return f"scatter_{y}_vs_{x}{by}_{ts}.{ext}"
+        return f"scatter_{y}_vs_{x}{by}{facet}{color}_{ts}.{ext}"
 
     def _copy_figure(self):
         if self.df_all.empty:
@@ -1216,8 +1535,16 @@ class PlotModule:
             used_cols = [x_column, y_column]
             group_display = None if self.group_var.get() == "<None>" else self.group_var.get().strip()
             group_column = INDEPENDENT_TO_COLUMN.get(group_display, group_display) if group_display else None
+            facet_display = None if self.facet_var.get() == "<None>" else self.facet_var.get().strip()
+            facet_column = INDEPENDENT_TO_COLUMN.get(facet_display, facet_display) if facet_display else None
+            color_display = None if self.color_var.get() == "<None>" else self.color_var.get().strip()
+            color_column = INDEPENDENT_TO_COLUMN.get(color_display, color_display) if color_display else None
             if group_column:
                 used_cols.append(group_column)
+            if facet_column:
+                used_cols.append(facet_column)
+            if color_column:
+                used_cols.append(color_column)
             # Always include deviation columns if present
             if yerr_name and (yerr_name in self.df_filtered.columns):
                 used_cols.append(yerr_name)
@@ -1235,6 +1562,8 @@ class PlotModule:
                 "x": x_display,
                 "y": y_label,
                 "group": group_display,
+                "facet": facet_display,
+                "color": color_display,
                 "error_bars": bool(self.errorbar_var.get()),
                 "yerr_column": yerr_name if yerr_name in self.df_filtered.columns else None,
                 "dpi": int(self.dpi_var.get()),
