@@ -58,9 +58,9 @@ class CellWallsModule:
 
         opts = ttk.LabelFrame(main, text="Options", padding=10)
         opts.pack(fill=tk.X, pady=(0, 8))
-        ttk.Label(opts, text="Number of bins:").grid(row=0, column=0, sticky=tk.W)
-        self.n_bins_var = tk.StringVar(value="256")
-        ttk.Entry(opts, textvariable=self.n_bins_var, width=12).grid(row=0, column=1, sticky=tk.W, padx=(6, 12))
+        ttk.Label(opts, text="Bin width (um):").grid(row=0, column=0, sticky=tk.W)
+        self.bin_width_var = tk.StringVar(value="2.0")
+        ttk.Entry(opts, textvariable=self.bin_width_var, width=12).grid(row=0, column=1, sticky=tk.W, padx=(6, 12))
         ttk.Label(opts, text="(Histogram per image + combined by group)").grid(row=0, column=2, sticky=tk.W)
 
         buttons = ttk.Frame(main)
@@ -210,15 +210,19 @@ class CellWallsModule:
 
         top = tk.Toplevel(self.root)
         top.title("Crop editor (inclusion/exclusion rectangles)")
-        top.geometry("1080x820")
+        top.geometry("1360x860")
 
         header = ttk.Frame(top, padding=8)
         header.pack(fill=tk.X)
         ttk.Label(header, text="Image:").pack(side=tk.LEFT)
-        image_var = tk.StringVar(value=self.entries[0].mask_path.name)
+        image_names = [e.mask_path.name for e in self.entries]
+        image_index = {"idx": 0}
+        image_var = tk.StringVar(value=image_names[0])
         image_map = {e.mask_path.name: e for e in self.entries}
         combo = ttk.Combobox(header, textvariable=image_var, values=list(image_map.keys()), state="readonly", width=58)
         combo.pack(side=tk.LEFT, padx=6)
+        ttk.Button(header, text="Previous", command=lambda: step_image(-1)).pack(side=tk.LEFT, padx=(8, 4))
+        ttk.Button(header, text="Next", command=lambda: step_image(1)).pack(side=tk.LEFT, padx=(0, 10))
 
         mode_var = tk.StringVar(value="exclude")
         ttk.Radiobutton(header, text="Add exclusion", variable=mode_var, value="exclude").pack(side=tk.LEFT, padx=(20, 6))
@@ -227,16 +231,36 @@ class CellWallsModule:
         counts_var = tk.StringVar(value="")
         ttk.Label(header, textvariable=counts_var).pack(side=tk.RIGHT)
 
-        canvas = tk.Canvas(top, bg="black", width=1020, height=680)
-        canvas.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        work = ttk.Frame(top)
+        work.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        work.columnconfigure(0, weight=1)
+        work.columnconfigure(1, weight=1)
+        work.rowconfigure(0, weight=1)
+
+        canvas = tk.Canvas(work, bg="black", width=650, height=680)
+        canvas.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        preview_canvas = tk.Canvas(work, bg="black", width=650, height=680)
+        preview_canvas.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
 
         btns = ttk.Frame(top, padding=(8, 0, 8, 8))
         btns.pack(fill=tk.X)
         ttk.Button(btns, text="Clear exclusions (this image)", command=lambda: clear_rects("exclude")).pack(side=tk.LEFT)
         ttk.Button(btns, text="Clear inclusions (this image)", command=lambda: clear_rects("include")).pack(side=tk.LEFT, padx=8)
+        ttk.Button(btns, text="Apply + Preview", command=lambda: apply_preview(show_info=True)).pack(side=tk.LEFT, padx=(8, 0))
         ttk.Button(btns, text="Close", command=top.destroy).pack(side=tk.RIGHT)
+        apply_state_var = tk.StringVar(value="Preview not applied yet")
+        ttk.Label(top, textvariable=apply_state_var, anchor=tk.W).pack(fill=tk.X, padx=12, pady=(0, 8))
 
-        state = {"pil_img": None, "tk_img": None, "scale": 1.0, "offx": 0, "offy": 0, "drag_start": None, "drag_item": None}
+        state = {
+            "pil_img": None,
+            "tk_img": None,
+            "preview_tk_img": None,
+            "scale": 1.0,
+            "offx": 0,
+            "offy": 0,
+            "drag_start": None,
+            "drag_item": None,
+        }
 
         def redraw():
             canvas.delete("all")
@@ -285,6 +309,52 @@ class CellWallsModule:
             counts_var.set(
                 f"Inclusions: {len(self.inclusions.get(key, []))}    Exclusions: {len(self.exclusions.get(key, []))}"
             )
+            apply_preview(show_info=False)
+
+        def render_preview(arr_preview: np.ndarray):
+            preview_canvas.delete("all")
+            img = Image.fromarray(arr_preview).convert("RGB")
+            cw = max(1, preview_canvas.winfo_width())
+            ch = max(1, preview_canvas.winfo_height())
+            scale = min(cw / img.width, ch / img.height)
+            nw = max(1, int(img.width * scale))
+            nh = max(1, int(img.height * scale))
+            offx = (cw - nw) // 2
+            offy = (ch - nh) // 2
+            resized = img.resize((nw, nh), Image.NEAREST)
+            state["preview_tk_img"] = ImageTk.PhotoImage(resized)
+            preview_canvas.create_image(offx, offy, anchor=tk.NW, image=state["preview_tk_img"])
+
+        def apply_preview(show_info: bool):
+            entry = image_map[image_var.get()]
+            arr = cv2.imread(str(entry.mask_path), cv2.IMREAD_GRAYSCALE)
+            if arr is None:
+                return
+            solid = (arr > 127).astype(np.uint8)
+            h, w = solid.shape
+            key = entry.mask_path.name
+            include_rects = self.inclusions.get(key, [])
+            if include_rects:
+                roi = np.zeros_like(solid, dtype=np.uint8)
+                for x1, y1, x2, y2 in include_rects:
+                    xx1, xx2 = max(0, min(x1, x2)), min(w, max(x1, x2))
+                    yy1, yy2 = max(0, min(y1, y2)), min(h, max(y1, y2))
+                    roi[yy1:yy2, xx1:xx2] = 1
+            else:
+                roi = np.ones_like(solid, dtype=np.uint8)
+            for x1, y1, x2, y2 in self.exclusions.get(key, []):
+                xx1, xx2 = max(0, min(x1, x2)), min(w, max(x1, x2))
+                yy1, yy2 = max(0, min(y1, y2)), min(h, max(y1, y2))
+                roi[yy1:yy2, xx1:xx2] = 0
+
+            analyzed = ((solid > 0) & (roi > 0)).astype(np.uint8) * 255
+            # White solid to be analyzed, black background/excluded.
+            render_preview(analyzed)
+            apply_state_var.set(
+                f"Applied on {entry.mask_path.name}: inclusions={len(include_rects)}, exclusions={len(self.exclusions.get(key, []))}"
+            )
+            if show_info:
+                messagebox.showinfo("Applied", "Inclusions/exclusions applied to preview.")
 
         def to_img_xy(x, y):
             img = state["pil_img"]
@@ -335,6 +405,7 @@ class CellWallsModule:
             state["drag_item"] = None
             redraw()
             self._refresh_table()
+            apply_state_var.set("Changes added. Click 'Apply + Preview' to confirm.")
 
         def clear_rects(kind: str):
             key = image_var.get()
@@ -344,12 +415,36 @@ class CellWallsModule:
                 self.exclusions[key] = []
             redraw()
             self._refresh_table()
+            apply_state_var.set("Rectangles cleared for current image.")
 
-        combo.bind("<<ComboboxSelected>>", lambda _e: redraw())
+        def set_image(name: str):
+            if name not in image_map:
+                return
+            image_var.set(name)
+            combo.set(name)
+            try:
+                image_index["idx"] = image_names.index(name)
+            except ValueError:
+                image_index["idx"] = 0
+            redraw()
+            apply_state_var.set(f"Loaded: {name}")
+
+        def step_image(step: int):
+            n = len(image_names)
+            if n == 0:
+                return
+            image_index["idx"] = (image_index["idx"] + step) % n
+            set_image(image_names[image_index["idx"]])
+
+        def on_combo_selected(_e=None):
+            set_image(combo.get())
+
+        combo.bind("<<ComboboxSelected>>", on_combo_selected)
         canvas.bind("<ButtonPress-1>", on_press)
         canvas.bind("<B1-Motion>", on_move)
         canvas.bind("<ButtonRelease-1>", on_release)
         canvas.bind("<Configure>", lambda _e: redraw())
+        preview_canvas.bind("<Configure>", lambda _e: apply_preview(show_info=False))
         top.after(10, redraw)
 
     @staticmethod
@@ -358,7 +453,7 @@ class CellWallsModule:
         return name[:31] if len(name) > 31 else name
 
     @staticmethod
-    def _make_histogram(values_um: np.ndarray, n_bins: int) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
+    def _make_histogram(values_um: np.ndarray, bin_width_um: float) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
         if values_um.size == 0:
             empty = pd.DataFrame(columns=["index", "bin start", "bin end", "count", "relative frequency"])
             return empty, np.array([], dtype=float), np.array([], dtype=float)
@@ -366,7 +461,11 @@ class CellWallsModule:
         vmax = float(np.max(values_um))
         if vmax <= 0:
             vmax = 1.0
-        counts, edges = np.histogram(values_um, bins=int(n_bins), range=(0.0, vmax))
+        upper = max(bin_width_um, np.ceil(vmax / bin_width_um) * bin_width_um)
+        edges = np.arange(0.0, upper + bin_width_um, bin_width_um, dtype=float)
+        if edges.size < 2:
+            edges = np.array([0.0, bin_width_um], dtype=float)
+        counts, edges = np.histogram(values_um, bins=edges)
         total = int(counts.sum())
         rel = (counts / total) if total > 0 else np.zeros_like(counts, dtype=float)
         df = pd.DataFrame(
@@ -409,7 +508,7 @@ class CellWallsModule:
         cv2.imwrite(str(out_path), vis)
 
     @staticmethod
-    def _save_histogram_png(values_um: np.ndarray, n_bins: int, out_png: Path, title: str):
+    def _save_histogram_png(values_um: np.ndarray, bin_width_um: float, out_png: Path, title: str):
         try:
             import matplotlib.pyplot as plt
             from matplotlib import cm
@@ -419,10 +518,18 @@ class CellWallsModule:
         if values_um.size == 0:
             return
 
-        counts, edges = np.histogram(values_um, bins=n_bins, range=(0.0, float(np.max(values_um))))
+        vmax = float(np.max(values_um))
+        if vmax <= 0:
+            vmax = 1.0
+        upper = max(bin_width_um, np.ceil(vmax / bin_width_um) * bin_width_um)
+        edges = np.arange(0.0, upper + bin_width_um, bin_width_um, dtype=float)
+        if edges.size < 2:
+            edges = np.array([0.0, bin_width_um], dtype=float)
+        counts, edges = np.histogram(values_um, bins=edges)
         if counts.size == 0:
             return
-        rel = (counts / counts.sum()) if counts.sum() > 0 else np.zeros_like(counts, dtype=float)
+        total = counts.sum()
+        rel = (counts / total) if total > 0 else np.zeros_like(counts, dtype=float)
         widths = np.diff(edges)
         centers = (edges[:-1] + edges[1:]) / 2.0
         mode_idx = int(np.argmax(counts))
@@ -454,7 +561,7 @@ class CellWallsModule:
             f"N: {int(values_um.size)}\n"
             f"Mean: {mean_value:.4f}\n"
             f"StdDev: {std_value:.4f}\n"
-            f"Bins: {int(n_bins)}"
+            f"Bins: {int(counts.size)}"
         )
         right_txt = (
             f"Min: {min_value:.4f}\n"
@@ -479,11 +586,11 @@ class CellWallsModule:
         out_dir.mkdir(parents=True, exist_ok=True)
 
         try:
-            n_bins = int(self.n_bins_var.get())
-            if n_bins <= 1:
+            bin_width = float(self.bin_width_var.get())
+            if bin_width <= 0:
                 raise ValueError
         except Exception:
-            messagebox.showerror("Run", "Number of bins must be an integer > 1.")
+            messagebox.showerror("Run", "Bin width must be a positive number.")
             return
 
         thickness_dir = out_dir / "local_thickness_maps"
@@ -541,7 +648,7 @@ class CellWallsModule:
             self._save_thickness_colormap(tum, analyzed_solid, map_path)
 
             hist_path = hist_png_dir / f"{entry.mask_path.stem}_histogram.png"
-            self._save_histogram_png(values, n_bins, hist_path, title=entry.file_id)
+            self._save_histogram_png(values, bin_width, hist_path, title=entry.file_id)
 
             by_group.setdefault(entry.group_key, []).append((entry, values.astype(np.float32), map_path, hist_path))
 
@@ -554,7 +661,7 @@ class CellWallsModule:
 
                 for entry, values, map_path, hist_path in items:
                     all_values.append(values)
-                    df_img, _, _ = self._make_histogram(values, n_bins)
+                    df_img, _, _ = self._make_histogram(values, bin_width)
                     sheet = self._safe_sheet_name(f"{entry.file_id}_log")
                     df_img.to_excel(writer, sheet_name=sheet, index=False)
                     images_rows.append(
@@ -572,7 +679,7 @@ class CellWallsModule:
                     )
 
                 combined = np.concatenate(all_values) if all_values else np.array([], dtype=np.float32)
-                df_combined, _, _ = self._make_histogram(combined, n_bins)
+                df_combined, _, _ = self._make_histogram(combined, bin_width)
                 df_combined.to_excel(writer, sheet_name=self._safe_sheet_name(f"histogram_{group_key}"), index=False)
                 pd.DataFrame(images_rows).to_excel(writer, sheet_name=self._safe_sheet_name("images_used"), index=False)
             generated += 1
@@ -583,4 +690,3 @@ class CellWallsModule:
             messagebox.showwarning("Cell wall analysis warnings", "\n".join(errors[:30]))
         self.status_var.set(status)
         self._refresh_table()
-
