@@ -43,9 +43,10 @@
   },
   "papers": [
     "HDPE_TW",
-    "HDPE_additives"
+    "HDPE_additives",
+    "OC HDPE_TW"
   ],
-  "current_paper": "HDPE_additives",
+  "current_paper": "HDPE_TW",
   "all_results_paths": {},
   "module_scopes": {
     "Combine": "paper",
@@ -92,6 +93,9 @@
     "HDPE_additives": [
       "HDPE",
       "rHDPE"
+    ],
+    "OC HDPE_TW": [
+      "HDPE"
     ]
   },
   "paper_root_paths": {
@@ -100,7 +104,8 @@
     "test": "C:\\Users\\x\\OneDrive - UVa\\Tesis doctoral\\PressTech\\TEST\\test",
     "Paper 10": "Paper 10",
     "HDPE_TW": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW",
-    "HDPE_additives": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_additives"
+    "HDPE_additives": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_additives",
+    "OC HDPE_TW": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\OC HDPE_TW"
   },
   "formulations": {
     "HDPE": {

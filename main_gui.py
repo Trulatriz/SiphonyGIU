@@ -1,4 +1,4 @@
-import tkinter as tk
+﻿import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import os
 import sys
@@ -12,6 +12,7 @@ from modules.dsc_module import DSCModule
 from modules.sem_module import SEMImageEditor as SEMModule
 from modules.oc_module import OCModule
 from modules.pdr_module import PDRModule
+from modules.cell_walls_module import CellWallsModule
 from modules.plot_module import PlotModule
 from modules.plot_dvsvs_module import DependentScatterModule
 from modules.heatmap_module import HeatmapModule
@@ -149,7 +150,7 @@ class PressTechGUI:
 
         combine_btn = ttk.Button(
             extraction_frame,
-            text='⚡ SMART COMBINE',
+            text='âš¡ SMART COMBINE',
             command=self.open_combine,
             **button_style
         )
@@ -157,7 +158,7 @@ class PressTechGUI:
 
         specific_btn = ttk.Button(
             extraction_frame,
-            text='🔬 FOAM-SPECIFIC ANALYSIS',
+            text='ðŸ”¬ FOAM-SPECIFIC ANALYSIS',
             command=self.show_foam_specific_dialog,
             **button_style
         )
@@ -169,7 +170,7 @@ class PressTechGUI:
 
         analysis_btn = ttk.Button(
             analysis_frame,
-            text='📈 SCATTER PLOTS',
+            text='ðŸ“ˆ SCATTER PLOTS',
             command=self.open_publication_plots,
             **button_style
         )
@@ -177,7 +178,7 @@ class PressTechGUI:
 
         heatmap_btn = ttk.Button(
             analysis_frame,
-            text='🔥 HEATMAPS',
+            text='ðŸ”¥ HEATMAPS',
             command=self.open_heatmap,
             **button_style
         )
@@ -189,7 +190,7 @@ class PressTechGUI:
 
         manage_papers_btn = ttk.Button(
             org_frame,
-            text='📁 MANAGE PAPERS',
+            text='ðŸ“ MANAGE PAPERS',
             command=self.manage_papers,
             **button_style
         )
@@ -197,7 +198,7 @@ class PressTechGUI:
 
         manage_foams_btn = ttk.Button(
             org_frame,
-            text='🧶 MANAGE FOAMS',
+            text='ðŸ§¶ MANAGE FOAMS',
             command=self.manage_foams,
             **button_style
         )
@@ -302,16 +303,16 @@ class PressTechGUI:
         )
         plots_menu.add_cascade(label="Scatter Plots", menu=scatter_menu)
         plots_menu.add_command(label="Heatmaps", command=self.open_heatmap)
-        tools_menu.add_command(label="📊 Publication Plots", command=self.open_publication_plots)
-        tools_menu.add_command(label="⚡ Smart Combine", command=self.open_combine)
-        tools_menu.add_command(label="🔬 Cell Size & Density", command=self.open_cell_analysis)
+        tools_menu.add_command(label="ðŸ“Š Publication Plots", command=self.open_publication_plots)
+        tools_menu.add_command(label="âš¡ Smart Combine", command=self.open_combine)
+        tools_menu.add_command(label="ðŸ”¬ Cell Size & Density", command=self.open_cell_analysis)
         tools_menu.add_separator()
-        tools_menu.add_command(label="🌡️ DSC Analysis", command=self.open_dsc_with_foam_check)
-        tools_menu.add_command(label="🔬 SEM Image Editor", command=self.open_sem_with_foam_check)
-        tools_menu.add_command(label="🔓 Open-Cell Content", command=self.open_oc_with_foam_check)
-        tools_menu.add_command(label="📊 Pressure Drop Rate", command=self.open_pdr_with_foam_check)
+        tools_menu.add_command(label="ðŸŒ¡ï¸ DSC Analysis", command=self.open_dsc_with_foam_check)
+        tools_menu.add_command(label="ðŸ”¬ SEM Image Editor", command=self.open_sem_with_foam_check)
+        tools_menu.add_command(label="ðŸ”“ Open-Cell Content", command=self.open_oc_with_foam_check)
+        tools_menu.add_command(label="ðŸ“Š Pressure Drop Rate", command=self.open_pdr_with_foam_check)
         tools_menu.add_separator()
-        tools_menu.add_command(label="🔬 Foam-Specific Analysis…", command=self.show_foam_specific_dialog)
+        tools_menu.add_command(label="ðŸ”¬ Foam-Specific Analysisâ€¦", command=self.show_foam_specific_dialog)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -329,22 +330,19 @@ class PressTechGUI:
 
         ttk.Label(frame, text="Foam-Specific Analysis", font=("Arial", 14, "bold")).grid(row=0, column=0, columnspan=2, pady=(0, 15))
 
-        dsc_btn = ttk.Button(frame, text="🌡️ DSC Analysis", command=lambda: (dialog.destroy(), self.open_dsc_with_foam_check()), width=25)
+        dsc_btn = ttk.Button(frame, text="DSC Analysis", command=lambda: (dialog.destroy(), self.open_dsc_with_foam_check()), width=25)
         dsc_btn.grid(row=1, column=0, padx=10, pady=5, sticky=(tk.W, tk.E))
-        oc_btn = ttk.Button(frame, text="🔓 Open-Cell Content", command=lambda: (dialog.destroy(), self.open_oc_with_foam_check()), width=25)
+        oc_btn = ttk.Button(frame, text="Open-Cell Content", command=lambda: (dialog.destroy(), self.open_oc_with_foam_check()), width=25)
         oc_btn.grid(row=1, column=1, padx=10, pady=5, sticky=(tk.W, tk.E))
-        pdr_btn = ttk.Button(frame, text="📉 Pressure Drop Rate", command=lambda: (dialog.destroy(), self.open_pdr_with_foam_check()), width=25)
+        pdr_btn = ttk.Button(frame, text="Pressure Drop Rate", command=lambda: (dialog.destroy(), self.open_pdr_with_foam_check()), width=25)
         pdr_btn.grid(row=2, column=0, padx=10, pady=5, sticky=(tk.W, tk.E))
-        # SEM results workflow (direct access)
-        obtain_hist_btn = ttk.Button(frame, text="Obtain SEM results", command=lambda: (dialog.destroy(), self.show_cell_analysis_instructions()), width=25)
-        obtain_hist_btn.grid(row=2, column=1, padx=10, pady=5, sticky=(tk.W, tk.E))
         combine_hist_btn = ttk.Button(frame, text="Combine SEM results", command=lambda: (dialog.destroy(), self.open_histogram_combiner()), width=25)
-        combine_hist_btn.grid(row=3, column=0, columnspan=2, padx=10, pady=5, sticky=(tk.W, tk.E))
+        combine_hist_btn.grid(row=2, column=1, padx=10, pady=5, sticky=(tk.W, tk.E))
+        cell_wall_btn = ttk.Button(frame, text="Cell walls", command=lambda: (dialog.destroy(), self.open_cell_walls_with_foam_check()), width=25)
+        cell_wall_btn.grid(row=3, column=0, padx=10, pady=5, sticky=(tk.W, tk.E))
 
-        back_btn = ttk.Button(frame, text="⬅️ Back", command=dialog.destroy)
-        back_btn.grid(row=4, column=0, columnspan=2, pady=(12, 0))
-
-    
+        back_btn = ttk.Button(frame, text="Back", command=dialog.destroy)
+        back_btn.grid(row=5, column=0, columnspan=2, pady=(12, 0))
     def update_status(self, message):
         """Update status bar message"""
         self.status_var.set(message)
@@ -430,11 +428,11 @@ class PressTechGUI:
         
         # Instructions content
         instructions = [
-            ("📁 Preparación de imágenes:", [
-                "• Una muestra por vez (no mezclar diferentes muestras)",
-                "• Nombres similares para réplicas de la misma muestra",
-                "• Añadir '_1' a la primera réplica si las otras tienen '_2', '_3', etc.",
-                "• Reemplazar espacios con guiones bajos (_)",
+            ("ðŸ“ PreparaciÃ³n de imÃ¡genes:", [
+                "â€¢ Una muestra por vez (no mezclar diferentes muestras)",
+                "â€¢ Nombres similares para rÃ©plicas de la misma muestra",
+                "â€¢ AÃ±adir '_1' a la primera rÃ©plica si las otras tienen '_2', '_3', etc.",
+                "â€¢ Reemplazar espacios con guiones bajos (_)",
                 "",
                 "Ejemplo de nombres correctos:",
                 "  PS_20250214_1_001.tif",
@@ -442,25 +440,25 @@ class PressTechGUI:
                 "  PS_20250214_2_001.tif",
                 "  PS_20250214_2_002.tif"
             ]),
-            ("⚙️ Datos de entrada:", [
-                "• Densidad: Introducir densidad del material sólido (la del espumado no se usa)",
-                "• Escala (preferible manual para evitar errores):",
-                "  - Automática: se detecta de las líneas de referencia x10 = micrómetros",
-                "  - Manual: introducir el número que aparece abajo a la derecha de la imagen",
-                "    (en micrómetros), separados por comas en orden de las imágenes"
+            ("âš™ï¸ Datos de entrada:", [
+                "â€¢ Densidad: Introducir densidad del material sÃ³lido (la del espumado no se usa)",
+                "â€¢ Escala (preferible manual para evitar errores):",
+                "  - AutomÃ¡tica: se detecta de las lÃ­neas de referencia x10 = micrÃ³metros",
+                "  - Manual: introducir el nÃºmero que aparece abajo a la derecha de la imagen",
+                "    (en micrÃ³metros), separados por comas en orden de las imÃ¡genes"
             ]),
-            ("🔍 Tipos de análisis:", [
-                "• Automático: Sube imágenes → detecta poros automáticamente → genera histograma",
-                "• Con ROIs: Usa regiones predefinidas/editadas en ImageJ (archivo '_rois.zip')"
+            ("ðŸ” Tipos de anÃ¡lisis:", [
+                "â€¢ AutomÃ¡tico: Sube imÃ¡genes â†’ detecta poros automÃ¡ticamente â†’ genera histograma",
+                "â€¢ Con ROIs: Usa regiones predefinidas/editadas en ImageJ (archivo '_rois.zip')"
             ]),
-            ("📊 Resultados:", [
-                "• Histograma Excel con hoja por réplica + hoja combinada",
-                "• Imágenes con poros detectados",
-                "• ROIs editables en ImageJ si es necesario"
+            ("ðŸ“Š Resultados:", [
+                "â€¢ Histograma Excel con hoja por rÃ©plica + hoja combinada",
+                "â€¢ ImÃ¡genes con poros detectados",
+                "â€¢ ROIs editables en ImageJ si es necesario"
             ]),
-            ("⚠️ Errores comunes:", [
-                "• Error 500: Escala mal detectada → usar escala manual",
-                "• 'Failed to fetch': Nombres de archivo incorrectos"
+            ("âš ï¸ Errores comunes:", [
+                "â€¢ Error 500: Escala mal detectada â†’ usar escala manual",
+                "â€¢ 'Failed to fetch': Nombres de archivo incorrectos"
             ])
         ]
         
@@ -481,12 +479,12 @@ class PressTechGUI:
         button_frame.pack(pady=(30, 10))
         
         # Open web tool button
-        web_btn = ttk.Button(button_frame, text="🌐 Abrir Herramienta Web", 
+        web_btn = ttk.Button(button_frame, text="ðŸŒ Abrir Herramienta Web", 
                            command=lambda: self.open_web_tool())
         web_btn.pack(side=tk.LEFT, padx=(0, 10))
         
         # Close button
-        close_btn = ttk.Button(button_frame, text="❌ Cerrar", command=dialog.destroy)
+        close_btn = ttk.Button(button_frame, text="âŒ Cerrar", command=dialog.destroy)
         close_btn.pack(side=tk.LEFT)
         
         # Pack canvas and scrollbar
@@ -546,6 +544,17 @@ class PressTechGUI:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open PDR module: {str(e)}")
             self.update_status("Error opening Pressure Drop Rate module")
+
+    def open_cell_walls(self):
+        """Open Cell wall thickness module"""
+        self.update_status("Opening Cell wall thickness module...")
+        try:
+            cw_window = setup_toplevel(self.root, "Cell Wall Thickness")
+            CellWallsModule(cw_window)
+            self.update_status("Cell wall thickness module opened")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open Cell wall module: {str(e)}")
+            self.update_status("Error opening Cell wall thickness module")
 
     def _default_all_results_glob(self) -> str:
         try:
@@ -633,6 +642,11 @@ class PressTechGUI:
         self.ensure_foam_type_selected()
         self.open_pdr()
 
+    def open_cell_walls_with_foam_check(self):
+        """Open Cell wall thickness module with foam type verification"""
+        self.ensure_foam_type_selected()
+        self.open_cell_walls()
+
     def ensure_foam_type_selected(self):
         """Ensure a foam type is selected before opening foam-specific modules"""
         current_foam = self.foam_manager.get_current_foam_type()
@@ -673,7 +687,7 @@ class PressTechGUI:
             if os.path.exists(help_path):
                 webbrowser.open(f"file://{help_path}")
             else:
-                messagebox.showinfo("Help", "HELP.md no encontrado en la carpeta de la aplicación.")
+                messagebox.showinfo("Help", "HELP.md no encontrado en la carpeta de la aplicaciÃ³n.")
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo abrir la ayuda: {str(e)}")
     
@@ -684,13 +698,13 @@ class PressTechGUI:
 An integrated analysis tool for foam processing research.
 
 Features:
-• Smart data combination with incremental updates
-• Statistical analysis and visualization
-• DSC thermal analysis
-• SEM image editing
-• Open-cell content calculation
-• Pressure drop rate analysis
-• Cell size and density analysis
+â€¢ Smart data combination with incremental updates
+â€¢ Statistical analysis and visualization
+â€¢ DSC thermal analysis
+â€¢ SEM image editing
+â€¢ Open-cell content calculation
+â€¢ Pressure drop rate analysis
+â€¢ Cell size and density analysis
 
 Developed for advanced polymer foam research.
 """
@@ -718,20 +732,20 @@ Developed for advanced polymer foam research.
         
         # Paper-level analysis
         ttk.Label(frame, text="Paper-Level Analysis:", font=("Arial", 11, "bold")).grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=(0, 10))
-        a_btn = ttk.Button(frame, text="📊 Publication Plots", command=lambda: (dialog.destroy(), self.open_publication_plots()), width=25)
+        a_btn = ttk.Button(frame, text="ðŸ“Š Publication Plots", command=lambda: (dialog.destroy(), self.open_publication_plots()), width=25)
         a_btn.grid(row=2, column=0, padx=(0, 10), pady=5, sticky=(tk.W, tk.E))
-        c_btn = ttk.Button(frame, text="⚡ Smart Combine", command=lambda: (dialog.destroy(), self.open_combine()), width=25)
+        c_btn = ttk.Button(frame, text="âš¡ Smart Combine", command=lambda: (dialog.destroy(), self.open_combine()), width=25)
         c_btn.grid(row=2, column=1, padx=(10, 0), pady=5, sticky=(tk.W, tk.E))
         
         ttk.Separator(frame, orient='horizontal').grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=15)
         
         # Foam-specific link
         ttk.Label(frame, text="Foam-Specific:", font=("Arial", 11, "bold")).grid(row=4, column=0, columnspan=2, sticky=tk.W)
-        s_btn = ttk.Button(frame, text="🔬 Specific Analysis", command=lambda: self._open_foam_specific_from(dialog), width=25)
+        s_btn = ttk.Button(frame, text="ðŸ”¬ Specific Analysis", command=lambda: self._open_foam_specific_from(dialog), width=25)
         s_btn.grid(row=5, column=0, columnspan=2, pady=(8, 0))
         
         # Back to main
-        back_btn = ttk.Button(frame, text="⬅️ Back", command=dialog.destroy)
+        back_btn = ttk.Button(frame, text="â¬…ï¸ Back", command=dialog.destroy)
         back_btn.grid(row=6, column=0, columnspan=2, pady=(15, 0))
         
         dialog.update_idletasks()
@@ -743,33 +757,33 @@ Developed for advanced polymer foam research.
         """Open foam-specific dialog and allow going back to parent dialog."""
         import tkinter as tk
         from tkinter import ttk
-        
+
         parent_dialog.withdraw()
         dialog = setup_toplevel(self.root, "Foam-Specific Analysis", resizable=False)
-        
+
         frame = ttk.Frame(dialog, padding=20)
         frame.grid(row=0, column=0)
-        
+
         ttk.Label(frame, text="Foam-Specific Analysis", font=("Arial", 14, "bold")).grid(row=0, column=0, columnspan=2, pady=(0, 15))
-        
-        dsc_btn = ttk.Button(frame, text="🌡️ DSC Analysis", command=lambda: (dialog.destroy(), parent_dialog.destroy(), self.open_dsc_with_foam_check()), width=25)
+
+        dsc_btn = ttk.Button(frame, text="DSC Analysis", command=lambda: (dialog.destroy(), parent_dialog.destroy(), self.open_dsc_with_foam_check()), width=25)
         dsc_btn.grid(row=1, column=0, padx=10, pady=5, sticky=(tk.W, tk.E))
-        sem_btn = ttk.Button(frame, text="🔬 SEM Image Editor", command=lambda: (dialog.destroy(), parent_dialog.destroy(), self.open_sem_with_foam_check()), width=25)
+        sem_btn = ttk.Button(frame, text="SEM Image Editor", command=lambda: (dialog.destroy(), parent_dialog.destroy(), self.open_sem_with_foam_check()), width=25)
         sem_btn.grid(row=1, column=1, padx=10, pady=5, sticky=(tk.W, tk.E))
-        oc_btn = ttk.Button(frame, text="🔓 Open-Cell Content", command=lambda: (dialog.destroy(), parent_dialog.destroy(), self.open_oc_with_foam_check()), width=25)
+        oc_btn = ttk.Button(frame, text="Open-Cell Content", command=lambda: (dialog.destroy(), parent_dialog.destroy(), self.open_oc_with_foam_check()), width=25)
         oc_btn.grid(row=2, column=0, padx=10, pady=5, sticky=(tk.W, tk.E))
-        pdr_btn = ttk.Button(frame, text="📉 Pressure Drop Rate", command=lambda: (dialog.destroy(), parent_dialog.destroy(), self.open_pdr_with_foam_check()), width=25)
+        pdr_btn = ttk.Button(frame, text="Pressure Drop Rate", command=lambda: (dialog.destroy(), parent_dialog.destroy(), self.open_pdr_with_foam_check()), width=25)
         pdr_btn.grid(row=2, column=1, padx=10, pady=5, sticky=(tk.W, tk.E))
-        
-        # Back: close this and restore parent dialog
-        back_btn = ttk.Button(frame, text="⬅️ Back", command=lambda: (dialog.destroy(), parent_dialog.deiconify()))
-        back_btn.grid(row=3, column=0, columnspan=2, pady=(12, 0))
-        
+        cw_btn = ttk.Button(frame, text="Cell walls", command=lambda: (dialog.destroy(), parent_dialog.destroy(), self.open_cell_walls_with_foam_check()), width=25)
+        cw_btn.grid(row=3, column=0, padx=10, pady=5, sticky=(tk.W, tk.E))
+
+        back_btn = ttk.Button(frame, text="Back", command=lambda: (dialog.destroy(), parent_dialog.deiconify()))
+        back_btn.grid(row=4, column=0, columnspan=2, pady=(12, 0))
+
         dialog.update_idletasks()
         x = self.root.winfo_rootx() + (self.root.winfo_width() // 2) - (dialog.winfo_width() // 2)
         y = self.root.winfo_rooty() + (self.root.winfo_height() // 2) - (dialog.winfo_height() // 2)
         dialog.geometry(f"+{x}+{y}")
-    
     def select_workflow_and_close(self, dialog, workflow):
         """Deprecated: retained for compatibility, delegates to new dialog"""
         try:
@@ -911,4 +925,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 

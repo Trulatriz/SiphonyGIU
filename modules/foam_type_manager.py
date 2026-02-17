@@ -33,6 +33,7 @@ class FoamTypeManager:
                 "OC": "paper+foam",
                 "SEM": "paper+foam",
                 "DSC": "paper+foam",
+                "CellWall": "paper+foam",
             },
             # Module paths organized by module -> paper -> foam_type -> paths
             "module_paths": {},
@@ -240,6 +241,8 @@ class FoamTypeManager:
                     foam_path / "DSC" / "Output",
                     foam_path / "SEM" / "Input",
                     foam_path / "SEM" / "Output",
+                    foam_path / "Cell wall" / "Input",
+                    foam_path / "Cell wall" / "Output",
                     foam_path / "Open-cell content" / "Input",
                     foam_path / "Open-cell content" / "Output",
                     foam_path / "Combine",
@@ -399,6 +402,11 @@ class FoamTypeManager:
             ft = foam_key if foam_key else self.get_current_foam_type()
             suggestions["input_folder"] = os.path.join(base_path, ft, "SEM", "Input")
             suggestions["output_folder"] = os.path.join(base_path, ft, "SEM", "Output")
+        elif module == "CellWall":
+            # Cell wall thickness is foam-scoped
+            ft = foam_key if foam_key else self.get_current_foam_type()
+            suggestions["input_folder"] = os.path.join(base_path, ft, "Cell wall", "Input")
+            suggestions["output_folder"] = os.path.join(base_path, ft, "Cell wall", "Output")
         elif module in ("Combine", "Analysis"):
             # Per-paper All_Results default (in Results folder for Combine)
             results_base = os.path.join(base_path, "Results") if module == "Combine" else base_path
@@ -673,7 +681,7 @@ class FoamTypeManager:
                 ws['H2'] = "=G2/F2*100"
                 ws['I2'] = "=F2/$M$2"
                 ws['J2'] = "=1/I2"
-                ws['K2'] = "=100*(1-1/I2)"
+                ws['K2'] = "=(1-F2/M2)*100"
                 # Autosize
                 for col in ws.columns:
                     max_len = 0
@@ -1234,7 +1242,11 @@ Note: Foam names with \"/\" create nested folders (e.g., \"Foam_A/Type_1\" -> Fo
                 # SEM folders
                 foam_path / "SEM" / "Input",
                 foam_path / "SEM" / "Output",
-                
+
+                # Cell wall folders
+                foam_path / "Cell wall" / "Input",
+                foam_path / "Cell wall" / "Output",
+                 
                 # Open-cell content folders
                 foam_path / "Open-cell content" / "Input",
                 foam_path / "Open-cell content" / "Output",
@@ -2096,7 +2108,11 @@ class ManageFoamsDialog:
                 # SEM folders
                 foam_path / "SEM" / "Input",
                 foam_path / "SEM" / "Output",
-                
+
+                # Cell wall folders
+                foam_path / "Cell wall" / "Input",
+                foam_path / "Cell wall" / "Output",
+                 
                 # Open-cell content folders
                 foam_path / "Open-cell content" / "Input",
                 foam_path / "Open-cell content" / "Output"
