@@ -150,7 +150,7 @@ class PressTechGUI:
 
         combine_btn = ttk.Button(
             extraction_frame,
-            text='âš¡ SMART COMBINE',
+            text='SMART COMBINE',
             command=self.open_combine,
             **button_style
         )
@@ -158,7 +158,7 @@ class PressTechGUI:
 
         specific_btn = ttk.Button(
             extraction_frame,
-            text='ðŸ”¬ FOAM-SPECIFIC ANALYSIS',
+            text='FOAM-SPECIFIC ANALYSIS',
             command=self.show_foam_specific_dialog,
             **button_style
         )
@@ -170,7 +170,7 @@ class PressTechGUI:
 
         analysis_btn = ttk.Button(
             analysis_frame,
-            text='ðŸ“ˆ SCATTER PLOTS',
+            text='SCATTER PLOTS',
             command=self.open_publication_plots,
             **button_style
         )
@@ -178,7 +178,7 @@ class PressTechGUI:
 
         heatmap_btn = ttk.Button(
             analysis_frame,
-            text='ðŸ”¥ HEATMAPS',
+            text='HEATMAPS',
             command=self.open_heatmap,
             **button_style
         )
@@ -190,7 +190,7 @@ class PressTechGUI:
 
         manage_papers_btn = ttk.Button(
             org_frame,
-            text='ðŸ“ MANAGE PAPERS',
+            text='MANAGE PAPERS',
             command=self.manage_papers,
             **button_style
         )
@@ -198,7 +198,7 @@ class PressTechGUI:
 
         manage_foams_btn = ttk.Button(
             org_frame,
-            text='ðŸ§¶ MANAGE FOAMS',
+            text='MANAGE FOAMS',
             command=self.manage_foams,
             **button_style
         )
@@ -303,16 +303,16 @@ class PressTechGUI:
         )
         plots_menu.add_cascade(label="Scatter Plots", menu=scatter_menu)
         plots_menu.add_command(label="Heatmaps", command=self.open_heatmap)
-        tools_menu.add_command(label="ðŸ“Š Publication Plots", command=self.open_publication_plots)
-        tools_menu.add_command(label="âš¡ Smart Combine", command=self.open_combine)
-        tools_menu.add_command(label="ðŸ”¬ Cell Size & Density", command=self.open_cell_analysis)
+        tools_menu.add_command(label="Publication Plots", command=self.open_publication_plots)
+        tools_menu.add_command(label="Smart Combine", command=self.open_combine)
+        tools_menu.add_command(label="Cell Size & Density", command=self.open_cell_analysis)
         tools_menu.add_separator()
-        tools_menu.add_command(label="ðŸŒ¡ï¸ DSC Analysis", command=self.open_dsc_with_foam_check)
-        tools_menu.add_command(label="ðŸ”¬ SEM Image Editor", command=self.open_sem_with_foam_check)
-        tools_menu.add_command(label="ðŸ”“ Open-Cell Content", command=self.open_oc_with_foam_check)
-        tools_menu.add_command(label="ðŸ“Š Pressure Drop Rate", command=self.open_pdr_with_foam_check)
+        tools_menu.add_command(label="DSC Analysis", command=self.open_dsc_with_foam_check)
+        tools_menu.add_command(label="SEM Image Editor", command=self.open_sem_with_foam_check)
+        tools_menu.add_command(label="Open-Cell Content", command=self.open_oc_with_foam_check)
+        tools_menu.add_command(label="Pressure Drop Rate", command=self.open_pdr_with_foam_check)
         tools_menu.add_separator()
-        tools_menu.add_command(label="ðŸ”¬ Foam-Specific Analysisâ€¦", command=self.show_foam_specific_dialog)
+        tools_menu.add_command(label="Foam-Specific Analysis...", command=self.show_foam_specific_dialog)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -479,12 +479,12 @@ class PressTechGUI:
         button_frame.pack(pady=(30, 10))
         
         # Open web tool button
-        web_btn = ttk.Button(button_frame, text="ðŸŒ Abrir Herramienta Web", 
+        web_btn = ttk.Button(button_frame, text="Abrir Herramienta Web", 
                            command=lambda: self.open_web_tool())
         web_btn.pack(side=tk.LEFT, padx=(0, 10))
         
         # Close button
-        close_btn = ttk.Button(button_frame, text="âŒ Cerrar", command=dialog.destroy)
+        close_btn = ttk.Button(button_frame, text="Cerrar", command=dialog.destroy)
         close_btn.pack(side=tk.LEFT)
         
         # Pack canvas and scrollbar
@@ -732,20 +732,20 @@ Developed for advanced polymer foam research.
         
         # Paper-level analysis
         ttk.Label(frame, text="Paper-Level Analysis:", font=("Arial", 11, "bold")).grid(row=1, column=0, columnspan=2, sticky=tk.W, pady=(0, 10))
-        a_btn = ttk.Button(frame, text="ðŸ“Š Publication Plots", command=lambda: (dialog.destroy(), self.open_publication_plots()), width=25)
+        a_btn = ttk.Button(frame, text="Publication Plots", command=lambda: (dialog.destroy(), self.open_publication_plots()), width=25)
         a_btn.grid(row=2, column=0, padx=(0, 10), pady=5, sticky=(tk.W, tk.E))
-        c_btn = ttk.Button(frame, text="âš¡ Smart Combine", command=lambda: (dialog.destroy(), self.open_combine()), width=25)
+        c_btn = ttk.Button(frame, text="Smart Combine", command=lambda: (dialog.destroy(), self.open_combine()), width=25)
         c_btn.grid(row=2, column=1, padx=(10, 0), pady=5, sticky=(tk.W, tk.E))
         
         ttk.Separator(frame, orient='horizontal').grid(row=3, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=15)
         
         # Foam-specific link
         ttk.Label(frame, text="Foam-Specific:", font=("Arial", 11, "bold")).grid(row=4, column=0, columnspan=2, sticky=tk.W)
-        s_btn = ttk.Button(frame, text="ðŸ”¬ Specific Analysis", command=lambda: self._open_foam_specific_from(dialog), width=25)
+        s_btn = ttk.Button(frame, text="Specific Analysis", command=lambda: self._open_foam_specific_from(dialog), width=25)
         s_btn.grid(row=5, column=0, columnspan=2, pady=(8, 0))
         
         # Back to main
-        back_btn = ttk.Button(frame, text="â¬…ï¸ Back", command=dialog.destroy)
+        back_btn = ttk.Button(frame, text="Back", command=dialog.destroy)
         back_btn.grid(row=6, column=0, columnspan=2, pady=(15, 0))
         
         dialog.update_idletasks()
