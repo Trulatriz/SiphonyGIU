@@ -527,13 +527,19 @@ class CellWallsModule:
         mask = (analyzed_solid > 0) & np.isfinite(t_um) & (t_um > 0)
         if np.any(mask):
             vals = t_um[mask]
+            vmin = float(np.percentile(vals, 1.0))
             vmax = float(np.percentile(vals, 99.5))
-            if vmax <= 0:
+            if vmax <= vmin:
+                vmin = float(np.min(vals))
                 vmax = float(np.max(vals))
-            if vmax <= 0:
-                vmax = 1.0
-            norm = np.clip((t_um / vmax) * 255.0, 0, 255).astype(np.uint8)
-            colored = cv2.applyColorMap(norm, cv2.COLORMAP_TURBO)
+            if vmax <= vmin:
+                vmax = vmin + 1.0
+
+            # ImageJ-like warm rendering: avoid cyan tones and emphasize magenta/red/yellow.
+            norm01 = np.clip((t_um - vmin) / (vmax - vmin), 0.0, 1.0)
+            norm01 = np.power(norm01, 0.85)
+            norm = (norm01 * 255.0).astype(np.uint8)
+            colored = cv2.applyColorMap(norm, cv2.COLORMAP_PLASMA)
             vis[mask] = colored[mask]
         cv2.imwrite(str(out_path), vis)
 
