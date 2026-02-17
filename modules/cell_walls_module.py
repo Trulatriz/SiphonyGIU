@@ -221,8 +221,18 @@ class CellWallsModule:
         header.pack(fill=tk.X)
         ttk.Label(header, text="Image:").pack(side=tk.LEFT)
         image_names = [e.mask_path.name for e in self.entries]
-        image_index = {"idx": 0}
-        image_var = tk.StringVar(value=image_names[0])
+        selected = self.table.selection()
+        selected_mask_name = None
+        if selected:
+            values = self.table.item(selected[0], "values")
+            if len(values) >= 4:
+                selected_mask_name = str(values[3])
+        if selected_mask_name in image_names:
+            initial_idx = image_names.index(selected_mask_name)
+        else:
+            initial_idx = 0
+        image_index = {"idx": initial_idx}
+        image_var = tk.StringVar(value=image_names[initial_idx])
         image_map = {e.mask_path.name: e for e in self.entries}
         combo = ttk.Combobox(header, textvariable=image_var, values=list(image_map.keys()), state="readonly", width=58)
         combo.pack(side=tk.LEFT, padx=6)
