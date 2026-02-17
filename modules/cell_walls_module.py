@@ -58,10 +58,15 @@ class CellWallsModule:
 
         opts = ttk.LabelFrame(main, text="Options", padding=10)
         opts.pack(fill=tk.X, pady=(0, 8))
-        ttk.Label(opts, text="Bin width (um):").grid(row=0, column=0, sticky=tk.W)
+        self.hist_mode_var = tk.StringVar(value="bins")
+        ttk.Label(opts, text="Histogram mode:").grid(row=0, column=0, sticky=tk.W)
+        ttk.Radiobutton(opts, text="Bins", variable=self.hist_mode_var, value="bins").grid(row=0, column=1, sticky=tk.W, padx=(8, 6))
+        self.n_bins_var = tk.StringVar(value="256")
+        ttk.Entry(opts, textvariable=self.n_bins_var, width=10).grid(row=0, column=2, sticky=tk.W, padx=(0, 12))
+        ttk.Radiobutton(opts, text="Bin width (um)", variable=self.hist_mode_var, value="bin_width").grid(row=0, column=3, sticky=tk.W, padx=(0, 6))
         self.bin_width_var = tk.StringVar(value="2.0")
-        ttk.Entry(opts, textvariable=self.bin_width_var, width=12).grid(row=0, column=1, sticky=tk.W, padx=(6, 12))
-        ttk.Label(opts, text="(Histogram per image + combined by group)").grid(row=0, column=2, sticky=tk.W)
+        ttk.Entry(opts, textvariable=self.bin_width_var, width=10).grid(row=0, column=4, sticky=tk.W, padx=(0, 12))
+        ttk.Label(opts, text="(Histogram per image + combined by group)").grid(row=0, column=5, sticky=tk.W)
 
         buttons = ttk.Frame(main)
         buttons.pack(fill=tk.X, pady=(0, 8))
@@ -453,18 +458,33 @@ class CellWallsModule:
         return name[:31] if len(name) > 31 else name
 
     @staticmethod
-    def _make_histogram(values_um: np.ndarray, bin_width_um: float) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
-        if values_um.size == 0:
-            empty = pd.DataFrame(columns=["index", "bin start", "bin end", "count", "relative frequency"])
-            return empty, np.array([], dtype=float), np.array([], dtype=float)
-
-        vmax = float(np.max(values_um))
+    def _get_histogram_edges(values_um: np.ndarray, hist_mode: str, hist_value: float) -> np.ndarray:
+        vmax = float(np.max(values_um)) if values_um.size > 0 else 1.0
         if vmax <= 0:
             vmax = 1.0
+
+        if hist_mode == "bins":
+            n_bins = int(hist_value)
+            if n_bins < 2:
+                n_bins = 2
+            return np.linspace(0.0, vmax, n_bins + 1, dtype=float)
+
+        bin_width_um = float(hist_value)
+        if bin_width_um <= 0:
+            bin_width_um = 1.0
         upper = max(bin_width_um, np.ceil(vmax / bin_width_um) * bin_width_um)
         edges = np.arange(0.0, upper + bin_width_um, bin_width_um, dtype=float)
         if edges.size < 2:
             edges = np.array([0.0, bin_width_um], dtype=float)
+        return edges
+
+    @staticmethod
+    def _make_histogram(values_um: np.ndarray, hist_mode: str, hist_value: float) -> tuple[pd.DataFrame, np.ndarray, np.ndarray]:
+        if values_um.size == 0:
+            empty = pd.DataFrame(columns=["index", "bin start", "bin end", "count", "relative frequency"])
+            return empty, np.array([], dtype=float), np.array([], dtype=float)
+
+        edges = CellWallsModule._get_histogram_edges(values_um, hist_mode, hist_value)
         counts, edges = np.histogram(values_um, bins=edges)
         total = int(counts.sum())
         rel = (counts / total) if total > 0 else np.zeros_like(counts, dtype=float)
@@ -508,7 +528,7 @@ class CellWallsModule:
         cv2.imwrite(str(out_path), vis)
 
     @staticmethod
-    def _save_histogram_png(values_um: np.ndarray, bin_width_um: float, out_png: Path, title: str):
+    def _save_histogram_png(values_um: np.ndarray, hist_mode: str, hist_value: float, out_png: Path, title: str):
         try:
             import matplotlib.pyplot as plt
             from matplotlib import cm
@@ -518,13 +538,7 @@ class CellWallsModule:
         if values_um.size == 0:
             return
 
-        vmax = float(np.max(values_um))
-        if vmax <= 0:
-            vmax = 1.0
-        upper = max(bin_width_um, np.ceil(vmax / bin_width_um) * bin_width_um)
-        edges = np.arange(0.0, upper + bin_width_um, bin_width_um, dtype=float)
-        if edges.size < 2:
-            edges = np.array([0.0, bin_width_um], dtype=float)
+        edges = CellWallsModule._get_histogram_edges(values_um, hist_mode, hist_value)
         counts, edges = np.histogram(values_um, bins=edges)
         if counts.size == 0:
             return
@@ -563,11 +577,16 @@ class CellWallsModule:
             f"StdDev: {std_value:.4f}\n"
             f"Bins: {int(counts.size)}"
         )
+        if hist_mode == "bins":
+            mode_line = f"Mode: bins={int(hist_value)}"
+        else:
+            mode_line = f"Mode: bin width={float(hist_value):.4f} um"
         right_txt = (
             f"Min: {min_value:.4f}\n"
             f"Max: {max_value:.4f}\n"
             f"Mode: {mode_value:.4f} ({int(counts[mode_idx])})\n"
-            f"Bin Width: {bin_width:.4f}"
+            f"Bin Width: {bin_width:.4f}\n"
+            f"{mode_line}"
         )
         tax.text(0.02, 0.95, left_txt, va="top", ha="left", fontsize=9)
         tax.text(0.52, 0.95, right_txt, va="top", ha="left", fontsize=9)
@@ -586,11 +605,62 @@ class CellWallsModule:
         out_dir.mkdir(parents=True, exist_ok=True)
 
         try:
-            bin_width = float(self.bin_width_var.get())
-            if bin_width <= 0:
+            hist_mode = self.hist_mode_var.get().strip()
+            if hist_mode not in {"bins", "bin_width"}:
+                raise ValueError
+            if hist_mode == "bins":
+                hist_value = int(self.n_bins_var.get())
+                if hist_value <= 1:
+                    raise ValueError
+            else:
+                hist_value = float(self.bin_width_var.get())
+                if hist_value <= 0:
+                    raise ValueError
+        except Exception:
+            if self.hist_mode_var.get().strip() == "bins":
+                messagebox.showerror("Run", "Bins must be an integer > 1.")
+            else:
+                messagebox.showerror("Run", "Bin width must be a positive number.")
+            return
+
+        # Keep a numeric value for downstream helpers.
+        try:
+            hist_value = float(hist_value)
+        except Exception:
+            hist_value = 256.0
+            hist_mode = "bins"
+
+        try:
+            _ = self._get_histogram_edges(np.array([1.0], dtype=float), hist_mode, hist_value)
+        except Exception:
+            messagebox.showerror("Run", "Invalid histogram configuration.")
+            return
+
+        try:
+            _ = int(hist_value) if hist_mode == "bins" else float(hist_value)
+        except Exception:
+            messagebox.showerror("Run", "Invalid histogram value.")
+            return
+
+        try:
+            _ = hist_mode
+        except Exception:
+            messagebox.showerror("Run", "Invalid histogram mode.")
+            return
+
+        try:
+            _ = hist_value
+        except Exception:
+            messagebox.showerror("Run", "Invalid histogram parameter.")
+            return
+
+        try:
+            if hist_mode == "bins" and int(hist_value) <= 1:
+                raise ValueError
+            if hist_mode == "bin_width" and float(hist_value) <= 0:
                 raise ValueError
         except Exception:
-            messagebox.showerror("Run", "Bin width must be a positive number.")
+            messagebox.showerror("Run", "Histogram configuration is not valid.")
             return
 
         thickness_dir = out_dir / "local_thickness_maps"
@@ -648,7 +718,7 @@ class CellWallsModule:
             self._save_thickness_colormap(tum, analyzed_solid, map_path)
 
             hist_path = hist_png_dir / f"{entry.mask_path.stem}_histogram.png"
-            self._save_histogram_png(values, bin_width, hist_path, title=entry.file_id)
+            self._save_histogram_png(values, hist_mode, hist_value, hist_path, title=entry.file_id)
 
             by_group.setdefault(entry.group_key, []).append((entry, values.astype(np.float32), map_path, hist_path))
 
@@ -661,7 +731,7 @@ class CellWallsModule:
 
                 for entry, values, map_path, hist_path in items:
                     all_values.append(values)
-                    df_img, _, _ = self._make_histogram(values, bin_width)
+                    df_img, _, _ = self._make_histogram(values, hist_mode, hist_value)
                     sheet = self._safe_sheet_name(f"{entry.file_id}_log")
                     df_img.to_excel(writer, sheet_name=sheet, index=False)
                     images_rows.append(
@@ -679,7 +749,7 @@ class CellWallsModule:
                     )
 
                 combined = np.concatenate(all_values) if all_values else np.array([], dtype=np.float32)
-                df_combined, _, _ = self._make_histogram(combined, bin_width)
+                df_combined, _, _ = self._make_histogram(combined, hist_mode, hist_value)
                 df_combined.to_excel(writer, sheet_name=self._safe_sheet_name(f"histogram_{group_key}"), index=False)
                 pd.DataFrame(images_rows).to_excel(writer, sheet_name=self._safe_sheet_name("images_used"), index=False)
             generated += 1
