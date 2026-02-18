@@ -522,6 +522,49 @@ class CellWallsModule:
             return (2.0 * dt).astype(np.float32)
 
     @staticmethod
+    def _compute_roiwise_thickness_um(analyzed_solid: np.ndarray, microns_per_pixel: float) -> tuple[np.ndarray, np.ndarray]:
+        """Compute local thickness independently per connected ROI and merge results.
+
+        Returns:
+            t_um_map: float32 map in microns (0 outside analyzed solid)
+            values_um: 1D float32 values over analyzed solid pixels
+        """
+        solid = (analyzed_solid > 0).astype(np.uint8)
+        h, w = solid.shape
+        t_um_map = np.zeros((h, w), dtype=np.float32)
+        values_list: list[np.ndarray] = []
+
+        n_labels, labels, stats, _ = cv2.connectedComponentsWithStats(solid, connectivity=8)
+        if n_labels <= 1:
+            return t_um_map, np.array([], dtype=np.float32)
+
+        for lab in range(1, n_labels):
+            x = int(stats[lab, cv2.CC_STAT_LEFT])
+            y = int(stats[lab, cv2.CC_STAT_TOP])
+            ww = int(stats[lab, cv2.CC_STAT_WIDTH])
+            hh = int(stats[lab, cv2.CC_STAT_HEIGHT])
+            if ww <= 0 or hh <= 0:
+                continue
+
+            # Tight ROI for this component.
+            comp = (labels[y : y + hh, x : x + ww] == lab).astype(np.uint8)
+            if int(comp.sum()) == 0:
+                continue
+
+            tpx = CellWallsModule._local_thickness_px(comp)
+            tum = (tpx * float(microns_per_pixel)).astype(np.float32)
+            comp_mask = comp > 0
+            t_um_map[y : y + hh, x : x + ww][comp_mask] = tum[comp_mask]
+            vals = tum[comp_mask]
+            vals = vals[np.isfinite(vals) & (vals > 0)]
+            if vals.size > 0:
+                values_list.append(vals.astype(np.float32))
+
+        if not values_list:
+            return t_um_map, np.array([], dtype=np.float32)
+        return t_um_map, np.concatenate(values_list).astype(np.float32)
+
+    @staticmethod
     def _save_thickness_colormap(t_um: np.ndarray, analyzed_solid: np.ndarray, out_path: Path):
         vis = np.zeros((t_um.shape[0], t_um.shape[1], 3), dtype=np.uint8)
         mask = (analyzed_solid > 0) & np.isfinite(t_um) & (t_um > 0)
@@ -723,9 +766,7 @@ class CellWallsModule:
                 errors.append(f"No analyzed solid pixels after crop masks: {entry.mask_path.name}")
                 continue
 
-            tpx = self._local_thickness_px(analyzed_solid)
-            tum = tpx * float(entry.microns_per_pixel)
-            values = tum[(analyzed_solid > 0) & np.isfinite(tum) & (tum > 0)]
+            tum, values = self._compute_roiwise_thickness_um(analyzed_solid, float(entry.microns_per_pixel))
             if values.size == 0:
                 errors.append(f"No valid thickness values: {entry.mask_path.name}")
                 continue
