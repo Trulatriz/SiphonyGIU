@@ -265,6 +265,7 @@ class CellWallsModule:
         ttk.Button(btns, text="Clear exclusions (this image)", command=lambda: clear_rects("exclude")).pack(side=tk.LEFT)
         ttk.Button(btns, text="Clear inclusions (this image)", command=lambda: clear_rects("include")).pack(side=tk.LEFT, padx=8)
         ttk.Button(btns, text="Apply + Preview", command=lambda: apply_preview(show_info=True)).pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Button(btns, text="Tune Histogram", command=lambda: open_hist_tuner()).pack(side=tk.LEFT, padx=(8, 0))
         ttk.Button(btns, text="Close", command=top.destroy).pack(side=tk.RIGHT)
         apply_state_var = tk.StringVar(value="Preview not applied yet")
         ttk.Label(top, textvariable=apply_state_var, anchor=tk.W).pack(fill=tk.X, padx=12, pady=(0, 8))
@@ -457,6 +458,107 @@ class CellWallsModule:
         def on_combo_selected(_e=None):
             set_image(combo.get())
 
+        def open_hist_tuner():
+            entry = image_map[image_var.get()]
+            arr = cv2.imread(str(entry.mask_path), cv2.IMREAD_GRAYSCALE)
+            if arr is None:
+                messagebox.showerror("Histogram", "Could not read current binary mask.")
+                return
+            solid = (arr > 127).astype(np.uint8)
+            h, w = solid.shape
+            key = entry.mask_path.name
+            include_rects = self.inclusions.get(key, [])
+            if include_rects:
+                roi = np.zeros_like(solid, dtype=np.uint8)
+                for x1, y1, x2, y2 in include_rects:
+                    xx1, xx2 = max(0, min(x1, x2)), min(w, max(x1, x2))
+                    yy1, yy2 = max(0, min(y1, y2)), min(h, max(y1, y2))
+                    roi[yy1:yy2, xx1:xx2] = 1
+            else:
+                roi = np.ones_like(solid, dtype=np.uint8)
+            for x1, y1, x2, y2 in self.exclusions.get(key, []):
+                xx1, xx2 = max(0, min(x1, x2)), min(w, max(x1, x2))
+                yy1, yy2 = max(0, min(y1, y2)), min(h, max(y1, y2))
+                roi[yy1:yy2, xx1:xx2] = 0
+            analyzed_solid = ((solid > 0) & (roi > 0)).astype(np.uint8)
+            _, values = self._compute_roiwise_thickness_um(analyzed_solid, float(entry.microns_per_pixel))
+            try:
+                x_min = float(self.x_min_var.get())
+            except Exception:
+                x_min = 0.1
+            values = values[values >= x_min]
+            if values.size == 0:
+                messagebox.showwarning("Histogram", "No valid thickness values for this image after x-min filtering.")
+                return
+
+            tune = tk.Toplevel(top)
+            tune.title(f"Histogram tuning - {entry.file_id}")
+            tune.geometry("920x700")
+            ctrl = ttk.Frame(tune, padding=8)
+            ctrl.pack(fill=tk.X)
+            ttk.Label(ctrl, text="Bins:").pack(side=tk.LEFT)
+            init_bins = 256
+            try:
+                if self.hist_mode_var.get().strip() == "bins":
+                    init_bins = max(2, int(float(self.n_bins_var.get())))
+            except Exception:
+                init_bins = 256
+            bins_var = tk.IntVar(value=init_bins)
+            bins_scale = tk.Scale(ctrl, from_=5, to=300, orient=tk.HORIZONTAL, variable=bins_var, length=380)
+            bins_scale.pack(side=tk.LEFT, padx=(6, 12))
+            kde_var = tk.BooleanVar(value=True)
+            ttk.Checkbutton(ctrl, text="KDE", variable=kde_var).pack(side=tk.LEFT, padx=(0, 12))
+            ttk.Label(ctrl, text=f"x-min={x_min:.3f} um").pack(side=tk.LEFT)
+
+            fig = None
+            canvas_fig = None
+
+            def redraw_hist():
+                nonlocal fig, canvas_fig
+                try:
+                    import matplotlib.pyplot as plt
+                    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+                    import seaborn as sns
+                except Exception:
+                    messagebox.showerror("Histogram", "matplotlib/seaborn are required for tuning preview.")
+                    tune.destroy()
+                    return
+                if canvas_fig is not None:
+                    canvas_fig.get_tk_widget().destroy()
+                fig = plt.Figure(figsize=(8.6, 6.0), dpi=100)
+                ax = fig.add_subplot(111)
+                sns.set_style("whitegrid")
+                sns.histplot(
+                    values,
+                    bins=int(bins_var.get()),
+                    stat="probability",
+                    kde=bool(kde_var.get()),
+                    color="#6f7f9e",
+                    edgecolor="#2f2f2f",
+                    alpha=0.65,
+                    ax=ax,
+                )
+                ax.set_xlabel("Thickness (um)")
+                ax.set_ylabel("Relative Frequency")
+                ax.set_title(entry.file_id)
+                canvas_fig = FigureCanvasTkAgg(fig, master=tune)
+                canvas_fig.draw()
+                canvas_fig.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+
+            def apply_bins():
+                self.hist_mode_var.set("bins")
+                self.n_bins_var.set(str(int(bins_var.get())))
+                apply_state_var.set(f"Histogram tuning applied: bins={int(bins_var.get())}, KDE={bool(kde_var.get())}")
+                tune.destroy()
+
+            btnrow = ttk.Frame(tune, padding=(8, 0, 8, 8))
+            btnrow.pack(fill=tk.X)
+            ttk.Button(btnrow, text="Refresh", command=redraw_hist).pack(side=tk.LEFT)
+            ttk.Button(btnrow, text="Use these bins", command=apply_bins).pack(side=tk.RIGHT)
+
+            bins_scale.bind("<ButtonRelease-1>", lambda _e: redraw_hist())
+            redraw_hist()
+
         combo.bind("<<ComboboxSelected>>", on_combo_selected)
         canvas.bind("<ButtonPress-1>", on_press)
         canvas.bind("<B1-Motion>", on_move)
@@ -469,6 +571,11 @@ class CellWallsModule:
     def _safe_sheet_name(name: str) -> str:
         name = re.sub(r"[:\\/?*\[\]]", "_", name).strip()
         return name[:31] if len(name) > 31 else name
+
+    @staticmethod
+    def _safe_file_token(name: str) -> str:
+        token = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(name)).strip("_")
+        return token if token else "unnamed"
 
     @staticmethod
     def _get_histogram_edges(values_um: np.ndarray, hist_mode: str, hist_value: float) -> np.ndarray:
@@ -593,7 +700,7 @@ class CellWallsModule:
     def _save_histogram_png(values_um: np.ndarray, hist_mode: str, hist_value: float, out_png: Path, title: str):
         try:
             import matplotlib.pyplot as plt
-            from matplotlib import cm
+            import seaborn as sns
         except Exception:
             return
 
@@ -601,57 +708,28 @@ class CellWallsModule:
             return
 
         edges = CellWallsModule._get_histogram_edges(values_um, hist_mode, hist_value)
-        counts, edges = np.histogram(values_um, bins=edges)
+        counts, _ = np.histogram(values_um, bins=edges)
         if counts.size == 0:
             return
-        total = counts.sum()
-        rel = (counts / total) if total > 0 else np.zeros_like(counts, dtype=float)
-        widths = np.diff(edges)
-        centers = (edges[:-1] + edges[1:]) / 2.0
-        mode_idx = int(np.argmax(counts))
-        mode_value = float(centers[mode_idx])
-        mean_value = float(np.mean(values_um))
-        std_value = float(np.std(values_um))
-        min_value = float(np.min(values_um))
-        max_value = float(np.max(values_um))
-        bin_width = float(widths[0]) if widths.size > 0 else 0.0
 
-        fig = plt.figure(figsize=(7.5, 6.0), dpi=150)
-        gs = fig.add_gridspec(3, 1, height_ratios=[6, 0.45, 1.8], hspace=0.16)
-        ax = fig.add_subplot(gs[0])
-        ax.bar(edges[:-1], rel, width=widths, align="edge", color="lightgray", edgecolor="black", linewidth=0.5)
+        fig = plt.figure(figsize=(7.0, 5.0), dpi=150)
+        ax = fig.add_subplot(111)
+        sns.set_style("whitegrid")
+        sns.histplot(
+            values_um,
+            bins=edges,
+            stat="probability",
+            kde=True,
+            color="#7088ad",
+            edgecolor="#2f2f2f",
+            alpha=0.65,
+            ax=ax,
+        )
         ax.set_ylabel("Relative Frequency")
+        ax.set_xlabel("Thickness (um)")
         ax.set_title(title)
         ax.set_xlim(edges[0], edges[-1])
-
-        cax = fig.add_subplot(gs[1])
-        gradient = np.linspace(0, 1, 512).reshape(1, -1)
-        cax.imshow(gradient, aspect="auto", cmap=cm.turbo, extent=[edges[0], edges[-1], 0, 1])
-        cax.set_yticks([])
-        cax.set_xlabel("Thickness (um)")
-        cax.set_xticks([edges[0], edges[-1]])
-
-        tax = fig.add_subplot(gs[2])
-        tax.axis("off")
-        left_txt = (
-            f"N: {int(values_um.size)}\n"
-            f"Mean: {mean_value:.4f}\n"
-            f"StdDev: {std_value:.4f}\n"
-            f"Bins: {int(counts.size)}"
-        )
-        if hist_mode == "bins":
-            mode_line = f"Mode: bins={int(hist_value)}"
-        else:
-            mode_line = f"Mode: bin width={float(hist_value):.4f} um"
-        right_txt = (
-            f"Min: {min_value:.4f}\n"
-            f"Max: {max_value:.4f}\n"
-            f"Mode: {mode_value:.4f} ({int(counts[mode_idx])})\n"
-            f"Bin Width: {bin_width:.4f}\n"
-            f"{mode_line}"
-        )
-        tax.text(0.02, 0.95, left_txt, va="top", ha="left", fontsize=9)
-        tax.text(0.52, 0.95, right_txt, va="top", ha="left", fontsize=9)
+        fig.tight_layout()
         fig.savefig(out_png, bbox_inches="tight")
         plt.close(fig)
 
@@ -788,7 +866,7 @@ class CellWallsModule:
             map_path = thickness_dir / f"{entry.mask_path.stem}_local_thickness.png"
             self._save_thickness_colormap(tum, analyzed_solid, map_path)
 
-            hist_path = hist_png_dir / f"{entry.mask_path.stem}_histogram.png"
+            hist_path = hist_png_dir / f"hist_cellwall{self._safe_file_token(entry.file_id)}.png"
             self._save_histogram_png(values, hist_mode, hist_value, hist_path, title=entry.file_id)
 
             by_group.setdefault(entry.group_key, []).append((entry, values.astype(np.float32), map_path, hist_path))
@@ -823,6 +901,9 @@ class CellWallsModule:
                 df_combined, _, _ = self._make_histogram(combined, hist_mode, hist_value)
                 df_combined.to_excel(writer, sheet_name=self._safe_sheet_name(f"histogram_{group_key}"), index=False)
                 pd.DataFrame(images_rows).to_excel(writer, sheet_name=self._safe_sheet_name("images_used"), index=False)
+                # Combined PNG per group, named with same label logic as histogram_<label>.xlsx
+                combined_png = hist_png_dir / f"hist_cellwall{self._safe_file_token(group_key)}.png"
+                self._save_histogram_png(combined, hist_mode, hist_value, combined_png, title=f"{group_key} (combined)")
             generated += 1
 
         status = f"Completed. Generated {generated} workbook(s) in {out_dir}."
