@@ -553,6 +553,54 @@ class CellWallsModule:
         return df, edges, counts
 
     @staticmethod
+    def _suggest_threshold_um(values_um: np.ndarray) -> float:
+        vals = values_um[np.isfinite(values_um)]
+        vals = vals[vals >= 0]
+        if vals.size == 0:
+            return 0.0
+        if vals.size < 10:
+            return float(np.median(vals))
+        counts, edges = np.histogram(vals, bins=128)
+        if counts.sum() == 0:
+            return float(np.median(vals))
+        peak_idx = np.argpartition(counts, -2)[-2:]
+        peak_idx = np.sort(peak_idx)
+        if abs(int(peak_idx[1]) - int(peak_idx[0])) < 4:
+            return float(np.median(vals))
+        left = int(peak_idx[0])
+        right = int(peak_idx[1])
+        valley_rel = int(np.argmin(counts[left:right + 1]))
+        valley_idx = left + valley_rel
+        return float(edges[valley_idx])
+
+    @staticmethod
+    def _threshold_metrics(values_um: np.ndarray, t_star_um: float) -> dict[str, float]:
+        vals = values_um[np.isfinite(values_um)]
+        vals = vals[vals >= 0]
+        if vals.size == 0:
+            return {
+                "t_star_um": float(t_star_um),
+                "n_total": 0.0,
+                "f_s": 0.0,
+                "f_w": 0.0,
+                "mean_walls_um": 0.0,
+                "mean_struts_um": 0.0,
+            }
+        walls = vals[vals < float(t_star_um)]
+        struts = vals[vals >= float(t_star_um)]
+        n_total = float(vals.size)
+        f_s = float(struts.size / n_total)
+        f_w = float(walls.size / n_total)
+        return {
+            "t_star_um": float(t_star_um),
+            "n_total": n_total,
+            "f_s": f_s,
+            "f_w": f_w,
+            "mean_walls_um": float(np.mean(walls)) if walls.size > 0 else 0.0,
+            "mean_struts_um": float(np.mean(struts)) if struts.size > 0 else 0.0,
+        }
+
+    @staticmethod
     def _local_thickness_px(solid_mask: np.ndarray) -> np.ndarray:
         solid_bool = solid_mask.astype(bool)
         try:
@@ -638,7 +686,6 @@ class CellWallsModule:
         title: str,
         x_min_um: float = 0.0,
         x_max_um: float | None = None,
-        kde_bw_adjust: float = 2.4,
     ):
         try:
             import matplotlib.pyplot as plt
@@ -662,12 +709,7 @@ class CellWallsModule:
             vals,
             bins=edges,
             stat="probability",
-            kde=True,
-            kde_kws={
-                "bw_adjust": float(max(0.1, kde_bw_adjust)),
-                "cut": 0,
-                "clip": (float(x_min_um), float(x_max_um) if x_max_um is not None else np.inf),
-            },
+            kde=False,
             color="#7088ad",
             edgecolor="#2f2f2f",
             alpha=0.65,
@@ -689,12 +731,11 @@ class CellWallsModule:
         initial_bins: int,
         default_x_min_um: float,
         default_x_max_um: float | None,
-        default_kde_bw_adjust: float = 2.4,
     ) -> tuple[bool, dict[str, dict[str, float]]]:
         """Show combined histogram tuner one group at a time.
 
         Returns per-group params:
-        {"bins": int, "x_min": float, "x_max": float|None, "kde_bw_adjust": float}
+        {"bins": int, "x_min": float, "x_max": float|None, "t_star_um": float}
         """
         tuned: dict[str, dict[str, float]] = {}
         groups = sorted(by_group_values.keys())
@@ -706,13 +747,13 @@ class CellWallsModule:
             from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
             import seaborn as sns
         except Exception:
-            # If plotting stack is missing, keep initial bins for all groups.
             for g in groups:
+                vals_def = by_group_values.get(g, np.array([], dtype=np.float32))
                 tuned[g] = {
                     "bins": int(initial_bins),
                     "x_min": float(default_x_min_um),
                     "x_max": float(default_x_max_um) if default_x_max_um is not None else np.nan,
-                    "kde_bw_adjust": float(max(0.1, default_kde_bw_adjust)),
+                    "t_star_um": self._suggest_threshold_um(vals_def),
                 }
             return True, tuned
 
@@ -724,7 +765,7 @@ class CellWallsModule:
                     "bins": int(initial_bins),
                     "x_min": float(default_x_min_um),
                     "x_max": float(default_x_max_um) if default_x_max_um is not None else np.nan,
-                    "kde_bw_adjust": float(max(0.1, default_kde_bw_adjust)),
+                    "t_star_um": 0.0,
                 }
                 continue
 
@@ -737,7 +778,7 @@ class CellWallsModule:
             top = ttk.Frame(dlg, padding=8)
             top.pack(fill=tk.X)
             ttk.Label(top, text=f"Combined sample: {g}").pack(side=tk.LEFT)
-            ttk.Label(top, text="Adjust bins / x-min / x-max, then Accept and Next").pack(side=tk.RIGHT)
+            ttk.Label(top, text="Adjust bins / x-min / x-max / t*, then Accept and Next").pack(side=tk.RIGHT)
 
             ctrl = ttk.Frame(dlg, padding=(8, 0, 8, 8))
             ctrl.pack(fill=tk.X)
@@ -745,18 +786,19 @@ class CellWallsModule:
             bins_var = tk.IntVar(value=int(initial_bins))
             bins_scale = tk.Scale(ctrl, from_=5, to=300, orient=tk.HORIZONTAL, variable=bins_var, length=380)
             bins_scale.pack(side=tk.LEFT, padx=(6, 12))
-            kde_var = tk.BooleanVar(value=True)
-            ttk.Checkbutton(ctrl, text="KDE", variable=kde_var).pack(side=tk.LEFT)
-            ttk.Label(ctrl, text="KDE smooth:").pack(side=tk.LEFT, padx=(12, 4))
-            bw_var = tk.StringVar(value=f"{float(max(0.1, default_kde_bw_adjust)):.2f}")
-            ttk.Entry(ctrl, textvariable=bw_var, width=6).pack(side=tk.LEFT)
-            ttk.Label(ctrl, text="x min (µm):").pack(side=tk.LEFT, padx=(12, 4))
+            ttk.Label(ctrl, text="x min (?m):").pack(side=tk.LEFT, padx=(12, 4))
             x_min_var = tk.StringVar(value=f"{float(default_x_min_um):.4f}")
             ttk.Entry(ctrl, textvariable=x_min_var, width=8).pack(side=tk.LEFT)
-            ttk.Label(ctrl, text="x max (µm):").pack(side=tk.LEFT, padx=(12, 4))
+            ttk.Label(ctrl, text="x max (?m):").pack(side=tk.LEFT, padx=(12, 4))
             max_default = "" if default_x_max_um is None else f"{float(default_x_max_um):.4f}"
             x_max_var = tk.StringVar(value=max_default)
             ttk.Entry(ctrl, textvariable=x_max_var, width=8).pack(side=tk.LEFT)
+            ttk.Label(ctrl, text="t* (?m):").pack(side=tk.LEFT, padx=(12, 4))
+            t_star_var = tk.StringVar(value=f"{float(self._suggest_threshold_um(vals)):.4f}")
+            ttk.Entry(ctrl, textvariable=t_star_var, width=8).pack(side=tk.LEFT)
+
+            metrics_var = tk.StringVar(value="f_s: -- | f_w: -- | mean walls: -- | mean struts: --")
+            ttk.Label(dlg, textvariable=metrics_var, padding=(8, 0, 8, 6)).pack(fill=tk.X)
 
             fig_host = ttk.Frame(dlg)
             fig_host.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
@@ -765,71 +807,83 @@ class CellWallsModule:
             def redraw():
                 try:
                     cur_x_min = float(x_min_var.get())
-                    cur_bw = float(bw_var.get())
+                    cur_t = float(t_star_var.get())
                     cur_x_max_txt = x_max_var.get().strip()
                     cur_x_max = float(cur_x_max_txt) if cur_x_max_txt else None
                     if cur_x_min < 0:
                         raise ValueError
-                    if cur_bw <= 0:
+                    if cur_t < cur_x_min:
                         raise ValueError
                     if cur_x_max is not None and cur_x_max <= cur_x_min:
                         raise ValueError
+                    if cur_x_max is not None and cur_t > cur_x_max:
+                        raise ValueError
                 except Exception:
                     return
+
                 vals_plot = self._filter_values_by_range(vals, cur_x_min, cur_x_max)
                 if vals_plot.size == 0:
                     return
+
                 if state["canvas"] is not None:
                     state["canvas"].get_tk_widget().destroy()
+
                 fig = plt.Figure(figsize=(8.6, 5.8), dpi=100)
                 ax = fig.add_subplot(111)
                 sns.histplot(
                     vals_plot,
                     bins=int(bins_var.get()),
                     stat="probability",
-                    kde=bool(kde_var.get()),
-                    kde_kws={
-                        "bw_adjust": float(max(0.1, cur_bw)),
-                        "cut": 0,
-                        "clip": (cur_x_min, cur_x_max if cur_x_max is not None else np.inf),
-                    },
+                    kde=False,
                     color="#7088ad",
                     edgecolor="#2f2f2f",
                     alpha=0.65,
                     ax=ax,
                 )
-                ax.set_xlabel("Thickness (µm)")
+                ax.axvline(cur_t, color="red", linestyle="--", linewidth=1.5, label="t*")
+                ax.legend(loc="upper right", frameon=False)
+                ax.set_xlabel("Thickness (?m)")
                 ax.set_ylabel("Relative Frequency")
                 ax.set_title(f"{g} (combined)")
                 ax.set_xlim(cur_x_min, cur_x_max if cur_x_max is not None else float(np.max(vals_plot)))
                 ax.grid(False)
                 fig.tight_layout()
+
                 state["canvas"] = FigureCanvasTkAgg(fig, master=fig_host)
                 state["canvas"].draw()
                 state["canvas"].get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+                m = self._threshold_metrics(vals_plot, cur_t)
+                metrics_var.set(
+                    f"f_s: {m['f_s']:.4f} | f_w: {m['f_w']:.4f} | "
+                    f"mean walls: {m['mean_walls_um']:.3f} ?m | mean struts: {m['mean_struts_um']:.3f} ?m"
+                )
 
             result = {"ok": None}
 
             def accept():
                 try:
                     cur_x_min = float(x_min_var.get())
-                    cur_bw = float(bw_var.get())
+                    cur_t = float(t_star_var.get())
                     cur_x_max_txt = x_max_var.get().strip()
                     cur_x_max = float(cur_x_max_txt) if cur_x_max_txt else None
                     if cur_x_min < 0:
                         raise ValueError
-                    if cur_bw <= 0:
+                    if cur_t < cur_x_min:
                         raise ValueError
                     if cur_x_max is not None and cur_x_max <= cur_x_min:
                         raise ValueError
+                    if cur_x_max is not None and cur_t > cur_x_max:
+                        raise ValueError
                 except Exception:
-                    messagebox.showerror("Histogram tuning", "Invalid histogram settings. Ensure x max > x min, x min >= 0, and KDE smooth > 0.")
+                    messagebox.showerror("Histogram tuning", "Invalid settings. Ensure x max > x min and t* within [x min, x max].")
                     return
+
                 tuned[g] = {
                     "bins": int(bins_var.get()),
                     "x_min": float(cur_x_min),
                     "x_max": float(cur_x_max) if cur_x_max is not None else np.nan,
-                    "kde_bw_adjust": float(max(0.1, cur_bw)),
+                    "t_star_um": float(cur_t),
                 }
                 result["ok"] = True
                 dlg.destroy()
@@ -845,9 +899,9 @@ class CellWallsModule:
             ttk.Button(buttons, text="Cancel", command=cancel).pack(side=tk.RIGHT, padx=(0, 8))
 
             bins_scale.bind("<ButtonRelease-1>", lambda _e: redraw())
-            bw_var.trace_add("write", lambda *_a: redraw())
             x_min_var.trace_add("write", lambda *_a: redraw())
             x_max_var.trace_add("write", lambda *_a: redraw())
+            t_star_var.trace_add("write", lambda *_a: redraw())
             redraw()
             dlg.protocol("WM_DELETE_WINDOW", cancel)
             self.root.wait_window(dlg)
@@ -1016,7 +1070,6 @@ class CellWallsModule:
             initial_bins=initial_bins,
             default_x_min_um=float(x_min_um),
             default_x_max_um=x_max_um,
-            default_kde_bw_adjust=3.0,
         )
         if not ok_tune:
             self.status_var.set("Analysis cancelled during histogram tuning.")
@@ -1026,15 +1079,16 @@ class CellWallsModule:
         for group_key, items in by_group.items():
             excel_path = out_dir / f"histogram_{group_key}.xlsx"
             group_hist_mode = "bins"
-            group_cfg = tuned_params.get(group_key, {"bins": float(initial_bins), "x_min": float(x_min_um), "x_max": np.nan, "kde_bw_adjust": 3.0})
+            group_cfg = tuned_params.get(group_key, {"bins": float(initial_bins), "x_min": float(x_min_um), "x_max": np.nan, "t_star_um": float(x_min_um)})
             group_hist_value = float(group_cfg.get("bins", initial_bins))
             group_x_min = float(group_cfg.get("x_min", x_min_um))
             gxmax = group_cfg.get("x_max", np.nan)
             group_x_max = None if (gxmax is None or (isinstance(gxmax, float) and np.isnan(gxmax))) else float(gxmax)
-            group_kde_bw = float(max(0.1, float(group_cfg.get("kde_bw_adjust", 3.0))))
+            group_t_star = float(group_cfg.get("t_star_um", group_x_min))
             with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
                 all_values = []
                 images_rows = []
+                metrics_rows = []
 
                 for entry, values, map_path in items:
                     vsel = self._filter_values_by_range(values, group_x_min, group_x_max)
@@ -1051,7 +1105,19 @@ class CellWallsModule:
                         title=entry.file_id,
                         x_min_um=group_x_min,
                         x_max_um=group_x_max,
-                        kde_bw_adjust=group_kde_bw,
+                    )
+                    m_img = self._threshold_metrics(vsel, group_t_star)
+                    metrics_rows.append(
+                        {
+                            "scope": "image",
+                            "id": entry.file_id,
+                            "t_star_um": m_img["t_star_um"],
+                            "f_s": m_img["f_s"],
+                            "f_w": m_img["f_w"],
+                            "mean_walls_um": m_img["mean_walls_um"],
+                            "mean_struts_um": m_img["mean_struts_um"],
+                            "n_total": int(m_img["n_total"]),
+                        }
                     )
                     images_rows.append(
                         {
@@ -1067,7 +1133,7 @@ class CellWallsModule:
                             "hist_bins_used": int(group_hist_value),
                             "hist_x_min_um": float(group_x_min),
                             "hist_x_max_um": (float(group_x_max) if group_x_max is not None else ""),
-                            "hist_kde_bw_adjust": group_kde_bw,
+                            "t_star_um": group_t_star,
                         }
                     )
 
@@ -1075,6 +1141,20 @@ class CellWallsModule:
                 df_combined, _, _ = self._make_histogram(combined, group_hist_mode, group_hist_value)
                 df_combined.to_excel(writer, sheet_name=self._safe_sheet_name(f"histogram_{group_key}"), index=False)
                 pd.DataFrame(images_rows).to_excel(writer, sheet_name=self._safe_sheet_name("images_used"), index=False)
+                m_comb = self._threshold_metrics(combined, group_t_star)
+                metrics_rows.append(
+                    {
+                        "scope": "combined",
+                        "id": group_key,
+                        "t_star_um": m_comb["t_star_um"],
+                        "f_s": m_comb["f_s"],
+                        "f_w": m_comb["f_w"],
+                        "mean_walls_um": m_comb["mean_walls_um"],
+                        "mean_struts_um": m_comb["mean_struts_um"],
+                        "n_total": int(m_comb["n_total"]),
+                    }
+                )
+                pd.DataFrame(metrics_rows).to_excel(writer, sheet_name=self._safe_sheet_name("walls_vs_struts"), index=False)
                 # Combined PNG per group, named with same label logic as histogram_<label>.xlsx
                 combined_png = hist_png_dir / f"hist_cellwall{self._safe_file_token(group_key)}.png"
                 self._save_histogram_png(
@@ -1085,7 +1165,6 @@ class CellWallsModule:
                     title=f"{group_key} (combined)",
                     x_min_um=group_x_min,
                     x_max_um=group_x_max,
-                    kde_bw_adjust=group_kde_bw,
                 )
             generated += 1
 
