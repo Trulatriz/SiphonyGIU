@@ -638,6 +638,7 @@ class CellWallsModule:
         title: str,
         x_min_um: float = 0.0,
         x_max_um: float | None = None,
+        kde_bw_adjust: float = 2.4,
     ):
         try:
             import matplotlib.pyplot as plt
@@ -663,7 +664,7 @@ class CellWallsModule:
             stat="probability",
             kde=True,
             kde_kws={
-                "bw_adjust": 2.4,
+                "bw_adjust": float(max(0.1, kde_bw_adjust)),
                 "cut": 0,
                 "clip": (float(x_min_um), float(x_max_um) if x_max_um is not None else np.inf),
             },
@@ -688,10 +689,12 @@ class CellWallsModule:
         initial_bins: int,
         default_x_min_um: float,
         default_x_max_um: float | None,
+        default_kde_bw_adjust: float = 2.4,
     ) -> tuple[bool, dict[str, dict[str, float]]]:
         """Show combined histogram tuner one group at a time.
 
-        Returns per-group params: {"bins": int, "x_min": float, "x_max": float|None}
+        Returns per-group params:
+        {"bins": int, "x_min": float, "x_max": float|None, "kde_bw_adjust": float}
         """
         tuned: dict[str, dict[str, float]] = {}
         groups = sorted(by_group_values.keys())
@@ -709,6 +712,7 @@ class CellWallsModule:
                     "bins": int(initial_bins),
                     "x_min": float(default_x_min_um),
                     "x_max": float(default_x_max_um) if default_x_max_um is not None else np.nan,
+                    "kde_bw_adjust": float(max(0.1, default_kde_bw_adjust)),
                 }
             return True, tuned
 
@@ -720,6 +724,7 @@ class CellWallsModule:
                     "bins": int(initial_bins),
                     "x_min": float(default_x_min_um),
                     "x_max": float(default_x_max_um) if default_x_max_um is not None else np.nan,
+                    "kde_bw_adjust": float(max(0.1, default_kde_bw_adjust)),
                 }
                 continue
 
@@ -742,6 +747,9 @@ class CellWallsModule:
             bins_scale.pack(side=tk.LEFT, padx=(6, 12))
             kde_var = tk.BooleanVar(value=True)
             ttk.Checkbutton(ctrl, text="KDE", variable=kde_var).pack(side=tk.LEFT)
+            ttk.Label(ctrl, text="KDE smooth:").pack(side=tk.LEFT, padx=(12, 4))
+            bw_var = tk.StringVar(value=f"{float(max(0.1, default_kde_bw_adjust)):.2f}")
+            ttk.Entry(ctrl, textvariable=bw_var, width=6).pack(side=tk.LEFT)
             ttk.Label(ctrl, text="x min (µm):").pack(side=tk.LEFT, padx=(12, 4))
             x_min_var = tk.StringVar(value=f"{float(default_x_min_um):.4f}")
             ttk.Entry(ctrl, textvariable=x_min_var, width=8).pack(side=tk.LEFT)
@@ -757,9 +765,12 @@ class CellWallsModule:
             def redraw():
                 try:
                     cur_x_min = float(x_min_var.get())
+                    cur_bw = float(bw_var.get())
                     cur_x_max_txt = x_max_var.get().strip()
                     cur_x_max = float(cur_x_max_txt) if cur_x_max_txt else None
                     if cur_x_min < 0:
+                        raise ValueError
+                    if cur_bw <= 0:
                         raise ValueError
                     if cur_x_max is not None and cur_x_max <= cur_x_min:
                         raise ValueError
@@ -778,7 +789,7 @@ class CellWallsModule:
                     stat="probability",
                     kde=bool(kde_var.get()),
                     kde_kws={
-                        "bw_adjust": 2.4,
+                        "bw_adjust": float(max(0.1, cur_bw)),
                         "cut": 0,
                         "clip": (cur_x_min, cur_x_max if cur_x_max is not None else np.inf),
                     },
@@ -802,19 +813,23 @@ class CellWallsModule:
             def accept():
                 try:
                     cur_x_min = float(x_min_var.get())
+                    cur_bw = float(bw_var.get())
                     cur_x_max_txt = x_max_var.get().strip()
                     cur_x_max = float(cur_x_max_txt) if cur_x_max_txt else None
                     if cur_x_min < 0:
                         raise ValueError
+                    if cur_bw <= 0:
+                        raise ValueError
                     if cur_x_max is not None and cur_x_max <= cur_x_min:
                         raise ValueError
                 except Exception:
-                    messagebox.showerror("Histogram tuning", "Invalid x-range. Ensure x max > x min and both are valid numbers.")
+                    messagebox.showerror("Histogram tuning", "Invalid histogram settings. Ensure x max > x min, x min >= 0, and KDE smooth > 0.")
                     return
                 tuned[g] = {
                     "bins": int(bins_var.get()),
                     "x_min": float(cur_x_min),
                     "x_max": float(cur_x_max) if cur_x_max is not None else np.nan,
+                    "kde_bw_adjust": float(max(0.1, cur_bw)),
                 }
                 result["ok"] = True
                 dlg.destroy()
@@ -830,6 +845,7 @@ class CellWallsModule:
             ttk.Button(buttons, text="Cancel", command=cancel).pack(side=tk.RIGHT, padx=(0, 8))
 
             bins_scale.bind("<ButtonRelease-1>", lambda _e: redraw())
+            bw_var.trace_add("write", lambda *_a: redraw())
             x_min_var.trace_add("write", lambda *_a: redraw())
             x_max_var.trace_add("write", lambda *_a: redraw())
             redraw()
@@ -1000,6 +1016,7 @@ class CellWallsModule:
             initial_bins=initial_bins,
             default_x_min_um=float(x_min_um),
             default_x_max_um=x_max_um,
+            default_kde_bw_adjust=3.0,
         )
         if not ok_tune:
             self.status_var.set("Analysis cancelled during histogram tuning.")
@@ -1009,11 +1026,12 @@ class CellWallsModule:
         for group_key, items in by_group.items():
             excel_path = out_dir / f"histogram_{group_key}.xlsx"
             group_hist_mode = "bins"
-            group_cfg = tuned_params.get(group_key, {"bins": float(initial_bins), "x_min": float(x_min_um), "x_max": np.nan})
+            group_cfg = tuned_params.get(group_key, {"bins": float(initial_bins), "x_min": float(x_min_um), "x_max": np.nan, "kde_bw_adjust": 3.0})
             group_hist_value = float(group_cfg.get("bins", initial_bins))
             group_x_min = float(group_cfg.get("x_min", x_min_um))
             gxmax = group_cfg.get("x_max", np.nan)
             group_x_max = None if (gxmax is None or (isinstance(gxmax, float) and np.isnan(gxmax))) else float(gxmax)
+            group_kde_bw = float(max(0.1, float(group_cfg.get("kde_bw_adjust", 3.0))))
             with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
                 all_values = []
                 images_rows = []
@@ -1033,6 +1051,7 @@ class CellWallsModule:
                         title=entry.file_id,
                         x_min_um=group_x_min,
                         x_max_um=group_x_max,
+                        kde_bw_adjust=group_kde_bw,
                     )
                     images_rows.append(
                         {
@@ -1048,6 +1067,7 @@ class CellWallsModule:
                             "hist_bins_used": int(group_hist_value),
                             "hist_x_min_um": float(group_x_min),
                             "hist_x_max_um": (float(group_x_max) if group_x_max is not None else ""),
+                            "hist_kde_bw_adjust": group_kde_bw,
                         }
                     )
 
@@ -1065,6 +1085,7 @@ class CellWallsModule:
                     title=f"{group_key} (combined)",
                     x_min_um=group_x_min,
                     x_max_um=group_x_max,
+                    kde_bw_adjust=group_kde_bw,
                 )
             generated += 1
 
