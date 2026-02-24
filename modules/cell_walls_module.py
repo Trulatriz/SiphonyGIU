@@ -601,6 +601,89 @@ class CellWallsModule:
         }
 
     @staticmethod
+    def _gmm_log_metrics(values_um: np.ndarray) -> dict[str, float | int | str]:
+        vals = values_um[np.isfinite(values_um)]
+        vals = vals[vals > 0]
+        out: dict[str, float | int | str] = {
+            "fs_gmm": 0.0,
+            "fw_gmm": 1.0,
+            "mu_walls_um": 0.0,
+            "mu_struts_um": 0.0,
+            "w_walls": 0.0,
+            "w_struts": 0.0,
+            "separation_z": 0.0,
+            "delta_bic": 0.0,
+            "reliable": 0,
+            "reason": "",
+        }
+        if vals.size < 50:
+            out["reason"] = "too_few_points"
+            return out
+        try:
+            from sklearn.mixture import GaussianMixture
+        except Exception:
+            out["reason"] = "sklearn_unavailable"
+            return out
+        try:
+            x = np.log(vals).reshape(-1, 1)
+            g2 = GaussianMixture(
+                n_components=2,
+                covariance_type="full",
+                n_init=6,
+                random_state=0,
+                reg_covar=1e-6,
+            )
+            g2.fit(x)
+            g1 = GaussianMixture(
+                n_components=1,
+                covariance_type="full",
+                n_init=4,
+                random_state=0,
+                reg_covar=1e-6,
+            )
+            g1.fit(x)
+
+            means = g2.means_.reshape(-1)
+            covs = g2.covariances_.reshape(2, -1)[:, 0]
+            stds = np.sqrt(np.maximum(covs, 1e-12))
+            weights = g2.weights_.reshape(-1)
+
+            order = np.argsort(means)
+            iw, is_ = int(order[0]), int(order[1])
+
+            muw, mus = float(means[iw]), float(means[is_])
+            sw, ss = float(stds[iw]), float(stds[is_])
+            ww, ws = float(weights[iw]), float(weights[is_])
+
+            sep = float((mus - muw) / max(np.sqrt(sw * sw + ss * ss), 1e-12))
+            dbic = float(g1.bic(x) - g2.bic(x))
+
+            # Mean of lognormal component in original units.
+            muw_um = float(np.exp(muw + 0.5 * sw * sw))
+            mus_um = float(np.exp(mus + 0.5 * ss * ss))
+
+            reliable = int((sep >= 0.8) and (min(ww, ws) >= 0.05) and (dbic >= 10.0))
+
+            out.update(
+                {
+                    "fs_gmm": ws,
+                    "fw_gmm": ww,
+                    "mu_walls_um": muw_um,
+                    "mu_struts_um": mus_um,
+                    "w_walls": ww,
+                    "w_struts": ws,
+                    "separation_z": sep,
+                    "delta_bic": dbic,
+                    "reliable": reliable,
+                    "reason": "" if reliable else "low_separation_or_overlap",
+                }
+            )
+            return out
+        except Exception:
+            out["reason"] = "gmm_fit_failed"
+            return out
+
+    @staticmethod
     def _local_thickness_px(solid_mask: np.ndarray) -> np.ndarray:
         solid_bool = solid_mask.astype(bool)
         try:
@@ -1107,16 +1190,31 @@ class CellWallsModule:
                         x_max_um=group_x_max,
                     )
                     m_img = self._threshold_metrics(vsel, group_t_star)
+                    gmm_img = self._gmm_log_metrics(vsel)
+                    fs_selected_img = float(gmm_img["fs_gmm"]) if int(gmm_img["reliable"]) == 1 else float(m_img["f_s"])
+                    fs_method_img = "gmm" if int(gmm_img["reliable"]) == 1 else "manual_t_star"
                     metrics_rows.append(
                         {
                             "scope": "image",
                             "id": entry.file_id,
                             "t_star_um": m_img["t_star_um"],
+                            "f_s_selected": fs_selected_img,
+                            "f_s_method": fs_method_img,
                             "f_s": m_img["f_s"],
                             "f_w": m_img["f_w"],
                             "mean_walls_um": m_img["mean_walls_um"],
                             "mean_struts_um": m_img["mean_struts_um"],
                             "n_total": int(m_img["n_total"]),
+                            "f_s_gmm": float(gmm_img["fs_gmm"]),
+                            "f_w_gmm": float(gmm_img["fw_gmm"]),
+                            "mu_walls_gmm_um": float(gmm_img["mu_walls_um"]),
+                            "mu_struts_gmm_um": float(gmm_img["mu_struts_um"]),
+                            "w_walls_gmm": float(gmm_img["w_walls"]),
+                            "w_struts_gmm": float(gmm_img["w_struts"]),
+                            "gmm_separation_z": float(gmm_img["separation_z"]),
+                            "gmm_delta_bic": float(gmm_img["delta_bic"]),
+                            "gmm_reliable": int(gmm_img["reliable"]),
+                            "gmm_reason": str(gmm_img["reason"]),
                         }
                     )
                     images_rows.append(
@@ -1142,16 +1240,31 @@ class CellWallsModule:
                 df_combined.to_excel(writer, sheet_name=self._safe_sheet_name(f"histogram_{group_key}"), index=False)
                 pd.DataFrame(images_rows).to_excel(writer, sheet_name=self._safe_sheet_name("images_used"), index=False)
                 m_comb = self._threshold_metrics(combined, group_t_star)
+                gmm_comb = self._gmm_log_metrics(combined)
+                fs_selected_comb = float(gmm_comb["fs_gmm"]) if int(gmm_comb["reliable"]) == 1 else float(m_comb["f_s"])
+                fs_method_comb = "gmm" if int(gmm_comb["reliable"]) == 1 else "manual_t_star"
                 metrics_rows.append(
                     {
                         "scope": "combined",
                         "id": group_key,
                         "t_star_um": m_comb["t_star_um"],
+                        "f_s_selected": fs_selected_comb,
+                        "f_s_method": fs_method_comb,
                         "f_s": m_comb["f_s"],
                         "f_w": m_comb["f_w"],
                         "mean_walls_um": m_comb["mean_walls_um"],
                         "mean_struts_um": m_comb["mean_struts_um"],
                         "n_total": int(m_comb["n_total"]),
+                        "f_s_gmm": float(gmm_comb["fs_gmm"]),
+                        "f_w_gmm": float(gmm_comb["fw_gmm"]),
+                        "mu_walls_gmm_um": float(gmm_comb["mu_walls_um"]),
+                        "mu_struts_gmm_um": float(gmm_comb["mu_struts_um"]),
+                        "w_walls_gmm": float(gmm_comb["w_walls"]),
+                        "w_struts_gmm": float(gmm_comb["w_struts"]),
+                        "gmm_separation_z": float(gmm_comb["separation_z"]),
+                        "gmm_delta_bic": float(gmm_comb["delta_bic"]),
+                        "gmm_reliable": int(gmm_comb["reliable"]),
+                        "gmm_reason": str(gmm_comb["reason"]),
                     }
                 )
                 pd.DataFrame(metrics_rows).to_excel(writer, sheet_name=self._safe_sheet_name("walls_vs_struts"), index=False)
