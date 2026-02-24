@@ -66,7 +66,10 @@ class CellWallsModule:
         ttk.Radiobutton(opts, text="Bin width (um)", variable=self.hist_mode_var, value="bin_width").grid(row=0, column=3, sticky=tk.W, padx=(0, 6))
         self.bin_width_var = tk.StringVar(value="2.0")
         ttk.Entry(opts, textvariable=self.bin_width_var, width=10).grid(row=0, column=4, sticky=tk.W, padx=(0, 12))
-        ttk.Label(opts, text="(Histogram per image + combined by group)").grid(row=0, column=5, sticky=tk.W)
+        ttk.Label(opts, text="x min (um):").grid(row=0, column=5, sticky=tk.W, padx=(4, 6))
+        self.x_min_var = tk.StringVar(value="0.1")
+        ttk.Entry(opts, textvariable=self.x_min_var, width=10).grid(row=0, column=6, sticky=tk.W, padx=(0, 12))
+        ttk.Label(opts, text="(Histogram per image + combined by group)").grid(row=0, column=7, sticky=tk.W)
 
         buttons = ttk.Frame(main)
         buttons.pack(fill=tk.X, pady=(0, 8))
@@ -675,6 +678,9 @@ class CellWallsModule:
                 hist_value = float(self.bin_width_var.get())
                 if hist_value <= 0:
                     raise ValueError
+            x_min_um = float(self.x_min_var.get())
+            if x_min_um < 0:
+                raise ValueError
         except Exception:
             if self.hist_mode_var.get().strip() == "bins":
                 messagebox.showerror("Run", "Bins must be an integer > 1.")
@@ -712,11 +718,18 @@ class CellWallsModule:
         except Exception:
             messagebox.showerror("Run", "Invalid histogram parameter.")
             return
+        try:
+            _ = x_min_um
+        except Exception:
+            messagebox.showerror("Run", "x min must be a valid number.")
+            return
 
         try:
             if hist_mode == "bins" and int(hist_value) <= 1:
                 raise ValueError
             if hist_mode == "bin_width" and float(hist_value) <= 0:
+                raise ValueError
+            if float(x_min_um) < 0:
                 raise ValueError
         except Exception:
             messagebox.showerror("Run", "Histogram configuration is not valid.")
@@ -767,6 +780,7 @@ class CellWallsModule:
                 continue
 
             tum, values = self._compute_roiwise_thickness_um(analyzed_solid, float(entry.microns_per_pixel))
+            values = values[values >= float(x_min_um)]
             if values.size == 0:
                 errors.append(f"No valid thickness values: {entry.mask_path.name}")
                 continue
