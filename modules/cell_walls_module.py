@@ -63,13 +63,16 @@ class CellWallsModule:
         ttk.Radiobutton(opts, text="Bins", variable=self.hist_mode_var, value="bins").grid(row=0, column=1, sticky=tk.W, padx=(8, 6))
         self.n_bins_var = tk.StringVar(value="256")
         ttk.Entry(opts, textvariable=self.n_bins_var, width=10).grid(row=0, column=2, sticky=tk.W, padx=(0, 12))
-        ttk.Radiobutton(opts, text="Bin width (um)", variable=self.hist_mode_var, value="bin_width").grid(row=0, column=3, sticky=tk.W, padx=(0, 6))
+        ttk.Radiobutton(opts, text="Bin width (µm)", variable=self.hist_mode_var, value="bin_width").grid(row=0, column=3, sticky=tk.W, padx=(0, 6))
         self.bin_width_var = tk.StringVar(value="2.0")
         ttk.Entry(opts, textvariable=self.bin_width_var, width=10).grid(row=0, column=4, sticky=tk.W, padx=(0, 12))
-        ttk.Label(opts, text="x min (um):").grid(row=0, column=5, sticky=tk.W, padx=(4, 6))
+        ttk.Label(opts, text="x min (µm):").grid(row=0, column=5, sticky=tk.W, padx=(4, 6))
         self.x_min_var = tk.StringVar(value="0.1")
         ttk.Entry(opts, textvariable=self.x_min_var, width=10).grid(row=0, column=6, sticky=tk.W, padx=(0, 12))
-        ttk.Label(opts, text="(Histogram per image + combined by group)").grid(row=0, column=7, sticky=tk.W)
+        ttk.Label(opts, text="x max (µm):").grid(row=0, column=7, sticky=tk.W, padx=(4, 6))
+        self.x_max_var = tk.StringVar(value="")
+        ttk.Entry(opts, textvariable=self.x_max_var, width=10).grid(row=0, column=8, sticky=tk.W, padx=(0, 12))
+        ttk.Label(opts, text="(Histogram per image + combined by group)").grid(row=0, column=9, sticky=tk.W)
 
         buttons = ttk.Frame(main)
         buttons.pack(fill=tk.X, pady=(0, 8))
@@ -500,6 +503,14 @@ class CellWallsModule:
         return token if token else "unnamed"
 
     @staticmethod
+    def _filter_values_by_range(values_um: np.ndarray, x_min_um: float, x_max_um: float | None) -> np.ndarray:
+        vals = values_um[np.isfinite(values_um)]
+        vals = vals[vals >= float(x_min_um)]
+        if x_max_um is not None:
+            vals = vals[vals <= float(x_max_um)]
+        return vals.astype(np.float32)
+
+    @staticmethod
     def _get_histogram_edges(values_um: np.ndarray, hist_mode: str, hist_value: float) -> np.ndarray:
         vmax = float(np.max(values_um)) if values_um.size > 0 else 1.0
         if vmax <= 0:
@@ -619,18 +630,27 @@ class CellWallsModule:
         cv2.imwrite(str(out_path), vis)
 
     @staticmethod
-    def _save_histogram_png(values_um: np.ndarray, hist_mode: str, hist_value: float, out_png: Path, title: str):
+    def _save_histogram_png(
+        values_um: np.ndarray,
+        hist_mode: str,
+        hist_value: float,
+        out_png: Path,
+        title: str,
+        x_min_um: float = 0.0,
+        x_max_um: float | None = None,
+    ):
         try:
             import matplotlib.pyplot as plt
             import seaborn as sns
         except Exception:
             return
 
-        if values_um.size == 0:
+        vals = CellWallsModule._filter_values_by_range(values_um, x_min_um=x_min_um, x_max_um=x_max_um)
+        if vals.size == 0:
             return
 
-        edges = CellWallsModule._get_histogram_edges(values_um, hist_mode, hist_value)
-        counts, _ = np.histogram(values_um, bins=edges)
+        edges = CellWallsModule._get_histogram_edges(vals, hist_mode, hist_value)
+        counts, _ = np.histogram(vals, bins=edges)
         if counts.size == 0:
             return
 
@@ -638,11 +658,15 @@ class CellWallsModule:
         ax = fig.add_subplot(111)
         sns.set_style("white")
         sns.histplot(
-            values_um,
+            vals,
             bins=edges,
             stat="probability",
             kde=True,
-            kde_kws={"bw_adjust": 1.6},
+            kde_kws={
+                "bw_adjust": 2.4,
+                "cut": 0,
+                "clip": (float(x_min_um), float(x_max_um) if x_max_um is not None else np.inf),
+            },
             color="#7088ad",
             edgecolor="#2f2f2f",
             alpha=0.65,
@@ -651,18 +675,28 @@ class CellWallsModule:
         ax.set_ylabel("Relative Frequency")
         ax.set_xlabel("Thickness (µm)")
         ax.set_title(title)
-        ax.set_xlim(edges[0], edges[-1])
+        xmax = float(x_max_um) if x_max_um is not None else float(edges[-1])
+        ax.set_xlim(float(x_min_um), xmax)
         ax.grid(False)
         fig.tight_layout()
         fig.savefig(out_png, bbox_inches="tight")
         plt.close(fig)
 
-    def _tune_group_histograms(self, by_group_values: dict[str, np.ndarray], initial_bins: int, x_min_um: float) -> tuple[bool, dict[str, int]]:
-        """Show combined histogram tuner one group at a time."""
-        tuned_bins: dict[str, int] = {}
+    def _tune_group_histograms(
+        self,
+        by_group_values: dict[str, np.ndarray],
+        initial_bins: int,
+        default_x_min_um: float,
+        default_x_max_um: float | None,
+    ) -> tuple[bool, dict[str, dict[str, float]]]:
+        """Show combined histogram tuner one group at a time.
+
+        Returns per-group params: {"bins": int, "x_min": float, "x_max": float|None}
+        """
+        tuned: dict[str, dict[str, float]] = {}
         groups = sorted(by_group_values.keys())
         if not groups:
-            return True, tuned_bins
+            return True, tuned
 
         try:
             import matplotlib.pyplot as plt
@@ -671,14 +705,22 @@ class CellWallsModule:
         except Exception:
             # If plotting stack is missing, keep initial bins for all groups.
             for g in groups:
-                tuned_bins[g] = int(initial_bins)
-            return True, tuned_bins
+                tuned[g] = {
+                    "bins": int(initial_bins),
+                    "x_min": float(default_x_min_um),
+                    "x_max": float(default_x_max_um) if default_x_max_um is not None else np.nan,
+                }
+            return True, tuned
 
         sns.set_style("white")
         for idx, g in enumerate(groups, start=1):
             vals = by_group_values[g]
             if vals.size == 0:
-                tuned_bins[g] = int(initial_bins)
+                tuned[g] = {
+                    "bins": int(initial_bins),
+                    "x_min": float(default_x_min_um),
+                    "x_max": float(default_x_max_um) if default_x_max_um is not None else np.nan,
+                }
                 continue
 
             dlg = tk.Toplevel(self.root)
@@ -690,7 +732,7 @@ class CellWallsModule:
             top = ttk.Frame(dlg, padding=8)
             top.pack(fill=tk.X)
             ttk.Label(top, text=f"Combined sample: {g}").pack(side=tk.LEFT)
-            ttk.Label(top, text=f"x-min={x_min_um:.3f} µm").pack(side=tk.RIGHT)
+            ttk.Label(top, text="Adjust bins / x-min / x-max, then Accept and Next").pack(side=tk.RIGHT)
 
             ctrl = ttk.Frame(dlg, padding=(8, 0, 8, 8))
             ctrl.pack(fill=tk.X)
@@ -700,22 +742,46 @@ class CellWallsModule:
             bins_scale.pack(side=tk.LEFT, padx=(6, 12))
             kde_var = tk.BooleanVar(value=True)
             ttk.Checkbutton(ctrl, text="KDE", variable=kde_var).pack(side=tk.LEFT)
+            ttk.Label(ctrl, text="x min (µm):").pack(side=tk.LEFT, padx=(12, 4))
+            x_min_var = tk.StringVar(value=f"{float(default_x_min_um):.4f}")
+            ttk.Entry(ctrl, textvariable=x_min_var, width=8).pack(side=tk.LEFT)
+            ttk.Label(ctrl, text="x max (µm):").pack(side=tk.LEFT, padx=(12, 4))
+            max_default = "" if default_x_max_um is None else f"{float(default_x_max_um):.4f}"
+            x_max_var = tk.StringVar(value=max_default)
+            ttk.Entry(ctrl, textvariable=x_max_var, width=8).pack(side=tk.LEFT)
 
             fig_host = ttk.Frame(dlg)
             fig_host.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
             state = {"canvas": None}
 
             def redraw():
+                try:
+                    cur_x_min = float(x_min_var.get())
+                    cur_x_max_txt = x_max_var.get().strip()
+                    cur_x_max = float(cur_x_max_txt) if cur_x_max_txt else None
+                    if cur_x_min < 0:
+                        raise ValueError
+                    if cur_x_max is not None and cur_x_max <= cur_x_min:
+                        raise ValueError
+                except Exception:
+                    return
+                vals_plot = self._filter_values_by_range(vals, cur_x_min, cur_x_max)
+                if vals_plot.size == 0:
+                    return
                 if state["canvas"] is not None:
                     state["canvas"].get_tk_widget().destroy()
                 fig = plt.Figure(figsize=(8.6, 5.8), dpi=100)
                 ax = fig.add_subplot(111)
                 sns.histplot(
-                    vals,
+                    vals_plot,
                     bins=int(bins_var.get()),
                     stat="probability",
                     kde=bool(kde_var.get()),
-                    kde_kws={"bw_adjust": 1.6},
+                    kde_kws={
+                        "bw_adjust": 2.4,
+                        "cut": 0,
+                        "clip": (cur_x_min, cur_x_max if cur_x_max is not None else np.inf),
+                    },
                     color="#7088ad",
                     edgecolor="#2f2f2f",
                     alpha=0.65,
@@ -724,6 +790,7 @@ class CellWallsModule:
                 ax.set_xlabel("Thickness (µm)")
                 ax.set_ylabel("Relative Frequency")
                 ax.set_title(f"{g} (combined)")
+                ax.set_xlim(cur_x_min, cur_x_max if cur_x_max is not None else float(np.max(vals_plot)))
                 ax.grid(False)
                 fig.tight_layout()
                 state["canvas"] = FigureCanvasTkAgg(fig, master=fig_host)
@@ -733,7 +800,22 @@ class CellWallsModule:
             result = {"ok": None}
 
             def accept():
-                tuned_bins[g] = int(bins_var.get())
+                try:
+                    cur_x_min = float(x_min_var.get())
+                    cur_x_max_txt = x_max_var.get().strip()
+                    cur_x_max = float(cur_x_max_txt) if cur_x_max_txt else None
+                    if cur_x_min < 0:
+                        raise ValueError
+                    if cur_x_max is not None and cur_x_max <= cur_x_min:
+                        raise ValueError
+                except Exception:
+                    messagebox.showerror("Histogram tuning", "Invalid x-range. Ensure x max > x min and both are valid numbers.")
+                    return
+                tuned[g] = {
+                    "bins": int(bins_var.get()),
+                    "x_min": float(cur_x_min),
+                    "x_max": float(cur_x_max) if cur_x_max is not None else np.nan,
+                }
                 result["ok"] = True
                 dlg.destroy()
 
@@ -748,13 +830,15 @@ class CellWallsModule:
             ttk.Button(buttons, text="Cancel", command=cancel).pack(side=tk.RIGHT, padx=(0, 8))
 
             bins_scale.bind("<ButtonRelease-1>", lambda _e: redraw())
+            x_min_var.trace_add("write", lambda *_a: redraw())
+            x_max_var.trace_add("write", lambda *_a: redraw())
             redraw()
             dlg.protocol("WM_DELETE_WINDOW", cancel)
             self.root.wait_window(dlg)
             if result["ok"] is not True:
                 return False, {}
 
-        return True, tuned_bins
+        return True, tuned
 
     def run_analysis(self):
         if not self.entries:
@@ -785,6 +869,10 @@ class CellWallsModule:
                     raise ValueError
             x_min_um = float(self.x_min_var.get())
             if x_min_um < 0:
+                raise ValueError
+            x_max_txt = self.x_max_var.get().strip()
+            x_max_um = float(x_max_txt) if x_max_txt else None
+            if x_max_um is not None and x_max_um <= x_min_um:
                 raise ValueError
         except Exception:
             if self.hist_mode_var.get().strip() == "bins":
@@ -828,6 +916,11 @@ class CellWallsModule:
         except Exception:
             messagebox.showerror("Run", "x min must be a valid number.")
             return
+        try:
+            _ = x_max_um
+        except Exception:
+            messagebox.showerror("Run", "x max must be a valid number or empty.")
+            return
 
         try:
             if hist_mode == "bins" and int(hist_value) <= 1:
@@ -835,6 +928,8 @@ class CellWallsModule:
             if hist_mode == "bin_width" and float(hist_value) <= 0:
                 raise ValueError
             if float(x_min_um) < 0:
+                raise ValueError
+            if x_max_um is not None and float(x_max_um) <= float(x_min_um):
                 raise ValueError
         except Exception:
             messagebox.showerror("Run", "Histogram configuration is not valid.")
@@ -885,7 +980,6 @@ class CellWallsModule:
                 continue
 
             tum, values = self._compute_roiwise_thickness_um(analyzed_solid, float(entry.microns_per_pixel))
-            values = values[values >= float(x_min_um)]
             if values.size == 0:
                 errors.append(f"No valid thickness values: {entry.mask_path.name}")
                 continue
@@ -901,7 +995,12 @@ class CellWallsModule:
             g: (np.concatenate([vals for _, vals, _ in items]) if items else np.array([], dtype=np.float32))
             for g, items in by_group.items()
         }
-        ok_tune, tuned_bins = self._tune_group_histograms(by_group_values, initial_bins=initial_bins, x_min_um=float(x_min_um))
+        ok_tune, tuned_params = self._tune_group_histograms(
+            by_group_values,
+            initial_bins=initial_bins,
+            default_x_min_um=float(x_min_um),
+            default_x_max_um=x_max_um,
+        )
         if not ok_tune:
             self.status_var.set("Analysis cancelled during histogram tuning.")
             return
@@ -910,18 +1009,31 @@ class CellWallsModule:
         for group_key, items in by_group.items():
             excel_path = out_dir / f"histogram_{group_key}.xlsx"
             group_hist_mode = "bins"
-            group_hist_value = float(tuned_bins.get(group_key, initial_bins))
+            group_cfg = tuned_params.get(group_key, {"bins": float(initial_bins), "x_min": float(x_min_um), "x_max": np.nan})
+            group_hist_value = float(group_cfg.get("bins", initial_bins))
+            group_x_min = float(group_cfg.get("x_min", x_min_um))
+            gxmax = group_cfg.get("x_max", np.nan)
+            group_x_max = None if (gxmax is None or (isinstance(gxmax, float) and np.isnan(gxmax))) else float(gxmax)
             with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
                 all_values = []
                 images_rows = []
 
                 for entry, values, map_path in items:
-                    all_values.append(values)
-                    df_img, _, _ = self._make_histogram(values, group_hist_mode, group_hist_value)
+                    vsel = self._filter_values_by_range(values, group_x_min, group_x_max)
+                    all_values.append(vsel)
+                    df_img, _, _ = self._make_histogram(vsel, group_hist_mode, group_hist_value)
                     sheet = self._safe_sheet_name(f"{entry.file_id}_log")
                     df_img.to_excel(writer, sheet_name=sheet, index=False)
                     hist_path = hist_png_dir / f"hist_cellwall{self._safe_file_token(entry.file_id)}.png"
-                    self._save_histogram_png(values, group_hist_mode, group_hist_value, hist_path, title=entry.file_id)
+                    self._save_histogram_png(
+                        vsel,
+                        group_hist_mode,
+                        group_hist_value,
+                        hist_path,
+                        title=entry.file_id,
+                        x_min_um=group_x_min,
+                        x_max_um=group_x_max,
+                    )
                     images_rows.append(
                         {
                             "file_id": entry.file_id,
@@ -934,6 +1046,8 @@ class CellWallsModule:
                             "local_thickness_map_png": str(map_path.name),
                             "histogram_png": str(hist_path.name),
                             "hist_bins_used": int(group_hist_value),
+                            "hist_x_min_um": float(group_x_min),
+                            "hist_x_max_um": (float(group_x_max) if group_x_max is not None else ""),
                         }
                     )
 
@@ -943,7 +1057,15 @@ class CellWallsModule:
                 pd.DataFrame(images_rows).to_excel(writer, sheet_name=self._safe_sheet_name("images_used"), index=False)
                 # Combined PNG per group, named with same label logic as histogram_<label>.xlsx
                 combined_png = hist_png_dir / f"hist_cellwall{self._safe_file_token(group_key)}.png"
-                self._save_histogram_png(combined, group_hist_mode, group_hist_value, combined_png, title=f"{group_key} (combined)")
+                self._save_histogram_png(
+                    combined,
+                    group_hist_mode,
+                    group_hist_value,
+                    combined_png,
+                    title=f"{group_key} (combined)",
+                    x_min_um=group_x_min,
+                    x_max_um=group_x_max,
+                )
             generated += 1
 
         status = f"Completed. Generated {generated} workbook(s) in {out_dir}."
