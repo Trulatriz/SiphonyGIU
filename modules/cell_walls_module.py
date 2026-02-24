@@ -67,7 +67,7 @@ class CellWallsModule:
         self.bin_width_var = tk.StringVar(value="2.0")
         ttk.Entry(opts, textvariable=self.bin_width_var, width=10).grid(row=0, column=4, sticky=tk.W, padx=(0, 12))
         ttk.Label(opts, text="x min (µm):").grid(row=0, column=5, sticky=tk.W, padx=(4, 6))
-        self.x_min_var = tk.StringVar(value="0.1")
+        self.x_min_var = tk.StringVar(value="0.0")
         ttk.Entry(opts, textvariable=self.x_min_var, width=10).grid(row=0, column=6, sticky=tk.W, padx=(0, 12))
         ttk.Label(opts, text="x max (µm):").grid(row=0, column=7, sticky=tk.W, padx=(4, 6))
         self.x_max_var = tk.StringVar(value="")
@@ -599,7 +599,7 @@ class CellWallsModule:
             comp_mask = comp > 0
             t_um_map[y : y + hh, x : x + ww][comp_mask] = tum[comp_mask]
             vals = tum[comp_mask]
-            vals = vals[np.isfinite(vals) & (vals > 0)]
+            vals = vals[np.isfinite(vals) & (vals >= 0)]
             if vals.size > 0:
                 values_list.append(vals.astype(np.float32))
 
