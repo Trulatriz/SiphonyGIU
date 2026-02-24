@@ -74,6 +74,8 @@ class CellWallsModule:
         buttons = ttk.Frame(main)
         buttons.pack(fill=tk.X, pady=(0, 8))
         ttk.Button(buttons, text="Scan Input", command=self.scan_input).pack(side=tk.LEFT)
+        ttk.Button(buttons, text="Select All", command=self._select_all_entries).pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Button(buttons, text="Select None", command=self._select_no_entries).pack(side=tk.LEFT, padx=(6, 0))
         ttk.Button(buttons, text="Edit Crop Rectangles", command=self.open_crop_editor).pack(side=tk.LEFT, padx=8)
         ttk.Button(buttons, text="Run Analysis", command=self.run_analysis).pack(side=tk.LEFT)
         ttk.Button(buttons, text="Open Output Folder", command=self._open_output_folder).pack(side=tk.LEFT, padx=8)
@@ -82,7 +84,7 @@ class CellWallsModule:
         table_frame.pack(fill=tk.BOTH, expand=True)
 
         cols = ("file_id", "group", "mpp", "mask", "meta", "inc", "exc")
-        self.table = ttk.Treeview(table_frame, columns=cols, show="headings", height=18)
+        self.table = ttk.Treeview(table_frame, columns=cols, show="headings", height=18, selectmode="extended")
         self.table.heading("file_id", text="File ID")
         self.table.heading("group", text="Group (*)")
         self.table.heading("mpp", text="um/px")
@@ -117,6 +119,28 @@ class CellWallsModule:
                 tk.END,
                 values=(e.file_id, e.group_key, f"{e.microns_per_pixel:.6f}", e.mask_path.name, e.meta_path.name, inc, exc),
             )
+
+    def _select_all_entries(self):
+        for item in self.table.get_children():
+            self.table.selection_add(item)
+
+    def _select_no_entries(self):
+        self.table.selection_remove(self.table.selection())
+
+    def _get_entries_for_analysis(self) -> list[MaskEntry]:
+        selected = self.table.selection()
+        if not selected:
+            return []
+        by_mask = {e.mask_path.name: e for e in self.entries}
+        out: list[MaskEntry] = []
+        for item in selected:
+            values = self.table.item(item, "values")
+            if len(values) >= 4:
+                mask_name = str(values[3])
+                e = by_mask.get(mask_name)
+                if e is not None:
+                    out.append(e)
+        return out
 
     def _load_suggested_paths(self):
         suggested = self.foam_manager.get_suggested_paths("CellWall", self.current_foam)
@@ -265,7 +289,6 @@ class CellWallsModule:
         ttk.Button(btns, text="Clear exclusions (this image)", command=lambda: clear_rects("exclude")).pack(side=tk.LEFT)
         ttk.Button(btns, text="Clear inclusions (this image)", command=lambda: clear_rects("include")).pack(side=tk.LEFT, padx=8)
         ttk.Button(btns, text="Apply + Preview", command=lambda: apply_preview(show_info=True)).pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(btns, text="Tune Histogram", command=lambda: open_hist_tuner()).pack(side=tk.LEFT, padx=(8, 0))
         ttk.Button(btns, text="Close", command=top.destroy).pack(side=tk.RIGHT)
         apply_state_var = tk.StringVar(value="Preview not applied yet")
         ttk.Label(top, textvariable=apply_state_var, anchor=tk.W).pack(fill=tk.X, padx=12, pady=(0, 8))
@@ -458,107 +481,6 @@ class CellWallsModule:
         def on_combo_selected(_e=None):
             set_image(combo.get())
 
-        def open_hist_tuner():
-            entry = image_map[image_var.get()]
-            arr = cv2.imread(str(entry.mask_path), cv2.IMREAD_GRAYSCALE)
-            if arr is None:
-                messagebox.showerror("Histogram", "Could not read current binary mask.")
-                return
-            solid = (arr > 127).astype(np.uint8)
-            h, w = solid.shape
-            key = entry.mask_path.name
-            include_rects = self.inclusions.get(key, [])
-            if include_rects:
-                roi = np.zeros_like(solid, dtype=np.uint8)
-                for x1, y1, x2, y2 in include_rects:
-                    xx1, xx2 = max(0, min(x1, x2)), min(w, max(x1, x2))
-                    yy1, yy2 = max(0, min(y1, y2)), min(h, max(y1, y2))
-                    roi[yy1:yy2, xx1:xx2] = 1
-            else:
-                roi = np.ones_like(solid, dtype=np.uint8)
-            for x1, y1, x2, y2 in self.exclusions.get(key, []):
-                xx1, xx2 = max(0, min(x1, x2)), min(w, max(x1, x2))
-                yy1, yy2 = max(0, min(y1, y2)), min(h, max(y1, y2))
-                roi[yy1:yy2, xx1:xx2] = 0
-            analyzed_solid = ((solid > 0) & (roi > 0)).astype(np.uint8)
-            _, values = self._compute_roiwise_thickness_um(analyzed_solid, float(entry.microns_per_pixel))
-            try:
-                x_min = float(self.x_min_var.get())
-            except Exception:
-                x_min = 0.1
-            values = values[values >= x_min]
-            if values.size == 0:
-                messagebox.showwarning("Histogram", "No valid thickness values for this image after x-min filtering.")
-                return
-
-            tune = tk.Toplevel(top)
-            tune.title(f"Histogram tuning - {entry.file_id}")
-            tune.geometry("920x700")
-            ctrl = ttk.Frame(tune, padding=8)
-            ctrl.pack(fill=tk.X)
-            ttk.Label(ctrl, text="Bins:").pack(side=tk.LEFT)
-            init_bins = 256
-            try:
-                if self.hist_mode_var.get().strip() == "bins":
-                    init_bins = max(2, int(float(self.n_bins_var.get())))
-            except Exception:
-                init_bins = 256
-            bins_var = tk.IntVar(value=init_bins)
-            bins_scale = tk.Scale(ctrl, from_=5, to=300, orient=tk.HORIZONTAL, variable=bins_var, length=380)
-            bins_scale.pack(side=tk.LEFT, padx=(6, 12))
-            kde_var = tk.BooleanVar(value=True)
-            ttk.Checkbutton(ctrl, text="KDE", variable=kde_var).pack(side=tk.LEFT, padx=(0, 12))
-            ttk.Label(ctrl, text=f"x-min={x_min:.3f} um").pack(side=tk.LEFT)
-
-            fig = None
-            canvas_fig = None
-
-            def redraw_hist():
-                nonlocal fig, canvas_fig
-                try:
-                    import matplotlib.pyplot as plt
-                    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-                    import seaborn as sns
-                except Exception:
-                    messagebox.showerror("Histogram", "matplotlib/seaborn are required for tuning preview.")
-                    tune.destroy()
-                    return
-                if canvas_fig is not None:
-                    canvas_fig.get_tk_widget().destroy()
-                fig = plt.Figure(figsize=(8.6, 6.0), dpi=100)
-                ax = fig.add_subplot(111)
-                sns.set_style("whitegrid")
-                sns.histplot(
-                    values,
-                    bins=int(bins_var.get()),
-                    stat="probability",
-                    kde=bool(kde_var.get()),
-                    color="#6f7f9e",
-                    edgecolor="#2f2f2f",
-                    alpha=0.65,
-                    ax=ax,
-                )
-                ax.set_xlabel("Thickness (um)")
-                ax.set_ylabel("Relative Frequency")
-                ax.set_title(entry.file_id)
-                canvas_fig = FigureCanvasTkAgg(fig, master=tune)
-                canvas_fig.draw()
-                canvas_fig.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
-
-            def apply_bins():
-                self.hist_mode_var.set("bins")
-                self.n_bins_var.set(str(int(bins_var.get())))
-                apply_state_var.set(f"Histogram tuning applied: bins={int(bins_var.get())}, KDE={bool(kde_var.get())}")
-                tune.destroy()
-
-            btnrow = ttk.Frame(tune, padding=(8, 0, 8, 8))
-            btnrow.pack(fill=tk.X)
-            ttk.Button(btnrow, text="Refresh", command=redraw_hist).pack(side=tk.LEFT)
-            ttk.Button(btnrow, text="Use these bins", command=apply_bins).pack(side=tk.RIGHT)
-
-            bins_scale.bind("<ButtonRelease-1>", lambda _e: redraw_hist())
-            redraw_hist()
-
         combo.bind("<<ComboboxSelected>>", on_combo_selected)
         canvas.bind("<ButtonPress-1>", on_press)
         canvas.bind("<B1-Motion>", on_move)
@@ -714,28 +636,133 @@ class CellWallsModule:
 
         fig = plt.figure(figsize=(7.0, 5.0), dpi=150)
         ax = fig.add_subplot(111)
-        sns.set_style("whitegrid")
+        sns.set_style("white")
         sns.histplot(
             values_um,
             bins=edges,
             stat="probability",
             kde=True,
+            kde_kws={"bw_adjust": 1.6},
             color="#7088ad",
             edgecolor="#2f2f2f",
             alpha=0.65,
             ax=ax,
         )
         ax.set_ylabel("Relative Frequency")
-        ax.set_xlabel("Thickness (um)")
+        ax.set_xlabel("Thickness (µm)")
         ax.set_title(title)
         ax.set_xlim(edges[0], edges[-1])
+        ax.grid(False)
         fig.tight_layout()
         fig.savefig(out_png, bbox_inches="tight")
         plt.close(fig)
 
+    def _tune_group_histograms(self, by_group_values: dict[str, np.ndarray], initial_bins: int, x_min_um: float) -> tuple[bool, dict[str, int]]:
+        """Show combined histogram tuner one group at a time."""
+        tuned_bins: dict[str, int] = {}
+        groups = sorted(by_group_values.keys())
+        if not groups:
+            return True, tuned_bins
+
+        try:
+            import matplotlib.pyplot as plt
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            import seaborn as sns
+        except Exception:
+            # If plotting stack is missing, keep initial bins for all groups.
+            for g in groups:
+                tuned_bins[g] = int(initial_bins)
+            return True, tuned_bins
+
+        sns.set_style("white")
+        for idx, g in enumerate(groups, start=1):
+            vals = by_group_values[g]
+            if vals.size == 0:
+                tuned_bins[g] = int(initial_bins)
+                continue
+
+            dlg = tk.Toplevel(self.root)
+            dlg.title(f"Histogram tuning {idx}/{len(groups)} - {g}")
+            dlg.geometry("940x730")
+            dlg.transient(self.root)
+            dlg.grab_set()
+
+            top = ttk.Frame(dlg, padding=8)
+            top.pack(fill=tk.X)
+            ttk.Label(top, text=f"Combined sample: {g}").pack(side=tk.LEFT)
+            ttk.Label(top, text=f"x-min={x_min_um:.3f} µm").pack(side=tk.RIGHT)
+
+            ctrl = ttk.Frame(dlg, padding=(8, 0, 8, 8))
+            ctrl.pack(fill=tk.X)
+            ttk.Label(ctrl, text="Bins:").pack(side=tk.LEFT)
+            bins_var = tk.IntVar(value=int(initial_bins))
+            bins_scale = tk.Scale(ctrl, from_=5, to=300, orient=tk.HORIZONTAL, variable=bins_var, length=380)
+            bins_scale.pack(side=tk.LEFT, padx=(6, 12))
+            kde_var = tk.BooleanVar(value=True)
+            ttk.Checkbutton(ctrl, text="KDE", variable=kde_var).pack(side=tk.LEFT)
+
+            fig_host = ttk.Frame(dlg)
+            fig_host.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+            state = {"canvas": None}
+
+            def redraw():
+                if state["canvas"] is not None:
+                    state["canvas"].get_tk_widget().destroy()
+                fig = plt.Figure(figsize=(8.6, 5.8), dpi=100)
+                ax = fig.add_subplot(111)
+                sns.histplot(
+                    vals,
+                    bins=int(bins_var.get()),
+                    stat="probability",
+                    kde=bool(kde_var.get()),
+                    kde_kws={"bw_adjust": 1.6},
+                    color="#7088ad",
+                    edgecolor="#2f2f2f",
+                    alpha=0.65,
+                    ax=ax,
+                )
+                ax.set_xlabel("Thickness (µm)")
+                ax.set_ylabel("Relative Frequency")
+                ax.set_title(f"{g} (combined)")
+                ax.grid(False)
+                fig.tight_layout()
+                state["canvas"] = FigureCanvasTkAgg(fig, master=fig_host)
+                state["canvas"].draw()
+                state["canvas"].get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+            result = {"ok": None}
+
+            def accept():
+                tuned_bins[g] = int(bins_var.get())
+                result["ok"] = True
+                dlg.destroy()
+
+            def cancel():
+                result["ok"] = False
+                dlg.destroy()
+
+            buttons = ttk.Frame(dlg, padding=(8, 0, 8, 8))
+            buttons.pack(fill=tk.X)
+            ttk.Button(buttons, text="Refresh", command=redraw).pack(side=tk.LEFT)
+            ttk.Button(buttons, text="Accept and Next", command=accept).pack(side=tk.RIGHT)
+            ttk.Button(buttons, text="Cancel", command=cancel).pack(side=tk.RIGHT, padx=(0, 8))
+
+            bins_scale.bind("<ButtonRelease-1>", lambda _e: redraw())
+            redraw()
+            dlg.protocol("WM_DELETE_WINDOW", cancel)
+            self.root.wait_window(dlg)
+            if result["ok"] is not True:
+                return False, {}
+
+        return True, tuned_bins
+
     def run_analysis(self):
         if not self.entries:
             messagebox.showerror("Run", "No valid entries. Scan input first.")
+            return
+        selected_entries = self._get_entries_for_analysis()
+        if not selected_entries:
+            messagebox.showerror("Run", "Select one or more images in the table before running analysis.")
             return
 
         out_dir = Path(self.output_var.get().strip())
@@ -824,10 +851,10 @@ class CellWallsModule:
             {"input_folder": self.input_var.get().strip(), "output_folder": str(out_dir)},
         )
 
-        by_group: dict[str, list[tuple[MaskEntry, np.ndarray, Path, Path]]] = {}
+        by_group: dict[str, list[tuple[MaskEntry, np.ndarray, Path]]] = {}
         errors = []
 
-        for entry in self.entries:
+        for entry in selected_entries:
             arr = cv2.imread(str(entry.mask_path), cv2.IMREAD_GRAYSCALE)
             if arr is None:
                 errors.append(f"Could not read mask: {entry.mask_path.name}")
@@ -866,23 +893,35 @@ class CellWallsModule:
             map_path = thickness_dir / f"{entry.mask_path.stem}_local_thickness.png"
             self._save_thickness_colormap(tum, analyzed_solid, map_path)
 
-            hist_path = hist_png_dir / f"hist_cellwall{self._safe_file_token(entry.file_id)}.png"
-            self._save_histogram_png(values, hist_mode, hist_value, hist_path, title=entry.file_id)
+            by_group.setdefault(entry.group_key, []).append((entry, values.astype(np.float32), map_path))
 
-            by_group.setdefault(entry.group_key, []).append((entry, values.astype(np.float32), map_path, hist_path))
+        # Tune bins on combined histograms, one sample(group) at a time.
+        initial_bins = int(hist_value) if hist_mode == "bins" else 256
+        by_group_values = {
+            g: (np.concatenate([vals for _, vals, _ in items]) if items else np.array([], dtype=np.float32))
+            for g, items in by_group.items()
+        }
+        ok_tune, tuned_bins = self._tune_group_histograms(by_group_values, initial_bins=initial_bins, x_min_um=float(x_min_um))
+        if not ok_tune:
+            self.status_var.set("Analysis cancelled during histogram tuning.")
+            return
 
         generated = 0
         for group_key, items in by_group.items():
             excel_path = out_dir / f"histogram_{group_key}.xlsx"
+            group_hist_mode = "bins"
+            group_hist_value = float(tuned_bins.get(group_key, initial_bins))
             with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
                 all_values = []
                 images_rows = []
 
-                for entry, values, map_path, hist_path in items:
+                for entry, values, map_path in items:
                     all_values.append(values)
-                    df_img, _, _ = self._make_histogram(values, hist_mode, hist_value)
+                    df_img, _, _ = self._make_histogram(values, group_hist_mode, group_hist_value)
                     sheet = self._safe_sheet_name(f"{entry.file_id}_log")
                     df_img.to_excel(writer, sheet_name=sheet, index=False)
+                    hist_path = hist_png_dir / f"hist_cellwall{self._safe_file_token(entry.file_id)}.png"
+                    self._save_histogram_png(values, group_hist_mode, group_hist_value, hist_path, title=entry.file_id)
                     images_rows.append(
                         {
                             "file_id": entry.file_id,
@@ -894,16 +933,17 @@ class CellWallsModule:
                             "exclusions": len(self.exclusions.get(entry.mask_path.name, [])),
                             "local_thickness_map_png": str(map_path.name),
                             "histogram_png": str(hist_path.name),
+                            "hist_bins_used": int(group_hist_value),
                         }
                     )
 
                 combined = np.concatenate(all_values) if all_values else np.array([], dtype=np.float32)
-                df_combined, _, _ = self._make_histogram(combined, hist_mode, hist_value)
+                df_combined, _, _ = self._make_histogram(combined, group_hist_mode, group_hist_value)
                 df_combined.to_excel(writer, sheet_name=self._safe_sheet_name(f"histogram_{group_key}"), index=False)
                 pd.DataFrame(images_rows).to_excel(writer, sheet_name=self._safe_sheet_name("images_used"), index=False)
                 # Combined PNG per group, named with same label logic as histogram_<label>.xlsx
                 combined_png = hist_png_dir / f"hist_cellwall{self._safe_file_token(group_key)}.png"
-                self._save_histogram_png(combined, hist_mode, hist_value, combined_png, title=f"{group_key} (combined)")
+                self._save_histogram_png(combined, group_hist_mode, group_hist_value, combined_png, title=f"{group_key} (combined)")
             generated += 1
 
         status = f"Completed. Generated {generated} workbook(s) in {out_dir}."
