@@ -39,6 +39,15 @@
         "HDPE": {},
         "rHDPE": {}
       }
+    },
+    "CellWall": {
+      "HDPE_TW": {
+        "HDPE": {
+          "input_folder": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\HDPE\\Cell Wall\\Input",
+          "output_folder": "C:\\Users\\usuario\\OneDrive - UVa\\Tesis doctoral\\PressTech\\Upcycling of plastics\\HDPE_TW\\HDPE\\Cell Wall\\Output",
+          "last_used": "2026-02-24T12:44:39.470741"
+        }
+      }
     }
   },
   "papers": [
@@ -54,7 +63,8 @@
     "PDR": "paper+foam",
     "OC": "paper+foam",
     "SEM": "paper+foam",
-    "DSC": "paper+foam"
+    "DSC": "paper+foam",
+    "CellWall": "paper+foam"
   },
   "paper_foam_types": {
     "Paper 1": [
