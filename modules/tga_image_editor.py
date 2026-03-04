@@ -1,3 +1,4 @@
+import io
 import os
 import re
 import tkinter as tk
@@ -5,9 +6,10 @@ from tkinter import ttk, filedialog, messagebox, colorchooser
 
 import numpy as np
 import pandas as pd
+from PIL import Image
+from matplotlib import colors as mcolors
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
-from matplotlib import colors as mcolors
 
 from .foam_type_manager import FoamTypeManager
 
@@ -63,28 +65,28 @@ class TGATextParser:
 
     def _parse_curve_blocks(self, lines):
         curves = []
-        i = 0
-        while i < len(lines):
-            if lines[i].strip() != "Curve Values:":
-                i += 1
+        index = 0
+        while index < len(lines):
+            if lines[index].strip() != "Curve Values:":
+                index += 1
                 continue
-            if i + 1 >= len(lines):
+            if index + 1 >= len(lines):
                 break
-            header_line = lines[i + 1]
+            header_line = lines[index + 1]
             if "Index" not in header_line:
-                i += 1
+                index += 1
                 continue
             columns = self._parse_header_columns(header_line)
             if not columns:
-                i += 1
+                index += 1
                 continue
-            i += 3
+            index += 3
             rows = []
-            while i < len(lines):
-                raw = lines[i].strip()
+            while index < len(lines):
+                raw = lines[index].strip()
                 if not raw:
-                    i += 1
-                    if i < len(lines) and not lines[i].strip():
+                    index += 1
+                    if index < len(lines) and not lines[index].strip():
                         break
                     continue
                 tokens = re.split(r"\s+", raw)
@@ -102,10 +104,9 @@ class TGATextParser:
                     parsed_row.append(value)
                 if valid:
                     rows.append(parsed_row)
-                i += 1
+                index += 1
             if rows:
-                df = pd.DataFrame(rows, columns=columns)
-                curves.append(df)
+                curves.append(pd.DataFrame(rows, columns=columns))
         return curves
 
     def _parse_header_columns(self, line):
@@ -129,15 +130,13 @@ class TGATextParser:
         return None
 
     def _build_derivative_from_mass(self, mass_curve):
-        df = mass_curve.copy()
-        x = self._temperature_axis(df).to_numpy(dtype=float)
-        y = df["Value"].to_numpy(dtype=float)
+        x = self._temperature_axis(mass_curve).to_numpy(dtype=float)
+        y = mass_curve["Value"].to_numpy(dtype=float)
         order = np.argsort(x)
         x_sorted = x[order]
         y_sorted = y[order]
         grad = np.gradient(y_sorted, x_sorted)
-        derived = pd.DataFrame({"x value": x_sorted, "y value": grad})
-        return derived
+        return pd.DataFrame({"x value": x_sorted, "y value": grad})
 
     def _parse_results(self, full_text, derivative_curve, derivative_scale_factor):
         left_limit = self._first_match_float(full_text, rf"Left\s+Limit\s+({self.numeric_pattern})\s*(?:°C|Â°C)")
@@ -181,13 +180,10 @@ class TGATextParser:
 
 
 class TGAImageEditor:
-    tab_names = ("Mass Loss", "Derivative (DTG)")
-    export_figsize = (8.5, 5.4)
     export_dpi = 600
-    tab_colors = {
-        "Mass Loss": "#0072B2",
-        "Derivative (DTG)": "#CC79A7",
-    }
+    mass_color_default = "#0072B2"
+    dtg_color_default = "#CC79A7"
+    export_layout = {"left": 0.12, "right": 0.88, "bottom": 0.17, "top": 0.97}
 
     def __init__(self, root):
         self.root = root
@@ -203,11 +199,12 @@ class TGAImageEditor:
         self.summary_var = tk.StringVar(value="No file loaded")
         self.status_var = tk.StringVar(value="Ready")
 
-        self.axes = {}
-        self.figures = {}
-        self.canvases = {}
+        self.figure = None
+        self.ax_mass = None
+        self.ax_dtg = None
+        self.canvas = None
         self.controls = {}
-        self.tab_plot_limits = {}
+        self.plot_limits = None
 
         self._build_ui()
 
@@ -218,152 +215,113 @@ class TGAImageEditor:
         top = ttk.LabelFrame(main, text="Input TGA file", padding=10)
         top.pack(fill=tk.X, pady=(0, 10))
         top.columnconfigure(1, weight=1)
-
         ttk.Label(top, text="TXT file:").grid(row=0, column=0, sticky=tk.W, padx=(0, 8))
         ttk.Entry(top, textvariable=self.filepath_var, state="readonly").grid(row=0, column=1, sticky=(tk.W, tk.E))
         ttk.Button(top, text="Browse", command=self.open_file).grid(row=0, column=2, padx=(8, 0))
         ttk.Button(top, text="Reload", command=self.reload_current_file).grid(row=0, column=3, padx=(8, 0))
-        ttk.Button(top, text="Export 2 PNG", command=lambda: self.export_all("png")).grid(row=0, column=4, padx=(8, 0))
-        ttk.Button(top, text="Export 2 PDF", command=lambda: self.export_all("pdf")).grid(row=0, column=5, padx=(8, 0))
+        ttk.Button(top, text="Export PNG", command=lambda: self.export_figure("png")).grid(row=0, column=4, padx=(8, 0))
+        ttk.Button(top, text="Export PDF", command=lambda: self.export_figure("pdf")).grid(row=0, column=5, padx=(8, 0))
+        ttk.Button(top, text="Copy Image", command=self.copy_image).grid(row=0, column=6, padx=(8, 0))
+        ttk.Label(top, textvariable=self.summary_var).grid(row=1, column=0, columnspan=7, sticky=tk.W, pady=(8, 0))
 
-        ttk.Label(top, textvariable=self.summary_var).grid(row=1, column=0, columnspan=6, sticky=tk.W, pady=(8, 0))
+        content = ttk.Frame(main)
+        content.pack(fill=tk.BOTH, expand=True)
+        content.columnconfigure(0, weight=4)
+        content.columnconfigure(1, weight=2)
+        content.rowconfigure(0, weight=1)
 
-        self.notebook = ttk.Notebook(main)
-        self.notebook.pack(fill=tk.BOTH, expand=True)
-        for tab_name in self.tab_names:
-            self._build_tab(tab_name)
-
-        ttk.Label(main, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W).pack(fill=tk.X, pady=(8, 0))
-
-    def _build_tab(self, tab_name):
-        tab = ttk.Frame(self.notebook, padding=8)
-        self.notebook.add(tab, text=tab_name)
-
-        tab.columnconfigure(0, weight=4)
-        tab.columnconfigure(1, weight=2)
-        tab.rowconfigure(0, weight=1)
-
-        plot_frame = ttk.Frame(tab)
+        plot_frame = ttk.LabelFrame(content, text="TGA Overlay (Mass + DTG)", padding=8)
         plot_frame.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.W, tk.E))
+        self.figure = Figure(figsize=(8.5, 5.4), dpi=110)
+        self.ax_mass = self.figure.add_subplot(111)
+        self.canvas = FigureCanvasTkAgg(self.figure, master=plot_frame)
+        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
-        fig = Figure(figsize=(8.5, 5.4), dpi=110)
-        ax = fig.add_subplot(111)
-        canvas = FigureCanvasTkAgg(fig, master=plot_frame)
-        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-
-        ctr = ttk.LabelFrame(tab, text="Labels and export", padding=10)
+        ctr = ttk.LabelFrame(content, text="Labels and style", padding=10)
         ctr.grid(row=0, column=1, sticky=(tk.N, tk.S, tk.W, tk.E), padx=(10, 0))
         ctr.columnconfigure(0, weight=1)
         ctr.configure(width=360, height=760)
         ctr.grid_propagate(False)
 
-        show_temp = tk.BooleanVar(value=True)
-        show_metric = tk.BooleanVar(value=True)
-        curve_color = tk.StringVar(value=self.tab_colors.get(tab_name, "#1f77b4"))
-        baseline_color = tk.StringVar(value=self.tab_colors.get(tab_name, "#1f77b4"))
+        show_td = tk.BooleanVar(value=True)
+        show_td_line = tk.BooleanVar(value=True)
+        show_legend = tk.BooleanVar(value=True)
+        mass_color = tk.StringVar(value=self.mass_color_default)
+        dtg_color = tk.StringVar(value=self.dtg_color_default)
         line_width = tk.DoubleVar(value=2.2)
         font_size = tk.DoubleVar(value=28.0)
         invert_x = tk.BooleanVar(value=False)
-        show_baseline = tk.BooleanVar(value=True)
-        left_limit = tk.StringVar(value="")
-        right_limit = tk.StringVar(value="")
-        x_temp = tk.DoubleVar(value=0.0)
-        y_temp = tk.DoubleVar(value=0.0)
-        x_metric = tk.DoubleVar(value=0.0)
-        y_metric = tk.DoubleVar(value=0.0)
+        x_td = tk.DoubleVar(value=0.0)
+        y_td = tk.DoubleVar(value=0.0)
+        legend_x = tk.DoubleVar(value=0.88)
+        legend_y = tk.DoubleVar(value=0.50)
 
-        temp_chk = ttk.Checkbutton(ctr, text="Show Td label", variable=show_temp, command=lambda n=tab_name: self.redraw_tab(n))
-        temp_chk.grid(row=0, column=0, sticky=tk.W)
-        metric_chk = ttk.Checkbutton(ctr, text="Show metric label", variable=show_metric, command=lambda n=tab_name: self.redraw_tab(n))
-        metric_chk.grid(row=1, column=0, sticky=tk.W, pady=(0, 6))
+        ttk.Checkbutton(ctr, text="Show Td label", variable=show_td, command=self.redraw_plot).grid(row=0, column=0, sticky=tk.W, pady=(0, 6))
+        ttk.Checkbutton(ctr, text="Show Td line", variable=show_td_line, command=self.redraw_plot).grid(row=1, column=0, sticky=tk.W, pady=(0, 6))
+        ttk.Checkbutton(ctr, text="Show legend", variable=show_legend, command=self.redraw_plot).grid(row=2, column=0, sticky=tk.W, pady=(0, 6))
 
-        ttk.Label(ctr, text="Curve color (HEX)").grid(row=2, column=0, sticky=tk.W)
-        c_row = ttk.Frame(ctr)
-        c_row.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
-        c_row.columnconfigure(0, weight=1)
-        ttk.Entry(c_row, textvariable=curve_color).grid(row=0, column=0, sticky=(tk.W, tk.E))
-        ttk.Button(c_row, text="Pick", width=6, command=lambda n=tab_name: self.pick_color(n, "curve_color")).grid(row=0, column=1, padx=(6, 0))
+        ttk.Label(ctr, text="Mass color (HEX)").grid(row=3, column=0, sticky=tk.W)
+        mass_row = ttk.Frame(ctr)
+        mass_row.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+        mass_row.columnconfigure(0, weight=1)
+        ttk.Entry(mass_row, textvariable=mass_color).grid(row=0, column=0, sticky=(tk.W, tk.E))
+        ttk.Button(mass_row, text="Pick", width=6, command=lambda: self.pick_color("mass_color")).grid(row=0, column=1, padx=(6, 0))
 
-        ttk.Label(ctr, text="Baseline color (HEX)").grid(row=4, column=0, sticky=tk.W)
-        b_row = ttk.Frame(ctr)
-        b_row.grid(row=5, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
-        b_row.columnconfigure(0, weight=1)
-        ttk.Entry(b_row, textvariable=baseline_color).grid(row=0, column=0, sticky=(tk.W, tk.E))
-        ttk.Button(b_row, text="Pick", width=6, command=lambda n=tab_name: self.pick_color(n, "baseline_color")).grid(row=0, column=1, padx=(6, 0))
+        ttk.Label(ctr, text="DTG color (HEX)").grid(row=5, column=0, sticky=tk.W)
+        dtg_row = ttk.Frame(ctr)
+        dtg_row.grid(row=6, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+        dtg_row.columnconfigure(0, weight=1)
+        ttk.Entry(dtg_row, textvariable=dtg_color).grid(row=0, column=0, sticky=(tk.W, tk.E))
+        ttk.Button(dtg_row, text="Pick", width=6, command=lambda: self.pick_color("dtg_color")).grid(row=0, column=1, padx=(6, 0))
 
-        ttk.Label(ctr, text="Line width").grid(row=6, column=0, sticky=tk.W)
-        lw_spin = tk.Spinbox(ctr, from_=0.5, to=6.0, increment=0.1, textvariable=line_width, command=lambda n=tab_name: self.redraw_tab(n))
-        lw_spin.grid(row=7, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
-        lw_spin.bind("<KeyRelease>", lambda _e, n=tab_name: self.redraw_tab(n))
+        ttk.Label(ctr, text="Line width").grid(row=7, column=0, sticky=tk.W)
+        lw_spin = tk.Spinbox(ctr, from_=0.5, to=6.0, increment=0.1, textvariable=line_width, command=self.redraw_plot)
+        lw_spin.grid(row=8, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+        lw_spin.bind("<KeyRelease>", lambda _e: self.redraw_plot())
 
-        ttk.Label(ctr, text="Font size").grid(row=8, column=0, sticky=tk.W)
-        fs_spin = tk.Spinbox(ctr, from_=10.0, to=40.0, increment=0.5, textvariable=font_size, command=lambda n=tab_name: self.redraw_tab(n))
-        fs_spin.grid(row=9, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
-        fs_spin.bind("<KeyRelease>", lambda _e, n=tab_name: self.redraw_tab(n))
+        ttk.Label(ctr, text="Font size").grid(row=9, column=0, sticky=tk.W)
+        fs_spin = tk.Spinbox(ctr, from_=10.0, to=40.0, increment=0.5, textvariable=font_size, command=self.redraw_plot)
+        fs_spin.grid(row=10, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+        fs_spin.bind("<KeyRelease>", lambda _e: self.redraw_plot())
 
-        ttk.Checkbutton(ctr, text="Invert X axis (high → low)", variable=invert_x, command=lambda n=tab_name: self.redraw_tab(n)).grid(row=10, column=0, sticky=tk.W, pady=(0, 6))
-        baseline_chk = ttk.Checkbutton(ctr, text="Show baseline", variable=show_baseline, command=lambda n=tab_name: self.redraw_tab(n))
-        baseline_chk.grid(row=11, column=0, sticky=tk.W, pady=(0, 6))
+        ttk.Checkbutton(ctr, text="Invert X axis (high → low)", variable=invert_x, command=self.redraw_plot).grid(row=11, column=0, sticky=tk.W, pady=(0, 8))
 
-        ttk.Label(ctr, text="Integration left limit (°C)").grid(row=12, column=0, sticky=tk.W)
-        left_entry = ttk.Entry(ctr, textvariable=left_limit)
-        left_entry.grid(row=13, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
-        left_entry.bind("<KeyRelease>", lambda _e, n=tab_name: self.redraw_tab(n))
+        ttk.Label(ctr, text="Td label X").grid(row=12, column=0, sticky=tk.W)
+        td_x_scale = ttk.Scale(ctr, variable=x_td, from_=0, to=1, command=lambda _v: self.redraw_plot())
+        td_x_scale.grid(row=13, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
 
-        ttk.Label(ctr, text="Integration right limit (°C)").grid(row=14, column=0, sticky=tk.W)
-        right_entry = ttk.Entry(ctr, textvariable=right_limit)
-        right_entry.grid(row=15, column=0, sticky=(tk.W, tk.E), pady=(0, 8))
-        right_entry.bind("<KeyRelease>", lambda _e, n=tab_name: self.redraw_tab(n))
+        ttk.Label(ctr, text="Td label Y").grid(row=14, column=0, sticky=tk.W)
+        td_y_scale = ttk.Scale(ctr, variable=y_td, from_=0, to=1, command=lambda _v: self.redraw_plot())
+        td_y_scale.grid(row=15, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
 
-        ttk.Label(ctr, text="Td label X").grid(row=16, column=0, sticky=tk.W)
-        temp_x_scale = ttk.Scale(ctr, variable=x_temp, from_=0, to=1, command=lambda _v, n=tab_name: self.redraw_tab(n))
-        temp_x_scale.grid(row=17, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+        ttk.Label(ctr, text="Legend X (axes)").grid(row=16, column=0, sticky=tk.W)
+        legend_x_scale = ttk.Scale(ctr, variable=legend_x, from_=0.0, to=1.0, command=lambda _v: self.redraw_plot())
+        legend_x_scale.grid(row=17, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
 
-        ttk.Label(ctr, text="Td label Y").grid(row=18, column=0, sticky=tk.W)
-        temp_y_scale = ttk.Scale(ctr, variable=y_temp, from_=0, to=1, command=lambda _v, n=tab_name: self.redraw_tab(n))
-        temp_y_scale.grid(row=19, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+        ttk.Label(ctr, text="Legend Y (axes)").grid(row=18, column=0, sticky=tk.W)
+        legend_y_scale = ttk.Scale(ctr, variable=legend_y, from_=0.0, to=1.0, command=lambda _v: self.redraw_plot())
+        legend_y_scale.grid(row=19, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
 
-        ttk.Label(ctr, text="Metric label X").grid(row=20, column=0, sticky=tk.W)
-        metric_x_scale = ttk.Scale(ctr, variable=x_metric, from_=0, to=1, command=lambda _v, n=tab_name: self.redraw_tab(n))
-        metric_x_scale.grid(row=21, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
-
-        ttk.Label(ctr, text="Metric label Y").grid(row=22, column=0, sticky=tk.W)
-        metric_y_scale = ttk.Scale(ctr, variable=y_metric, from_=0, to=1, command=lambda _v, n=tab_name: self.redraw_tab(n))
-        metric_y_scale.grid(row=23, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
-
-        ttk.Button(ctr, text="Export PNG", command=lambda n=tab_name: self.export_tab(n, "png")).grid(row=24, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
-        ttk.Button(ctr, text="Export PDF", command=lambda n=tab_name: self.export_tab(n, "pdf")).grid(row=25, column=0, sticky=(tk.W, tk.E))
-
-        self.axes[tab_name] = ax
-        self.figures[tab_name] = fig
-        self.canvases[tab_name] = canvas
-        self.controls[tab_name] = {
-            "show_temp": show_temp,
-            "show_metric": show_metric,
-            "curve_color": curve_color,
-            "baseline_color": baseline_color,
+        self.controls = {
+            "show_td": show_td,
+            "show_td_line": show_td_line,
+            "show_legend": show_legend,
+            "mass_color": mass_color,
+            "dtg_color": dtg_color,
             "line_width": line_width,
             "font_size": font_size,
             "invert_x": invert_x,
-            "show_baseline": show_baseline,
-            "left_limit": left_limit,
-            "right_limit": right_limit,
-            "x_temp": x_temp,
-            "y_temp": y_temp,
-            "x_metric": x_metric,
-            "y_metric": y_metric,
-            "temp_x_scale": temp_x_scale,
-            "temp_y_scale": temp_y_scale,
-            "metric_x_scale": metric_x_scale,
-            "metric_y_scale": metric_y_scale,
+            "x_td": x_td,
+            "y_td": y_td,
+            "legend_x": legend_x,
+            "legend_y": legend_y,
+            "td_x_scale": td_x_scale,
+            "td_y_scale": td_y_scale,
+            "legend_x_scale": legend_x_scale,
+            "legend_y_scale": legend_y_scale,
         }
 
-        if tab_name == "Mass Loss":
-            temp_chk.state(["disabled"])
-            metric_chk.state(["disabled"])
-            baseline_chk.state(["disabled"])
-        else:
-            metric_chk.state(["disabled"])
+        ttk.Label(main, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W).pack(fill=tk.X, pady=(8, 0))
 
     def open_file(self):
         initial_dir = None
@@ -371,7 +329,6 @@ class TGAImageEditor:
         suggestions = self.foam_manager.get_suggested_paths("TGA", current_foam)
         if suggestions and suggestions.get("input_folder"):
             initial_dir = suggestions.get("input_folder")
-
         path = filedialog.askopenfilename(
             title="Select TGA TXT file",
             initialdir=initial_dir,
@@ -394,8 +351,7 @@ class TGAImageEditor:
             self.parsed = self.parser.parse_file(file_path)
             self._update_summary()
             self._prepare_controls()
-            for tab_name in self.tab_names:
-                self.redraw_tab(tab_name)
+            self.redraw_plot()
             self.status_var.set(f"Loaded {os.path.basename(file_path)}")
         except Exception as exc:
             messagebox.showerror("Error", f"Could not parse TGA file:\n{exc}")
@@ -407,178 +363,187 @@ class TGAImageEditor:
             return
         sample = self.parsed["sample_name"]
         mass = self.parsed["mass_mg"]
-        mass_text = f"{mass:.3f} mg" if isinstance(mass, float) else "n/a"
         td = self.parsed["results"].get("td")
+        mass_text = f"{mass:.3f} mg" if isinstance(mass, float) else "n/a"
         td_text = f"{td:.2f} °C" if isinstance(td, float) else "n/a"
         self.summary_var.set(f"Sample: {sample} | Mass: {mass_text} | Td: {td_text}")
 
-    def _prepare_controls(self):
-        if not self.parsed:
-            return
-        self.tab_plot_limits = {}
-        left_limit = self.parsed["results"].get("left_limit")
-        right_limit = self.parsed["results"].get("right_limit")
-        td = self.parsed["results"].get("td")
-
-        x_ranges = []
-        for tab_name in self.tab_names:
-            x_data, _ = self._tab_data(tab_name)
-            if len(x_data):
-                x_ranges.append((float(np.min(x_data)), float(np.max(x_data))))
-        shared_x = None
-        if x_ranges:
-            x0 = min(v[0] for v in x_ranges)
-            x1 = max(v[1] for v in x_ranges)
-            if x0 == x1:
-                x1 = x0 + 1.0
-            x_pad = 0.03 * (x1 - x0)
-            shared_x = (x0 - x_pad, x1 + x_pad)
-
-        for tab_name in self.tab_names:
-            x_data, y_data = self._tab_data(tab_name)
-            if len(x_data) == 0:
-                continue
-            x_min, x_max = float(np.min(x_data)), float(np.max(x_data))
-            y_min, y_max = float(np.min(y_data)), float(np.max(y_data))
-            if x_min == x_max:
-                x_max = x_min + 1.0
-            if y_min == y_max:
-                y_max = y_min + 1.0
-            y_pad = 0.08 * (y_max - y_min)
-            x_lim = shared_x if shared_x else (x_min, x_max)
-            self.tab_plot_limits[tab_name] = (x_lim[0], x_lim[1], y_min - y_pad, y_max + y_pad)
-
-            ctr = self.controls[tab_name]
-            ctr["temp_x_scale"].configure(from_=x_min, to=x_max)
-            ctr["temp_y_scale"].configure(from_=y_min, to=y_max)
-            ctr["metric_x_scale"].configure(from_=x_min, to=x_max)
-            ctr["metric_y_scale"].configure(from_=y_min, to=y_max)
-
-            if tab_name == "Mass Loss":
-                ctr["x_temp"].set(td if td is not None else x_min + 0.62 * (x_max - x_min))
-                ctr["y_temp"].set(y_min + 0.82 * (y_max - y_min))
-                ctr["x_metric"].set(x_min + 0.15 * (x_max - x_min))
-                ctr["y_metric"].set(y_min + 0.16 * (y_max - y_min))
-                ctr["show_temp"].set(False)
-                ctr["show_metric"].set(False)
-                ctr["show_baseline"].set(False)
-            else:
-                ctr["x_temp"].set(x_min + 0.12 * (x_max - x_min))
-                ctr["y_temp"].set(y_min + 0.08 * (y_max - y_min))
-                ctr["x_metric"].set(x_min + 0.20 * (x_max - x_min))
-                ctr["y_metric"].set(y_min + 0.12 * (y_max - y_min))
-                ctr["show_temp"].set(True)
-                ctr["show_metric"].set(False)
-
-            ctr["curve_color"].set(self.tab_colors.get(tab_name, "#1f77b4"))
-            ctr["baseline_color"].set(self.tab_colors.get(tab_name, "#1f77b4"))
-            ctr["line_width"].set(2.2)
-            ctr["font_size"].set(28.0)
-            ctr["invert_x"].set(False)
-            if tab_name != "Mass Loss":
-                ctr["show_baseline"].set(True)
-            ctr["left_limit"].set("" if left_limit is None else f"{left_limit:.3f}")
-            ctr["right_limit"].set("" if right_limit is None else f"{right_limit:.3f}")
-
-    def _tab_data(self, tab_name):
+    def _mass_data(self):
         if not self.parsed:
             return np.array([]), np.array([])
-        if tab_name == "Mass Loss":
-            curve = self.parsed["mass_curve"]
-            x_series = curve["Tr"] if "Tr" in curve.columns else curve["Ts"]
-            y_series = curve["Value"]
-        else:
-            curve = self.parsed["derivative_curve"]
-            scale_factor = float(self.parsed.get("derivative_scale_factor", 1.0))
-            x_series = curve["x value"] if "x value" in curve.columns else (curve["Tr"] if "Tr" in curve.columns else curve["Ts"])
-            y_series = (curve["y value"] if "y value" in curve.columns else curve["Value"]) * scale_factor
+        curve = self.parsed["mass_curve"]
+        x = (curve["Tr"] if "Tr" in curve.columns else curve["Ts"]).to_numpy(dtype=float)
+        y = curve["Value"].to_numpy(dtype=float)
+        return x, y
+
+    def _dtg_data(self):
+        if not self.parsed:
+            return np.array([]), np.array([])
+        curve = self.parsed["derivative_curve"]
+        scale_factor = float(self.parsed.get("derivative_scale_factor", 1.0))
+        x_series = curve["x value"] if "x value" in curve.columns else (curve["Tr"] if "Tr" in curve.columns else curve["Ts"])
+        y_series = (curve["y value"] if "y value" in curve.columns else curve["Value"]) * scale_factor
         return x_series.to_numpy(dtype=float), y_series.to_numpy(dtype=float)
 
-    def redraw_tab(self, tab_name):
-        fig = self.figures.get(tab_name)
-        ax = self.axes.get(tab_name)
-        canvas = self.canvases.get(tab_name)
-        if not fig or not ax or not canvas:
+    def _prepare_controls(self):
+        x_mass, y_mass = self._mass_data()
+        x_dtg, y_dtg = self._dtg_data()
+        if len(x_mass) == 0 or len(x_dtg) == 0:
             return
-        ax.clear()
-        ax.set_facecolor("white")
+
+        x_min = min(float(np.min(x_mass)), float(np.min(x_dtg)))
+        x_max = max(float(np.max(x_mass)), float(np.max(x_dtg)))
+        if x_min == x_max:
+            x_max = x_min + 1.0
+        x_pad = 0.03 * (x_max - x_min)
+
+        ym_min, ym_max = float(np.min(y_mass)), float(np.max(y_mass))
+        yd_min, yd_max = float(np.min(y_dtg)), float(np.max(y_dtg))
+        if ym_min == ym_max:
+            ym_max = ym_min + 1.0
+        if yd_min == yd_max:
+            yd_max = yd_min + 1.0
+        ym_pad = 0.08 * (ym_max - ym_min)
+        yd_pad = 0.08 * (yd_max - yd_min)
+
+        self.plot_limits = {
+            "x": (x_min - x_pad, x_max + x_pad),
+            "mass_y": (ym_min - ym_pad, ym_max + ym_pad),
+            "dtg_y": (yd_min - yd_pad, yd_max + yd_pad),
+        }
+
+        ctr = self.controls
+        ctr["td_x_scale"].configure(from_=x_min, to=x_max)
+        ctr["td_y_scale"].configure(from_=yd_min, to=yd_max)
+        ctr["mass_color"].set(self.mass_color_default)
+        ctr["dtg_color"].set(self.dtg_color_default)
+        ctr["line_width"].set(2.2)
+        ctr["font_size"].set(28.0)
+        ctr["invert_x"].set(False)
+        ctr["show_td"].set(True)
+        ctr["show_td_line"].set(True)
+        ctr["show_legend"].set(True)
+        ctr["x_td"].set(x_min + 0.12 * (x_max - x_min))
+        ctr["y_td"].set(yd_min + 0.08 * (yd_max - yd_min))
+        ctr["legend_x"].set(0.88)
+        ctr["legend_y"].set(0.50)
+
+    def redraw_plot(self):
+        if self.figure is None or self.ax_mass is None or self.canvas is None:
+            return
+        self.ax_mass.clear()
+        if self.ax_dtg is not None:
+            try:
+                self.ax_dtg.remove()
+            except Exception:
+                pass
+            self.ax_dtg = None
 
         if not self.parsed:
-            ax.text(0.5, 0.5, "Load a TGA TXT file", ha="center", va="center", transform=ax.transAxes, fontsize=12)
-            fig.tight_layout()
-            canvas.draw_idle()
+            self.ax_mass.text(0.5, 0.5, "Load a TGA TXT file", ha="center", va="center", transform=self.ax_mass.transAxes, fontsize=12)
+            self._apply_layout()
+            self.canvas.draw_idle()
             return
 
-        x_data, y_data = self._tab_data(tab_name)
-        if len(x_data) == 0:
-            ax.text(0.5, 0.5, "No data for this plot", ha="center", va="center", transform=ax.transAxes, fontsize=12)
-            fig.tight_layout()
-            canvas.draw_idle()
+        x_mass, y_mass = self._mass_data()
+        x_dtg, y_dtg = self._dtg_data()
+        if len(x_mass) == 0 or len(x_dtg) == 0:
+            self.ax_mass.text(0.5, 0.5, "No data for this plot", ha="center", va="center", transform=self.ax_mass.transAxes, fontsize=12)
+            self._apply_layout()
+            self.canvas.draw_idle()
             return
 
-        ctr = self.controls[tab_name]
-        color = self.resolve_color(ctr["curve_color"].get(), self.tab_colors.get(tab_name, "#1f77b4"))
-        baseline_color = self.resolve_color(ctr["baseline_color"].get(), color)
-        lw = self.read_float(ctr["line_width"], 2.2, minimum=0.4)
-        fs = self.read_float(ctr["font_size"], 28.0, minimum=8.0)
+        ctr = self.controls
+        fs = self._read_float(ctr["font_size"], 28.0, minimum=8.0)
+        lw = self._read_float(ctr["line_width"], 2.2, minimum=0.4)
+        mass_color = self._resolve_color(ctr["mass_color"].get(), self.mass_color_default)
+        dtg_color = self._resolve_color(ctr["dtg_color"].get(), self.dtg_color_default)
 
-        ax.plot(x_data, y_data, color=color, linewidth=lw)
-        ax.set_xlabel("Temperature (°C)", fontname="DejaVu Sans", fontsize=fs)
-        if tab_name == "Mass Loss":
-            ax.set_ylabel("Mass (%)", fontname="DejaVu Sans", fontsize=fs)
-        else:
-            ax.set_ylabel("d(Mass)/dT (%/°C)", fontname="DejaVu Sans", fontsize=fs)
-        ax.tick_params(direction="in", top=True, right=True, labelsize=max(8.0, fs - 2.0))
-        ax.grid(False)
+        mass_lw = max(0.6, lw)
+        dtg_lw = max(0.6, lw * 0.78)
+
+        mass_line, = self.ax_mass.plot(
+            x_mass,
+            y_mass,
+            color=mass_color,
+            linewidth=mass_lw,
+            linestyle="-",
+            alpha=1.0,
+            zorder=3,
+            label="Mass loss",
+        )
+        self.ax_mass.set_xlabel("Temperature (°C)", fontname="DejaVu Sans", fontsize=fs)
+        self.ax_mass.set_ylabel("Mass (%)", color="#000000", fontname="DejaVu Sans", fontsize=fs)
+        self.ax_mass.tick_params(axis="x", direction="in", top=True, labelsize=max(8.0, fs - 2.0))
+        self.ax_mass.tick_params(axis="y", direction="in", left=True, right=False, colors="#000000", labelsize=max(8.0, fs - 2.0))
+        self.ax_mass.grid(False)
+
+        self.ax_dtg = self.ax_mass.twinx()
+        dtg_line, = self.ax_dtg.plot(
+            x_dtg,
+            y_dtg,
+            color=dtg_color,
+            linewidth=dtg_lw,
+            linestyle="--",
+            dashes=(6, 4),
+            alpha=0.75,
+            zorder=2,
+            label="DTG",
+        )
+        self.ax_dtg.set_ylabel("d(Mass)/dT (%/°C)", color="#000000", fontname="DejaVu Sans", fontsize=fs)
+        self.ax_dtg.tick_params(axis="y", direction="in", left=False, right=True, colors="#000000", labelsize=max(8.0, fs - 2.0))
+        self.ax_dtg.grid(False)
+        if ctr["show_legend"].get():
+            legend = self.ax_mass.legend(
+                handles=[mass_line, dtg_line],
+                loc="center",
+                bbox_to_anchor=(ctr["legend_x"].get(), ctr["legend_y"].get()),
+                bbox_transform=self.ax_mass.transAxes,
+                frameon=True,
+                fancybox=False,
+                framealpha=1.0,
+                fontsize=max(8.0, fs - 10.0),
+            )
+            legend.get_frame().set_edgecolor("#000000")
+            legend.get_frame().set_linewidth(0.9)
+
+        if self.plot_limits:
+            x0, x1 = self.plot_limits["x"]
+            ym0, ym1 = self.plot_limits["mass_y"]
+            yd0, yd1 = self.plot_limits["dtg_y"]
+            self.ax_mass.set_xlim(x0, x1)
+            self.ax_mass.set_ylim(ym0, ym1)
+            self.ax_dtg.set_ylim(yd0, yd1)
+
         if ctr["invert_x"].get():
-            ax.invert_xaxis()
-
-        limits = self.tab_plot_limits.get(tab_name)
-        if limits:
-            x0, x1, y0, y1 = limits
-            ax.set_xlim(x0, x1)
-            ax.set_ylim(y0, y1)
-
-        left, right = self.get_limits(ctr)
-        if tab_name != "Mass Loss" and ctr["show_baseline"].get() and left is not None and right is not None and left != right:
-            sorted_idx = np.argsort(x_data)
-            xs = x_data[sorted_idx]
-            ys = y_data[sorted_idx]
-            x_left = float(np.clip(left, np.min(x_data), np.max(x_data)))
-            x_right = float(np.clip(right, np.min(x_data), np.max(x_data)))
-            y_left = float(np.interp(x_left, xs, ys))
-            y_right = float(np.interp(x_right, xs, ys))
-            ax.plot([x_left, x_right], [y_left, y_right], linestyle="--", dashes=(6, 4), linewidth=max(1.2, 0.8 * lw), color=baseline_color, zorder=5)
+            self.ax_mass.invert_xaxis()
+            self.ax_dtg.invert_xaxis()
 
         td = self.parsed["results"].get("td")
-        if tab_name == "Derivative (DTG)" and ctr["show_temp"].get() and td is not None:
-            ax.text(
-                ctr["x_temp"].get(),
-                ctr["y_temp"].get(),
+        if ctr["show_td_line"].get() and td is not None:
+            self.ax_mass.axvline(
+                td,
+                color="#6e6e6e",
+                linestyle="--",
+                dashes=(3, 3),
+                linewidth=max(0.8, 0.45 * lw),
+                alpha=0.55,
+                zorder=1,
+            )
+        if ctr["show_td"].get() and td is not None:
+            self.ax_dtg.text(
+                ctr["x_td"].get(),
+                ctr["y_td"].get(),
                 f"$T_{{d}}={td:.2f}$ °C",
                 color="#000000",
                 fontsize=max(8.0, fs - 1.0),
                 fontname="DejaVu Sans",
             )
 
-        fig.tight_layout()
-        canvas.draw_idle()
+        self._apply_layout()
+        self.canvas.draw_idle()
 
-    def get_limits(self, ctr):
-        left = self.read_float(ctr["left_limit"], None)
-        right = self.read_float(ctr["right_limit"], None)
-        return left, right
-
-    def read_float(self, variable, fallback, minimum=None):
-        try:
-            value = float(variable.get())
-        except Exception:
-            return fallback
-        if minimum is not None:
-            return max(minimum, value)
-        return value
-
-    def resolve_color(self, text, fallback):
+    def _resolve_color(self, text, fallback):
         value = (text or "").strip()
         if not value:
             return fallback
@@ -588,24 +553,32 @@ class TGAImageEditor:
         except Exception:
             return fallback
 
-    def pick_color(self, tab_name, key):
-        ctr = self.controls.get(tab_name)
-        if not ctr or key not in ctr:
-            return
-        initial = ctr[key].get()
-        chosen = colorchooser.askcolor(color=initial, title=f"Select {tab_name} {key.replace('_', ' ')}")
-        if chosen[1]:
-            ctr[key].set(chosen[1])
-            self.redraw_tab(tab_name)
+    def _read_float(self, variable, fallback, minimum=None):
+        try:
+            value = float(variable.get())
+        except Exception:
+            return fallback
+        if minimum is not None:
+            return max(minimum, value)
+        return value
 
-    def export_tab(self, tab_name, ext):
+    def pick_color(self, key):
+        if key not in self.controls:
+            return
+        initial = self.controls[key].get()
+        chosen = colorchooser.askcolor(color=initial, title=f"Select {key.replace('_', ' ')}")
+        if chosen[1]:
+            self.controls[key].set(chosen[1])
+            self.redraw_plot()
+
+    def export_figure(self, ext):
         if not self.parsed:
             messagebox.showwarning("No data", "Load a TGA TXT file first.")
             return
         sample = self.parsed["sample_name"].replace(" ", "_")
-        default_name = f"{sample}_{tab_name.replace(' ', '_').replace('(', '').replace(')', '')}.{ext}"
+        default_name = f"{sample}_TGA_overlay.{ext}"
         out = filedialog.asksaveasfilename(
-            title=f"Save {tab_name}",
+            title="Save TGA overlay figure",
             defaultextension=f".{ext}",
             initialfile=default_name,
             filetypes=[(ext.upper(), f"*.{ext}"), ("All files", "*.*")],
@@ -613,40 +586,46 @@ class TGAImageEditor:
         if not out:
             return
         try:
-            self._save_fixed_figure(self.figures[tab_name], out)
+            self._save_current_figure(out)
             self.status_var.set(f"Saved {os.path.basename(out)}")
         except Exception as exc:
             messagebox.showerror("Error", f"Could not save figure:\n{exc}")
             self.status_var.set("Error saving figure")
 
-    def export_all(self, ext):
-        if not self.parsed:
-            messagebox.showwarning("No data", "Load a TGA TXT file first.")
+    def copy_image(self):
+        if self.figure is None:
             return
-        out_dir = filedialog.askdirectory(title=f"Select folder to export 2 {ext.upper()} figures")
-        if not out_dir:
-            return
-        sample = self.parsed["sample_name"].replace(" ", "_")
-        errors = []
-        for tab_name in self.tab_names:
+        try:
+            self._apply_layout()
+            buffer = io.BytesIO()
+            self.figure.savefig(buffer, format="png", dpi=self.export_dpi)
+            buffer.seek(0)
+            image = Image.open(buffer).convert("RGB")
+            bmp = io.BytesIO()
+            image.save(bmp, format="BMP")
+            data = bmp.getvalue()[14:]
+            import win32clipboard
+
+            win32clipboard.OpenClipboard()
             try:
-                filename = f"{sample}_{tab_name.replace(' ', '_').replace('(', '').replace(')', '')}.{ext}"
-                out = os.path.join(out_dir, filename)
-                self._save_fixed_figure(self.figures[tab_name], out)
-            except Exception as exc:
-                errors.append(f"{tab_name}: {exc}")
-        if errors:
-            messagebox.showerror("Export finished with errors", "\n".join(errors))
-            self.status_var.set("Exported with errors")
-        else:
-            self.status_var.set(f"Saved 2 {ext.upper()} figures")
-            messagebox.showinfo("Export completed", f"2 {ext.upper()} figures exported to:\n{out_dir}")
+                win32clipboard.EmptyClipboard()
+                win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
+            finally:
+                win32clipboard.CloseClipboard()
+            self.status_var.set("Copied TGA image to clipboard")
+        except Exception as exc:
+            messagebox.showerror("Clipboard error", f"Could not copy image:\n{exc}")
 
-    def _save_fixed_figure(self, figure, output_path):
-        figure.canvas.draw()
-        figure.savefig(output_path, dpi=self.export_dpi)
+    def _apply_layout(self):
+        if self.figure is None:
+            return
+        self.figure.subplots_adjust(**self.export_layout)
+
+    def _save_current_figure(self, output_path):
+        if self.figure is None:
+            return
+        self.figure.canvas.draw()
+        self.figure.savefig(output_path, dpi=self.export_dpi)
 
 
-class TGAImageModule:
-    def __init__(self, root):
-        self.editor = TGAImageEditor(root)
+
