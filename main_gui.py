@@ -10,6 +10,7 @@ from modules.ui_utils import setup_toplevel, Tooltip
 from modules.combine_module import CombineModule
 from modules.dsc_module import DSCModule
 from modules.dsc_image_editor import DSCImageEditor as DSCImageModule
+from modules.tga_image_editor import TGAImageEditor as TGAImageModule
 from modules.sem_module import SEMImageEditor as SEMModule
 from modules.oc_module import OCModule
 from modules.pdr_module import PDRModule
@@ -207,7 +208,7 @@ class PressTechGUI:
 
         images_frame = ttk.LabelFrame(buttons_frame, text='PAPER IMAGES', padding=12)
         images_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(12, 0))
-        images_frame.columnconfigure((0, 1), weight=1)
+        images_frame.columnconfigure((0, 1, 2), weight=1)
 
         sem_images_btn = ttk.Button(
             images_frame,
@@ -225,6 +226,14 @@ class PressTechGUI:
         )
         dsc_images_btn.grid(row=0, column=1, padx=10, pady=6, sticky=(tk.W, tk.E))
 
+        tga_images_btn = ttk.Button(
+            images_frame,
+            text='TGA IMAGE EDITOR',
+            command=self.open_tga_image_with_foam_check,
+            **button_style
+        )
+        tga_images_btn.grid(row=0, column=2, padx=10, pady=6, sticky=(tk.W, tk.E))
+
         self.add_tooltips(
             analysis_btn,
             combine_btn,
@@ -234,6 +243,7 @@ class PressTechGUI:
             heatmap_btn,
             sem_images_btn,
             dsc_images_btn,
+            tga_images_btn,
         )
 
     def add_tooltips(self, *buttons):
@@ -258,6 +268,8 @@ class PressTechGUI:
                 tooltip_map[b] = "Edit SEM images and ROIs for the selected paper"
             elif 'DSC IMAGE' in upper_txt:
                 tooltip_map[b] = "Create publication-ready DSC phase plots from TXT data"
+            elif 'TGA IMAGE' in upper_txt:
+                tooltip_map[b] = "Create publication-ready TGA mass loss and derivative plots from TXT data"
             elif 'HEATMAPS' in upper_txt:
                 tooltip_map[b] = "Spearman heatmaps with column selection"
 
@@ -330,6 +342,7 @@ class PressTechGUI:
         tools_menu.add_command(label="DSC Analysis", command=self.open_dsc_with_foam_check)
         tools_menu.add_command(label="SEM Image Editor", command=self.open_sem_with_foam_check)
         tools_menu.add_command(label="DSC Image Editor", command=self.open_dsc_image_with_foam_check)
+        tools_menu.add_command(label="TGA Image Editor", command=self.open_tga_image_with_foam_check)
         tools_menu.add_command(label="Open-Cell Content", command=self.open_oc_with_foam_check)
         tools_menu.add_command(label="Pressure Drop Rate", command=self.open_pdr_with_foam_check)
         tools_menu.add_separator()
@@ -551,6 +564,17 @@ class PressTechGUI:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open DSC image editor: {str(e)}")
             self.update_status("Error opening DSC Image Editor module")
+
+    def open_tga_image(self):
+        """Open TGA Image Editor module"""
+        self.update_status("Opening TGA Image Editor module...")
+        try:
+            tga_image_window = setup_toplevel(self.root, "TGA Image Editor")
+            TGAImageModule(tga_image_window)
+            self.update_status("TGA Image Editor module opened")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open TGA image editor: {str(e)}")
+            self.update_status("Error opening TGA Image Editor module")
     
     def open_oc(self):
         """Open Open-Cell Content module"""
@@ -668,6 +692,10 @@ class PressTechGUI:
         """Open DSC Image Editor module with foam type verification"""
         self.ensure_foam_type_selected()
         self.open_dsc_image()
+    def open_tga_image_with_foam_check(self):
+        """Open TGA Image Editor module with foam type verification"""
+        self.ensure_foam_type_selected()
+        self.open_tga_image()
     def open_oc_with_foam_check(self):
         """Open Open-Cell Content module with foam type verification"""
         self.ensure_foam_type_selected()

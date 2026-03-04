@@ -1,10 +1,12 @@
 import os
 import re
+import io
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, colorchooser
 
 import numpy as np
 import pandas as pd
+from PIL import Image
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib import colors as mcolors
 from matplotlib.figure import Figure
@@ -14,6 +16,7 @@ from .foam_type_manager import FoamTypeManager
 
 class DSCTextParser:
     phase_order = ("1st Heating", "Cooling", "2nd Heating")
+    numeric_pattern = r"-?[\d,\.]+(?:e[+-]?\d+)?"
 
     @staticmethod
     def _to_float(value):
@@ -74,24 +77,63 @@ class DSCTextParser:
         return pd.DataFrame(rows, columns=["Index", "t", "Ts", "Tr", "Value"])
 
     def _split_segments(self, data_frame):
-        if len(data_frame) < 9:
-            chunk = max(1, len(data_frame) // 3)
-            split_points = [chunk, min(chunk * 2, len(data_frame))]
+        total = len(data_frame)
+        if total < 9:
+            chunk = max(1, total // 3)
+            split_points = [chunk, min(chunk * 2, total)]
         else:
-            index_values = data_frame["Index"].to_numpy()
-            diffs = np.diff(index_values)
-            candidate_positions = np.where(diffs > 1)[0]
-            if len(candidate_positions) >= 2:
-                top = candidate_positions[np.argsort(diffs[candidate_positions])[-2:]]
-                split_points = sorted((top + 1).tolist())
+            temperature = data_frame["Ts"].to_numpy(dtype=float)
+            dtemp = np.diff(temperature)
+            if len(dtemp) >= 5:
+                kernel = np.ones(5, dtype=float) / 5.0
+                dtemp_smooth = np.convolve(dtemp, kernel, mode="same")
             else:
-                split_points = [
-                    len(data_frame) // 3,
-                    (2 * len(data_frame)) // 3,
-                ]
+                dtemp_smooth = dtemp
 
-        s1 = max(1, min(split_points[0], len(data_frame) - 2))
-        s2 = max(s1 + 1, min(split_points[1], len(data_frame) - 1))
+            median_abs = float(np.median(np.abs(dtemp_smooth))) if len(dtemp_smooth) else 0.0
+            epsilon = max(1e-6, median_abs * 0.2)
+            sign = np.zeros_like(dtemp_smooth, dtype=int)
+            sign[dtemp_smooth > epsilon] = 1
+            sign[dtemp_smooth < -epsilon] = -1
+
+            prev = 1
+            for i in range(len(sign)):
+                if sign[i] == 0:
+                    sign[i] = prev
+                else:
+                    prev = sign[i]
+
+            for i in range(len(sign) - 2, -1, -1):
+                if sign[i] == 0:
+                    sign[i] = sign[i + 1]
+
+            turn_heat_to_cool = None
+            turn_cool_to_heat = None
+            for i in range(1, len(sign)):
+                if turn_heat_to_cool is None and sign[i - 1] > 0 and sign[i] < 0:
+                    turn_heat_to_cool = i
+                elif turn_heat_to_cool is not None and sign[i - 1] < 0 and sign[i] > 0:
+                    turn_cool_to_heat = i
+                    break
+
+            if turn_heat_to_cool is None:
+                turn_heat_to_cool = int(np.argmax(temperature))
+            if turn_cool_to_heat is None:
+                search_start = min(turn_heat_to_cool + 1, total - 1)
+                turn_cool_to_heat = int(np.argmin(temperature[search_start:]) + search_start)
+
+            split_points = sorted(
+                [
+                    max(1, min(turn_heat_to_cool + 1, total - 2)),
+                    max(2, min(turn_cool_to_heat + 1, total - 1)),
+                ]
+            )
+
+            if split_points[1] <= split_points[0]:
+                split_points = [total // 3, (2 * total) // 3]
+
+        s1 = max(1, min(split_points[0], total - 2))
+        s2 = max(s1 + 1, min(split_points[1], total - 1))
         phase_slices = [
             data_frame.iloc[:s1].copy(),
             data_frame.iloc[s1:s2].copy(),
@@ -101,12 +143,27 @@ class DSCTextParser:
 
     def _parse_results(self, results_body):
         semi_events = self._parse_semicrystalline_events(results_body)
-        if semi_events:
-            return {"mode": "semicrystalline", "events": semi_events}
         amorphous_events = self._parse_amorphous_events(results_body)
+        if semi_events:
+            return {
+                "mode": "semicrystalline",
+                "events": semi_events,
+                "semicrystalline_events": semi_events,
+                "amorphous_events": amorphous_events,
+            }
         if amorphous_events:
-            return {"mode": "amorphous", "events": amorphous_events}
-        return {"mode": "unknown", "events": []}
+            return {
+                "mode": "amorphous",
+                "events": amorphous_events,
+                "semicrystalline_events": semi_events,
+                "amorphous_events": amorphous_events,
+            }
+        return {
+            "mode": "unknown",
+            "events": [],
+            "semicrystalline_events": semi_events,
+            "amorphous_events": amorphous_events,
+        }
 
     def _parse_semicrystalline_events(self, text):
         blocks = re.split(r"(?=Crystallinity\s+-?[\d,\.]+\s*%)", text, flags=re.IGNORECASE)
@@ -117,11 +174,11 @@ class DSCTextParser:
         events = []
         for idx, phase in enumerate(self.phase_order):
             block = candidate_blocks[idx] if idx < len(candidate_blocks) else ""
-            peak = self._first_match_float(block, r"Peak\s+(-?[\d,\.]+)\s*(?:°C|Â°C)")
-            crystallinity = self._first_match_float(block, r"Crystallinity\s+(-?[\d,\.]+)\s*%")
-            left_limit = self._first_match_float(block, r"Left\s+Limit\s+(-?[\d,\.]+)\s*(?:°C|Â°C)")
-            right_limit = self._first_match_float(block, r"Right\s+Limit\s+(-?[\d,\.]+)\s*(?:°C|Â°C)")
-            onset = self._first_match_float(block, r"Onset\s+(-?[\d,\.]+)\s*(?:°C|Â°C)")
+            peak = self._first_match_float(block, rf"Peak\s+({self.numeric_pattern})\s*(?:°C|Â°C)")
+            crystallinity = self._first_match_float(block, rf"Crystallinity\s+({self.numeric_pattern})\s*%")
+            left_limit = self._first_match_float(block, rf"Left\s+Limit\s+({self.numeric_pattern})\s*(?:°C|Â°C)")
+            right_limit = self._first_match_float(block, rf"Right\s+Limit\s+({self.numeric_pattern})\s*(?:°C|Â°C)")
+            onset = self._first_match_float(block, rf"Onset\s+({self.numeric_pattern})\s*(?:°C|Â°C)")
             if peak is None and crystallinity is None and onset is None:
                 continue
             events.append(
@@ -138,7 +195,7 @@ class DSCTextParser:
 
     def _parse_amorphous_events(self, text):
         pattern = re.compile(
-            r"Glass Transition.*?Midpoint ISO\s+(-?[\d,\.]+)\s*(?:°C|Â°C).*?Delta cp\s+(-?[\d,\.]+)\s*Jg\^-1K\^-1",
+            rf"Glass Transition.*?Midpoint ISO\s+({self.numeric_pattern})\s*(?:°C|Â°C).*?Delta cp\s+({self.numeric_pattern})\s*Jg\^-1K\^-1",
             re.IGNORECASE | re.DOTALL,
         )
         matches = list(pattern.finditer(text))
@@ -175,6 +232,9 @@ class DSCTextParser:
 
 class DSCImageEditor:
     phase_order = ("1st Heating", "Cooling", "2nd Heating")
+    export_figsize = (8.5, 5.4)
+    export_dpi = 600
+    export_layout = {"left": 0.14, "right": 0.98, "bottom": 0.17, "top": 0.97}
     phase_colors = {
         "1st Heating": "#E69F00",
         "Cooling": "#56B4E9",
@@ -193,11 +253,13 @@ class DSCImageEditor:
 
         self.filepath_var = tk.StringVar()
         self.status_var = tk.StringVar(value="Ready")
+        self.classification_var = tk.StringVar(value="auto")
 
         self.phase_axes = {}
         self.phase_figures = {}
         self.phase_canvases = {}
         self.phase_controls = {}
+        self.phase_plot_limits = {}
 
         self._build_ui()
 
@@ -215,9 +277,19 @@ class DSCImageEditor:
         ttk.Button(top, text="Reload", command=self.reload_current_file).grid(row=0, column=3, padx=(8, 0))
         ttk.Button(top, text="Export 3 PNG", command=lambda: self.export_all_phases("png")).grid(row=0, column=4, padx=(8, 0))
         ttk.Button(top, text="Export 3 PDF", command=lambda: self.export_all_phases("pdf")).grid(row=0, column=5, padx=(8, 0))
+        ttk.Label(top, text="Classification:").grid(row=1, column=0, sticky=tk.W, pady=(8, 0))
+        mode_combo = ttk.Combobox(
+            top,
+            textvariable=self.classification_var,
+            values=("auto", "semicrystalline", "amorphous"),
+            state="readonly",
+            width=16,
+        )
+        mode_combo.grid(row=1, column=1, sticky=tk.W, pady=(8, 0))
+        mode_combo.bind("<<ComboboxSelected>>", lambda _e: self.on_classification_changed())
 
         self.summary_var = tk.StringVar(value="No file loaded")
-        ttk.Label(top, textvariable=self.summary_var).grid(row=1, column=0, columnspan=4, sticky=tk.W, pady=(8, 0))
+        ttk.Label(top, textvariable=self.summary_var).grid(row=2, column=0, columnspan=6, sticky=tk.W, pady=(8, 0))
 
         self.notebook = ttk.Notebook(main)
         self.notebook.pack(fill=tk.BOTH, expand=True)
@@ -246,12 +318,17 @@ class DSCImageEditor:
         controls = ttk.LabelFrame(tab, text="Labels and export", padding=10)
         controls.grid(row=0, column=1, sticky=(tk.N, tk.S, tk.W, tk.E), padx=(10, 0))
         controls.columnconfigure(0, weight=1)
+        controls.configure(width=360, height=760)
+        controls.grid_propagate(False)
 
         show_temp_var = tk.BooleanVar(value=True)
         show_cryst_var = tk.BooleanVar(value=True)
         curve_color_var = tk.StringVar(value=self.phase_colors.get(phase, "#1f77b4"))
-        baseline_color_var = tk.StringVar(value="#555555")
+        baseline_color_var = tk.StringVar(value=self.phase_colors.get(phase, "#1f77b4"))
         line_width_var = tk.DoubleVar(value=2.2)
+        font_size_var = tk.DoubleVar(value=28.0)
+        invert_x_var = tk.BooleanVar(value=(phase == "Cooling"))
+        show_baseline_var = tk.BooleanVar(value=True)
         left_limit_var = tk.StringVar(value="")
         right_limit_var = tk.StringVar(value="")
         x_temp_var = tk.DoubleVar(value=0.0)
@@ -299,34 +376,69 @@ class DSCImageEditor:
         line_width_spin.grid(row=7, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
         line_width_spin.bind("<KeyRelease>", lambda _e, p=phase: self.redraw_phase(p))
 
-        ttk.Label(controls, text="Integration left limit (°C)").grid(row=8, column=0, sticky=tk.W)
+        ttk.Label(controls, text="Font size").grid(row=8, column=0, sticky=tk.W)
+        font_size_spin = tk.Spinbox(
+            controls,
+            from_=10.0,
+            to=40.0,
+            increment=0.5,
+            textvariable=font_size_var,
+            command=lambda p=phase: self.redraw_phase(p),
+        )
+        font_size_spin.grid(row=9, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+        font_size_spin.bind("<KeyRelease>", lambda _e, p=phase: self.redraw_phase(p))
+
+        ttk.Checkbutton(
+            controls,
+            text="Invert X axis (high → low)",
+            variable=invert_x_var,
+            command=lambda p=phase: self.redraw_phase(p),
+        ).grid(row=10, column=0, sticky=tk.W, pady=(0, 6))
+
+        ttk.Checkbutton(
+            controls,
+            text="Show baseline",
+            variable=show_baseline_var,
+            command=lambda p=phase: self.redraw_phase(p),
+        ).grid(row=11, column=0, sticky=tk.W, pady=(0, 6))
+
+        ttk.Label(controls, text="Integration left limit (°C)").grid(row=12, column=0, sticky=tk.W)
         left_entry = ttk.Entry(controls, textvariable=left_limit_var)
-        left_entry.grid(row=9, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+        left_entry.grid(row=13, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
         left_entry.bind("<KeyRelease>", lambda _e, p=phase: self.redraw_phase(p))
 
-        ttk.Label(controls, text="Integration right limit (°C)").grid(row=10, column=0, sticky=tk.W)
+        ttk.Label(controls, text="Integration right limit (°C)").grid(row=14, column=0, sticky=tk.W)
         right_entry = ttk.Entry(controls, textvariable=right_limit_var)
-        right_entry.grid(row=11, column=0, sticky=(tk.W, tk.E), pady=(0, 8))
+        right_entry.grid(row=15, column=0, sticky=(tk.W, tk.E), pady=(0, 8))
         right_entry.bind("<KeyRelease>", lambda _e, p=phase: self.redraw_phase(p))
 
-        ttk.Label(controls, text="Temp label X").grid(row=12, column=0, sticky=tk.W)
+        ttk.Label(controls, text="Temp label X").grid(row=16, column=0, sticky=tk.W)
         temp_x_scale = ttk.Scale(controls, variable=x_temp_var, from_=0, to=1, command=lambda _v, p=phase: self.redraw_phase(p))
-        temp_x_scale.grid(row=13, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+        temp_x_scale.grid(row=17, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
 
-        ttk.Label(controls, text="Temp label Y").grid(row=14, column=0, sticky=tk.W)
+        ttk.Label(controls, text="Temp label Y").grid(row=18, column=0, sticky=tk.W)
         temp_y_scale = ttk.Scale(controls, variable=y_temp_var, from_=0, to=1, command=lambda _v, p=phase: self.redraw_phase(p))
-        temp_y_scale.grid(row=15, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+        temp_y_scale.grid(row=19, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
 
-        ttk.Label(controls, text="χc/Δcp label X").grid(row=16, column=0, sticky=tk.W)
+        ttk.Label(controls, text="χc/Δcp label X").grid(row=20, column=0, sticky=tk.W)
         cryst_x_scale = ttk.Scale(controls, variable=x_cryst_var, from_=0, to=1, command=lambda _v, p=phase: self.redraw_phase(p))
-        cryst_x_scale.grid(row=17, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+        cryst_x_scale.grid(row=21, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
 
-        ttk.Label(controls, text="χc/Δcp label Y").grid(row=18, column=0, sticky=tk.W)
+        ttk.Label(controls, text="χc/Δcp label Y").grid(row=22, column=0, sticky=tk.W)
         cryst_y_scale = ttk.Scale(controls, variable=y_cryst_var, from_=0, to=1, command=lambda _v, p=phase: self.redraw_phase(p))
-        cryst_y_scale.grid(row=19, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        cryst_y_scale.grid(row=23, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
 
-        ttk.Button(controls, text="Export PNG", command=lambda p=phase: self.export_phase_figure(p, "png")).grid(row=20, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
-        ttk.Button(controls, text="Export PDF", command=lambda p=phase: self.export_phase_figure(p, "pdf")).grid(row=21, column=0, sticky=(tk.W, tk.E))
+        ttk.Button(controls, text="Export PNG", command=lambda p=phase: self.export_phase_figure(p, "png")).grid(row=24, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+        ttk.Button(controls, text="Export PDF", command=lambda p=phase: self.export_phase_figure(p, "pdf")).grid(row=25, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+        ttk.Button(controls, text="Copy Image", command=lambda p=phase: self.copy_phase_image(p)).grid(row=26, column=0, sticky=(tk.W, tk.E))
+        copy_btn = ttk.Button(
+            controls,
+            text="Copy Tm/χc coords from 1st Heating",
+            command=self.copy_heating_coordinates,
+        )
+        copy_btn.grid(row=27, column=0, sticky=(tk.W, tk.E), pady=(6, 0))
+        if phase != "2nd Heating":
+            copy_btn.state(["disabled"])
 
         self.phase_axes[phase] = ax
         self.phase_figures[phase] = fig
@@ -337,6 +449,9 @@ class DSCImageEditor:
             "curve_color": curve_color_var,
             "baseline_color": baseline_color_var,
             "line_width": line_width_var,
+            "font_size": font_size_var,
+            "invert_x": invert_x_var,
+            "show_baseline": show_baseline_var,
             "left_limit": left_limit_var,
             "right_limit": right_limit_var,
             "x_temp": x_temp_var,
@@ -376,11 +491,7 @@ class DSCImageEditor:
     def _load_file(self, file_path):
         try:
             self.parsed = self.parser.parse_file(file_path)
-            mode = self.parsed["results"]["mode"]
-            sample = self.parsed["sample_name"]
-            mass = self.parsed["mass_mg"]
-            mass_text = f"{mass:.3f} mg" if isinstance(mass, float) else "n/a"
-            self.summary_var.set(f"Sample: {sample} | Mass: {mass_text} | Mode: {mode}")
+            self._update_summary()
             self._prepare_phase_controls()
             for phase in self.phase_order:
                 self.redraw_phase(phase)
@@ -390,6 +501,12 @@ class DSCImageEditor:
             self.status_var.set("Error loading file")
 
     def _prepare_phase_controls(self):
+        self.phase_plot_limits = {}
+        shared_limits = self._shared_heating_limits()
+        if shared_limits:
+            self.phase_plot_limits["1st Heating"] = shared_limits
+            self.phase_plot_limits["2nd Heating"] = shared_limits
+
         for phase in self.phase_order:
             segment = self.parsed["segments"].get(phase)
             if segment is None or segment.empty:
@@ -402,6 +519,10 @@ class DSCImageEditor:
                 x_max = x_min + 1.0
             if y_min == y_max:
                 y_max = y_min + 1.0
+            if phase not in self.phase_plot_limits:
+                x_pad = 0.03 * (x_max - x_min)
+                y_pad = 0.08 * (y_max - y_min)
+                self.phase_plot_limits[phase] = (x_min - x_pad, x_max + x_pad, y_min - y_pad, y_max + y_pad)
 
             controls = self.phase_controls[phase]
             controls["temp_x_scale"].configure(from_=x_min, to=x_max)
@@ -410,28 +531,121 @@ class DSCImageEditor:
             controls["cryst_y_scale"].configure(from_=y_min, to=y_max)
 
             event = self._event_for_phase(phase)
-            default_temp_x = event["temperature"] if event and event.get("temperature") is not None else x_min + 0.7 * (x_max - x_min)
-            default_temp_y = y_min + 0.9 * (y_max - y_min)
-            default_cryst_x = x_min + 0.1 * (x_max - x_min)
-            default_cryst_y = y_min + 0.1 * (y_max - y_min)
+            if phase in ("1st Heating", "2nd Heating"):
+                default_temp_x = x_min + 0.30 * (x_max - x_min)
+                default_temp_y = y_min + 0.19 * (y_max - y_min)
+                default_cryst_x = x_min + 0.32 * (x_max - x_min)
+                default_cryst_y = y_min + 0.09 * (y_max - y_min)
+            elif phase == "Cooling":
+                default_temp_x = x_min + 0.60 * (x_max - x_min)
+                default_temp_y = y_min + 0.84 * (y_max - y_min)
+                default_cryst_x = x_min + 0.57 * (x_max - x_min)
+                default_cryst_y = y_min + 0.74 * (y_max - y_min)
+            else:
+                default_temp_x = event["temperature"] if event and event.get("temperature") is not None else x_min + 0.7 * (x_max - x_min)
+                default_temp_y = y_min + 0.9 * (y_max - y_min)
+                default_cryst_x = x_min + 0.1 * (x_max - x_min)
+                default_cryst_y = y_min + 0.1 * (y_max - y_min)
 
             controls["x_temp"].set(default_temp_x)
             controls["y_temp"].set(default_temp_y)
             controls["x_cryst"].set(default_cryst_x)
             controls["y_cryst"].set(default_cryst_y)
             controls["curve_color"].set(self.phase_colors.get(phase, "#1f77b4"))
-            controls["baseline_color"].set("#555555")
+            controls["baseline_color"].set(self.phase_colors.get(phase, "#1f77b4"))
             controls["line_width"].set(2.2)
+            controls["font_size"].set(28.0)
+            controls["invert_x"].set(phase == "Cooling")
+            controls["show_baseline"].set(True)
             controls["left_limit"].set("" if not event or event.get("left_limit") is None else f"{event['left_limit']:.3f}")
             controls["right_limit"].set("" if not event or event.get("right_limit") is None else f"{event['right_limit']:.3f}")
 
+        # Keep 2nd Heating text coordinates identical to 1st Heating by default
+        src = self.phase_controls.get("1st Heating")
+        dst = self.phase_controls.get("2nd Heating")
+        if src and dst:
+            dst["x_temp"].set(src["x_temp"].get())
+            dst["y_temp"].set(src["y_temp"].get())
+            dst["x_cryst"].set(src["x_cryst"].get())
+            dst["y_cryst"].set(src["y_cryst"].get())
+
+    def copy_heating_coordinates(self):
+        src = self.phase_controls.get("1st Heating")
+        dst = self.phase_controls.get("2nd Heating")
+        if not src or not dst:
+            return
+        dst["x_temp"].set(src["x_temp"].get())
+        dst["y_temp"].set(src["y_temp"].get())
+        dst["x_cryst"].set(src["x_cryst"].get())
+        dst["y_cryst"].set(src["y_cryst"].get())
+        self.redraw_phase("2nd Heating")
+
     def _event_for_phase(self, phase):
+        active_results = self._get_active_results()
         if not self.parsed:
             return None
-        for event in self.parsed["results"]["events"]:
+        for event in active_results["events"]:
             if event.get("phase") == phase:
                 return event
         return None
+
+    def _shared_heating_limits(self):
+        if not self.parsed:
+            return None
+        seg1 = self.parsed["segments"].get("1st Heating")
+        seg2 = self.parsed["segments"].get("2nd Heating")
+        if seg1 is None or seg2 is None or seg1.empty or seg2.empty:
+            return None
+
+        x_all = np.concatenate([
+            seg1["Ts"].to_numpy(dtype=float),
+            seg2["Ts"].to_numpy(dtype=float),
+        ])
+        y_all = np.concatenate([
+            seg1["Value"].to_numpy(dtype=float),
+            seg2["Value"].to_numpy(dtype=float),
+        ])
+        x_min, x_max = float(np.min(x_all)), float(np.max(x_all))
+        y_min, y_max = float(np.min(y_all)), float(np.max(y_all))
+        if x_min == x_max:
+            x_max = x_min + 1.0
+        if y_min == y_max:
+            y_max = y_min + 1.0
+        x_pad = 0.03 * (x_max - x_min)
+        y_pad = 0.08 * (y_max - y_min)
+        return (x_min - x_pad, x_max + x_pad, y_min - y_pad, y_max + y_pad)
+
+    def _get_active_results(self):
+        if not self.parsed:
+            return {"mode": "unknown", "events": []}
+        parsed_results = self.parsed["results"]
+        selected_mode = self.classification_var.get()
+        if selected_mode == "auto":
+            return {"mode": parsed_results.get("mode", "unknown"), "events": parsed_results.get("events", [])}
+        if selected_mode == "semicrystalline":
+            return {"mode": "semicrystalline", "events": parsed_results.get("semicrystalline_events", [])}
+        return {"mode": "amorphous", "events": parsed_results.get("amorphous_events", [])}
+
+    def _update_summary(self):
+        if not self.parsed:
+            self.summary_var.set("No file loaded")
+            return
+        sample = self.parsed["sample_name"]
+        mass = self.parsed["mass_mg"]
+        mass_text = f"{mass:.3f} mg" if isinstance(mass, float) else "n/a"
+        auto_mode = self.parsed["results"]["mode"]
+        active = self._get_active_results()
+        self.summary_var.set(
+            f"Sample: {sample} | Mass: {mass_text} | Auto: {auto_mode} | Selected: {active['mode']} ({len(active['events'])} events)"
+        )
+
+    def on_classification_changed(self):
+        self._update_summary()
+        if not self.parsed:
+            return
+        self._prepare_phase_controls()
+        for phase in self.phase_order:
+            self.redraw_phase(phase)
 
     def redraw_phase(self, phase):
         figure = self.phase_figures.get(phase)
@@ -445,14 +659,14 @@ class DSCImageEditor:
 
         if not self.parsed:
             axis.text(0.5, 0.5, "Load a DSC TXT file", ha="center", va="center", transform=axis.transAxes, fontsize=12)
-            figure.tight_layout()
+            self._apply_fixed_layout(figure)
             canvas.draw_idle()
             return
 
         segment = self.parsed["segments"].get(phase)
         if segment is None or segment.empty:
             axis.text(0.5, 0.5, "No data for this phase", ha="center", va="center", transform=axis.transAxes, fontsize=12)
-            figure.tight_layout()
+            self._apply_fixed_layout(figure)
             canvas.draw_idle()
             return
 
@@ -460,40 +674,52 @@ class DSCImageEditor:
         y_data = segment["Value"].to_numpy(dtype=float)
         controls = self.phase_controls[phase]
         color = self.resolve_color(controls["curve_color"].get(), self.phase_colors[phase])
-        baseline_color = self.resolve_color(controls["baseline_color"].get(), "#555555")
+        baseline_color = self.resolve_color(controls["baseline_color"].get(), color)
         line_width = self.read_float_value(controls["line_width"], 2.2, minimum=0.4)
+        font_size = self.read_float_value(controls["font_size"], 20.0, minimum=8.0)
         event = self._event_for_phase(phase)
-        mode = self.parsed["results"]["mode"]
+        mode = self._get_active_results()["mode"]
 
         axis.plot(x_data, y_data, color=color, linewidth=line_width)
-        axis.set_xlabel("Temperature (°C)", fontname="DejaVu Serif", fontsize=12)
-        axis.set_ylabel("Heat Flow ($W \\cdot g^{-1}$)", fontname="DejaVu Serif", fontsize=12)
-        axis.tick_params(direction="in", top=True, right=True, labelsize=10)
+        axis.set_xlabel("Temperature (°C)", fontname="DejaVu Sans", fontsize=font_size)
+        axis.set_ylabel("Heat Flow ($W \\cdot g^{-1}$)", fontname="DejaVu Sans", fontsize=font_size)
+        axis.tick_params(direction="in", top=True, right=True, labelsize=max(8.0, font_size - 2.0))
         axis.grid(False)
-        axis.text(0.02, 0.96, "Exo ↑", transform=axis.transAxes, fontsize=11, fontname="DejaVu Serif", va="top")
 
         left, right = self.get_integration_limits(controls, event)
-        if left is not None and right is not None and left < right:
-            left_idx = int(np.argmin(np.abs(x_data - left)))
-            right_idx = int(np.argmin(np.abs(x_data - right)))
+        if controls["show_baseline"].get() and left is not None and right is not None and left != right:
+            x_sorted_idx = np.argsort(x_data)
+            x_sorted = x_data[x_sorted_idx]
+            y_sorted = y_data[x_sorted_idx]
+            x_left = float(np.clip(left, np.min(x_data), np.max(x_data)))
+            x_right = float(np.clip(right, np.min(x_data), np.max(x_data)))
+            y_left = float(np.interp(x_left, x_sorted, y_sorted))
+            y_right = float(np.interp(x_right, x_sorted, y_sorted))
             axis.plot(
-                [x_data[left_idx], x_data[right_idx]],
-                [y_data[left_idx], y_data[right_idx]],
+                [x_left, x_right],
+                [y_left, y_right],
                 linestyle="--",
-                linewidth=max(0.8, 0.6 * line_width),
+                dashes=(6, 4),
+                linewidth=max(1.2, 0.8 * line_width),
                 color=baseline_color,
+                zorder=5,
             )
 
         if event and controls["show_temp"].get() and event.get("temperature") is not None:
             temp_label = event.get("temp_label", "T")
-            temp_text = f"${temp_label}={event['temperature']:.2f}$ °C"
+            latex_temp_label = {
+                "Tm": "T_{m}",
+                "Tc": "T_{c}",
+                "Tg": "T_{g}",
+            }.get(temp_label, temp_label)
+            temp_text = f"${latex_temp_label}={event['temperature']:.2f}$ °C"
             axis.text(
                 controls["x_temp"].get(),
                 controls["y_temp"].get(),
                 temp_text,
-                color=color,
-                fontsize=11,
-                fontname="DejaVu Serif",
+                color="#000000",
+                fontsize=max(8.0, font_size - 1.0),
+                fontname="DejaVu Sans",
             )
 
         if event and controls["show_cryst"].get() and event.get("crystallinity") is not None:
@@ -505,12 +731,20 @@ class DSCImageEditor:
                 controls["x_cryst"].get(),
                 controls["y_cryst"].get(),
                 cryst_text,
-                color=color,
-                fontsize=11,
-                fontname="DejaVu Serif",
+                color="#000000",
+                fontsize=max(8.0, font_size - 1.0),
+                fontname="DejaVu Sans",
             )
 
-        figure.tight_layout()
+        phase_limits = self.phase_plot_limits.get(phase)
+        if phase_limits:
+            x0, x1, y0, y1 = phase_limits
+            axis.set_xlim(x0, x1)
+            axis.set_ylim(y0, y1)
+        if controls["invert_x"].get():
+            axis.invert_xaxis()
+
+        self._apply_fixed_layout(figure)
         canvas.draw_idle()
 
     def pick_color_for_phase(self, phase, key):
@@ -568,7 +802,7 @@ class DSCImageEditor:
             return
 
         try:
-            self.phase_figures[phase].savefig(output_path, dpi=350, bbox_inches="tight")
+            self._save_fixed_figure(self.phase_figures[phase], output_path)
             self.status_var.set(f"Saved {os.path.basename(output_path)}")
         except Exception as exc:
             messagebox.showerror("Error", f"Could not save figure:\n{exc}")
@@ -587,7 +821,7 @@ class DSCImageEditor:
             try:
                 filename = f"{sample}_{phase.replace(' ', '_')}.{ext}"
                 path = os.path.join(output_dir, filename)
-                self.phase_figures[phase].savefig(path, dpi=350, bbox_inches="tight")
+                self._save_fixed_figure(self.phase_figures[phase], path)
             except Exception as exc:
                 errors.append(f"{phase}: {exc}")
 
@@ -597,6 +831,38 @@ class DSCImageEditor:
         else:
             self.status_var.set(f"Saved 3 {ext.upper()} figures")
             messagebox.showinfo("Export completed", f"3 {ext.upper()} figures exported to:\n{output_dir}")
+
+    def _save_fixed_figure(self, figure, output_path):
+        figure.canvas.draw()
+        figure.savefig(output_path, dpi=self.export_dpi)
+
+    def _apply_fixed_layout(self, figure):
+        figure.subplots_adjust(**self.export_layout)
+
+    def copy_phase_image(self, phase):
+        figure = self.phase_figures.get(phase)
+        if figure is None:
+            return
+        try:
+            self._apply_fixed_layout(figure)
+            buffer = io.BytesIO()
+            figure.savefig(buffer, format="png", dpi=self.export_dpi)
+            buffer.seek(0)
+            image = Image.open(buffer).convert("RGB")
+            bmp = io.BytesIO()
+            image.save(bmp, format="BMP")
+            data = bmp.getvalue()[14:]
+            import win32clipboard
+
+            win32clipboard.OpenClipboard()
+            try:
+                win32clipboard.EmptyClipboard()
+                win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
+            finally:
+                win32clipboard.CloseClipboard()
+            self.status_var.set(f"Copied {phase} image to clipboard")
+        except Exception as exc:
+            messagebox.showerror("Clipboard error", f"Could not copy image:\n{exc}")
 
 
 class DSCImageModule:
