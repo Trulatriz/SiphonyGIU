@@ -180,16 +180,17 @@ class TGATextParser:
 
 
 class TGAImageEditor:
+    export_figsize = (8.5, 5.4)
     export_dpi = 600
     mass_color_default = "#0072B2"
     dtg_color_default = "#CC79A7"
-    export_layout = {"left": 0.14, "right": 0.98, "bottom": 0.17, "top": 0.97}
+    export_layout = {"left": 0.14, "right": 0.84, "bottom": 0.17, "top": 0.97}
 
     def __init__(self, root):
         self.root = root
         self.root.title("TGA Image Editor")
-        self.root.geometry("1560x980")
-        self.root.minsize(1320, 860)
+        self.root.geometry("1560x1180")
+        self.root.minsize(1320, 920)
 
         self.foam_manager = FoamTypeManager()
         self.parser = TGATextParser()
@@ -240,7 +241,7 @@ class TGAImageEditor:
         ctr = ttk.LabelFrame(content, text="Labels and style", padding=10)
         ctr.grid(row=0, column=1, sticky=(tk.N, tk.S, tk.W, tk.E), padx=(10, 0))
         ctr.columnconfigure(0, weight=1)
-        ctr.configure(width=360, height=760)
+        ctr.configure(width=360, height=980)
         ctr.grid_propagate(False)
 
         show_td = tk.BooleanVar(value=True)
@@ -253,7 +254,7 @@ class TGAImageEditor:
         invert_x = tk.BooleanVar(value=False)
         x_td = tk.DoubleVar(value=0.0)
         y_td = tk.DoubleVar(value=0.0)
-        legend_x = tk.DoubleVar(value=0.88)
+        legend_x = tk.DoubleVar(value=0.84)
         legend_y = tk.DoubleVar(value=0.50)
 
         ttk.Checkbutton(ctr, text="Show Td label", variable=show_td, command=self.redraw_plot).grid(row=0, column=0, sticky=tk.W, pady=(0, 6))
@@ -425,7 +426,7 @@ class TGAImageEditor:
         ctr["show_legend"].set(True)
         ctr["x_td"].set(x_min + 0.12 * (x_max - x_min))
         ctr["y_td"].set(yd_min + 0.08 * (yd_max - yd_min))
-        ctr["legend_x"].set(0.88)
+        ctr["legend_x"].set(0.84)
         ctr["legend_y"].set(0.50)
 
     def redraw_plot(self):
@@ -624,6 +625,7 @@ class TGAImageEditor:
     def _save_current_figure(self, output_path):
         if self.figure is None:
             return
+        self._apply_layout()
         self.figure.canvas.draw()
         self.figure.savefig(output_path, dpi=self.export_dpi)
 

@@ -235,7 +235,7 @@ class DSCImageEditor:
     combined_phase = "Cooling + 2nd Heating"
     export_figsize = (8.5, 5.4)
     export_dpi = 600
-    export_layout = {"left": 0.14, "right": 0.98, "bottom": 0.17, "top": 0.97}
+    export_layout = {"left": 0.14, "right": 0.84, "bottom": 0.17, "top": 0.97}
     phase_colors = {
         "1st Heating": "#E69F00",
         "Cooling": "#56B4E9",
@@ -1212,6 +1212,7 @@ class DSCImageEditor:
             messagebox.showinfo("Export completed", f"4 {ext.upper()} figures exported to:\n{output_dir}")
 
     def _save_fixed_figure(self, figure, output_path):
+        self._apply_fixed_layout(figure)
         figure.canvas.draw()
         figure.savefig(output_path, dpi=self.export_dpi)
 
