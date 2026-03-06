@@ -180,7 +180,7 @@ class TGATextParser:
 
 
 class TGAImageEditor:
-    export_figsize = (8.5, 5.4)
+    export_figsize = (9.8, 8.908333333333333)
     export_dpi = 600
     mass_color_default = "#0072B2"
     dtg_color_default = "#CC79A7"
@@ -596,10 +596,12 @@ class TGAImageEditor:
     def copy_image(self):
         if self.figure is None:
             return
+        original_size = tuple(self.figure.get_size_inches())
         try:
+            self.figure.set_size_inches(*self.export_figsize, forward=True)
             self._apply_layout()
             buffer = io.BytesIO()
-            self.figure.savefig(buffer, format="png", dpi=self.export_dpi)
+            self.figure.savefig(buffer, format="png", dpi=self.export_dpi, bbox_inches=None, pad_inches=0)
             buffer.seek(0)
             image = Image.open(buffer).convert("RGB")
             bmp = io.BytesIO()
@@ -616,6 +618,10 @@ class TGAImageEditor:
             self.status_var.set("Copied TGA image to clipboard")
         except Exception as exc:
             messagebox.showerror("Clipboard error", f"Could not copy image:\n{exc}")
+        finally:
+            self.figure.set_size_inches(*original_size, forward=True)
+            self._apply_layout()
+            self.figure.canvas.draw_idle()
 
     def _apply_layout(self):
         if self.figure is None:
@@ -625,9 +631,16 @@ class TGAImageEditor:
     def _save_current_figure(self, output_path):
         if self.figure is None:
             return
-        self._apply_layout()
-        self.figure.canvas.draw()
-        self.figure.savefig(output_path, dpi=self.export_dpi)
+        original_size = tuple(self.figure.get_size_inches())
+        try:
+            self.figure.set_size_inches(*self.export_figsize, forward=True)
+            self._apply_layout()
+            self.figure.canvas.draw()
+            self.figure.savefig(output_path, dpi=self.export_dpi, bbox_inches=None, pad_inches=0)
+        finally:
+            self.figure.set_size_inches(*original_size, forward=True)
+            self._apply_layout()
+            self.figure.canvas.draw_idle()
 
 
 

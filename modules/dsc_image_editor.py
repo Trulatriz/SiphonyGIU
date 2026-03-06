@@ -233,7 +233,7 @@ class DSCTextParser:
 class DSCImageEditor:
     phase_order = ("1st Heating", "Cooling", "2nd Heating")
     combined_phase = "Cooling + 2nd Heating"
-    export_figsize = (8.5, 5.4)
+    export_figsize = (9.8, 8.908333333333333)
     export_dpi = 600
     export_layout = {"left": 0.14, "right": 0.84, "bottom": 0.17, "top": 0.97}
     phase_colors = {
@@ -1212,9 +1212,16 @@ class DSCImageEditor:
             messagebox.showinfo("Export completed", f"4 {ext.upper()} figures exported to:\n{output_dir}")
 
     def _save_fixed_figure(self, figure, output_path):
-        self._apply_fixed_layout(figure)
-        figure.canvas.draw()
-        figure.savefig(output_path, dpi=self.export_dpi)
+        original_size = tuple(figure.get_size_inches())
+        try:
+            figure.set_size_inches(*self.export_figsize, forward=True)
+            self._apply_fixed_layout(figure)
+            figure.canvas.draw()
+            figure.savefig(output_path, dpi=self.export_dpi, bbox_inches=None, pad_inches=0)
+        finally:
+            figure.set_size_inches(*original_size, forward=True)
+            self._apply_fixed_layout(figure)
+            figure.canvas.draw_idle()
 
     def _apply_fixed_layout(self, figure):
         figure.subplots_adjust(**self.export_layout)
@@ -1223,10 +1230,12 @@ class DSCImageEditor:
         figure = self.phase_figures.get(phase)
         if figure is None:
             return
+        original_size = tuple(figure.get_size_inches())
         try:
+            figure.set_size_inches(*self.export_figsize, forward=True)
             self._apply_fixed_layout(figure)
             buffer = io.BytesIO()
-            figure.savefig(buffer, format="png", dpi=self.export_dpi)
+            figure.savefig(buffer, format="png", dpi=self.export_dpi, bbox_inches=None, pad_inches=0)
             buffer.seek(0)
             image = Image.open(buffer).convert("RGB")
             bmp = io.BytesIO()
@@ -1243,6 +1252,10 @@ class DSCImageEditor:
             self.status_var.set(f"Copied {phase} image to clipboard")
         except Exception as exc:
             messagebox.showerror("Clipboard error", f"Could not copy image:\n{exc}")
+        finally:
+            figure.set_size_inches(*original_size, forward=True)
+            self._apply_fixed_layout(figure)
+            figure.canvas.draw_idle()
 
 
 class DSCImageModule:
