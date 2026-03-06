@@ -1,4 +1,4 @@
-import os
+﻿import os
 import re
 import io
 import tkinter as tk
@@ -174,11 +174,11 @@ class DSCTextParser:
         events = []
         for idx, phase in enumerate(self.phase_order):
             block = candidate_blocks[idx] if idx < len(candidate_blocks) else ""
-            peak = self._first_match_float(block, rf"Peak\s+({self.numeric_pattern})\s*(?:°C|Â°C)")
+            peak = self._first_match_float(block, rf"Peak\s+({self.numeric_pattern})\s*(?:°C|Â°C|Ã‚Â°C)")
             crystallinity = self._first_match_float(block, rf"Crystallinity\s+({self.numeric_pattern})\s*%")
-            left_limit = self._first_match_float(block, rf"Left\s+Limit\s+({self.numeric_pattern})\s*(?:°C|Â°C)")
-            right_limit = self._first_match_float(block, rf"Right\s+Limit\s+({self.numeric_pattern})\s*(?:°C|Â°C)")
-            onset = self._first_match_float(block, rf"Onset\s+({self.numeric_pattern})\s*(?:°C|Â°C)")
+            left_limit = self._first_match_float(block, rf"Left\s+Limit\s+({self.numeric_pattern})\s*(?:°C|Â°C|Ã‚Â°C)")
+            right_limit = self._first_match_float(block, rf"Right\s+Limit\s+({self.numeric_pattern})\s*(?:°C|Â°C|Ã‚Â°C)")
+            onset = self._first_match_float(block, rf"Onset\s+({self.numeric_pattern})\s*(?:°C|Â°C|Ã‚Â°C)")
             if peak is None and crystallinity is None and onset is None:
                 continue
             events.append(
@@ -195,7 +195,7 @@ class DSCTextParser:
 
     def _parse_amorphous_events(self, text):
         pattern = re.compile(
-            rf"Glass Transition.*?Midpoint ISO\s+({self.numeric_pattern})\s*(?:°C|Â°C).*?Delta cp\s+({self.numeric_pattern})\s*Jg\^-1K\^-1",
+            rf"Glass Transition.*?Midpoint ISO\s+({self.numeric_pattern})\s*(?:°C|Â°C|Ã‚Â°C).*?Delta cp\s+({self.numeric_pattern})\s*Jg\^-1K\^-1",
             re.IGNORECASE | re.DOTALL,
         )
         matches = list(pattern.finditer(text))
@@ -232,6 +232,7 @@ class DSCTextParser:
 
 class DSCImageEditor:
     phase_order = ("1st Heating", "Cooling", "2nd Heating")
+    combined_phase = "Cooling + 2nd Heating"
     export_figsize = (8.5, 5.4)
     export_dpi = 600
     export_layout = {"left": 0.14, "right": 0.98, "bottom": 0.17, "top": 0.97}
@@ -244,8 +245,8 @@ class DSCImageEditor:
     def __init__(self, root):
         self.root = root
         self.root.title("DSC Image Editor")
-        self.root.geometry("1560x980")
-        self.root.minsize(1320, 860)
+        self.root.geometry("1560x1180")
+        self.root.minsize(1320, 920)
 
         self.foam_manager = FoamTypeManager()
         self.parser = DSCTextParser()
@@ -275,8 +276,8 @@ class DSCImageEditor:
         ttk.Entry(top, textvariable=self.filepath_var, state="readonly").grid(row=0, column=1, sticky=(tk.W, tk.E))
         ttk.Button(top, text="Browse", command=self.open_file).grid(row=0, column=2, padx=(8, 0))
         ttk.Button(top, text="Reload", command=self.reload_current_file).grid(row=0, column=3, padx=(8, 0))
-        ttk.Button(top, text="Export 3 PNG", command=lambda: self.export_all_phases("png")).grid(row=0, column=4, padx=(8, 0))
-        ttk.Button(top, text="Export 3 PDF", command=lambda: self.export_all_phases("pdf")).grid(row=0, column=5, padx=(8, 0))
+        ttk.Button(top, text="Export 4 PNG", command=lambda: self.export_all_phases("png")).grid(row=0, column=4, padx=(8, 0))
+        ttk.Button(top, text="Export 4 PDF", command=lambda: self.export_all_phases("pdf")).grid(row=0, column=5, padx=(8, 0))
         ttk.Label(top, text="Classification:").grid(row=1, column=0, sticky=tk.W, pady=(8, 0))
         mode_combo = ttk.Combobox(
             top,
@@ -294,7 +295,7 @@ class DSCImageEditor:
         self.notebook = ttk.Notebook(main)
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
-        for phase in self.phase_order:
+        for phase in (*self.phase_order, self.combined_phase):
             self._build_phase_tab(phase)
 
         ttk.Label(main, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W).pack(fill=tk.X, pady=(8, 0))
@@ -318,8 +319,12 @@ class DSCImageEditor:
         controls = ttk.LabelFrame(tab, text="Labels and export", padding=10)
         controls.grid(row=0, column=1, sticky=(tk.N, tk.S, tk.W, tk.E), padx=(10, 0))
         controls.columnconfigure(0, weight=1)
-        controls.configure(width=360, height=760)
+        controls.configure(width=360, height=980)
         controls.grid_propagate(False)
+
+        if phase == self.combined_phase:
+            self._build_combined_controls(phase, fig, ax, canvas, controls)
+            return
 
         show_temp_var = tk.BooleanVar(value=True)
         show_cryst_var = tk.BooleanVar(value=True)
@@ -390,7 +395,7 @@ class DSCImageEditor:
 
         ttk.Checkbutton(
             controls,
-            text="Invert X axis (high → low)",
+            text="Invert X axis (high to low)",
             variable=invert_x_var,
             command=lambda p=phase: self.redraw_phase(p),
         ).grid(row=10, column=0, sticky=tk.W, pady=(0, 6))
@@ -464,6 +469,174 @@ class DSCImageEditor:
             "cryst_y_scale": cryst_y_scale,
         }
 
+    def _build_combined_controls(self, phase, fig, ax, canvas, controls):
+        cooling_color_var = tk.StringVar(value="#0072b2")
+        heating_color_var = tk.StringVar(value="#d55e00")
+        line_width_var = tk.DoubleVar(value=2.2)
+        label_font_size_var = tk.DoubleVar(value=28.0)
+        arrow_font_size_var = tk.DoubleVar(value=20.0)
+        invert_x_var = tk.BooleanVar(value=False)
+        show_cooling_arrow_var = tk.BooleanVar(value=True)
+        show_heating_arrow_var = tk.BooleanVar(value=True)
+        cooling_arrow_x_var = tk.DoubleVar(value=0.0)
+        cooling_arrow_y_var = tk.DoubleVar(value=0.0)
+        heating_arrow_x_var = tk.DoubleVar(value=0.0)
+        heating_arrow_y_var = tk.DoubleVar(value=0.0)
+        tc_x_var = tk.DoubleVar(value=0.0)
+        tc_y_var = tk.DoubleVar(value=0.0)
+        tm_x_var = tk.DoubleVar(value=0.0)
+        tm_y_var = tk.DoubleVar(value=0.0)
+        xc2_x_var = tk.DoubleVar(value=0.0)
+        xc2_y_var = tk.DoubleVar(value=0.0)
+
+        ttk.Label(controls, text="Cooling color (HEX)").grid(row=0, column=0, sticky=tk.W)
+        cooling_row = ttk.Frame(controls)
+        cooling_row.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+        cooling_row.columnconfigure(0, weight=1)
+        ttk.Entry(cooling_row, textvariable=cooling_color_var).grid(row=0, column=0, sticky=(tk.W, tk.E))
+        ttk.Button(cooling_row, text="Pick", width=6, command=lambda p=phase: self.pick_color_for_phase(p, "cooling_color")).grid(row=0, column=1, padx=(6, 0))
+
+        ttk.Label(controls, text="2nd Heating color (HEX)").grid(row=2, column=0, sticky=tk.W)
+        heating_row = ttk.Frame(controls)
+        heating_row.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+        heating_row.columnconfigure(0, weight=1)
+        ttk.Entry(heating_row, textvariable=heating_color_var).grid(row=0, column=0, sticky=(tk.W, tk.E))
+        ttk.Button(heating_row, text="Pick", width=6, command=lambda p=phase: self.pick_color_for_phase(p, "heating_color")).grid(row=0, column=1, padx=(6, 0))
+
+        ttk.Label(controls, text="Line width").grid(row=4, column=0, sticky=tk.W)
+        line_width_spin = tk.Spinbox(
+            controls,
+            from_=0.5,
+            to=6.0,
+            increment=0.1,
+            textvariable=line_width_var,
+            command=lambda p=phase: self.redraw_phase(p),
+        )
+        line_width_spin.grid(row=5, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+        line_width_spin.bind("<KeyRelease>", lambda _e, p=phase: self.redraw_phase(p))
+
+        ttk.Label(controls, text="Label font size").grid(row=6, column=0, sticky=tk.W)
+        label_font_size_spin = tk.Spinbox(
+            controls,
+            from_=10.0,
+            to=40.0,
+            increment=0.5,
+            textvariable=label_font_size_var,
+            command=lambda p=phase: self.redraw_phase(p),
+        )
+        label_font_size_spin.grid(row=7, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+        label_font_size_spin.bind("<KeyRelease>", lambda _e, p=phase: self.redraw_phase(p))
+
+        ttk.Label(controls, text="Arrow font size").grid(row=8, column=0, sticky=tk.W)
+        arrow_font_size_spin = tk.Spinbox(
+            controls,
+            from_=8.0,
+            to=36.0,
+            increment=0.5,
+            textvariable=arrow_font_size_var,
+            command=lambda p=phase: self.redraw_phase(p),
+        )
+        arrow_font_size_spin.grid(row=9, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+        arrow_font_size_spin.bind("<KeyRelease>", lambda _e, p=phase: self.redraw_phase(p))
+
+        ttk.Checkbutton(
+            controls,
+            text="Invert X axis (high to low)",
+            variable=invert_x_var,
+            command=lambda p=phase: self.redraw_phase(p),
+        ).grid(row=10, column=0, sticky=tk.W, pady=(0, 6))
+
+        ttk.Checkbutton(
+            controls,
+            text="Show Cooling arrow (left)",
+            variable=show_cooling_arrow_var,
+            command=lambda p=phase: self.redraw_phase(p),
+        ).grid(row=11, column=0, sticky=tk.W)
+        ttk.Checkbutton(
+            controls,
+            text="Show 2nd Heating arrow (right)",
+            variable=show_heating_arrow_var,
+            command=lambda p=phase: self.redraw_phase(p),
+        ).grid(row=12, column=0, sticky=tk.W, pady=(0, 6))
+
+        ttk.Label(controls, text="Cooling arrow X").grid(row=13, column=0, sticky=tk.W)
+        cooling_arrow_x_scale = ttk.Scale(controls, variable=cooling_arrow_x_var, from_=0, to=1, command=lambda _v, p=phase: self.redraw_phase(p))
+        cooling_arrow_x_scale.grid(row=14, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+
+        ttk.Label(controls, text="Cooling arrow Y").grid(row=15, column=0, sticky=tk.W)
+        cooling_arrow_y_scale = ttk.Scale(controls, variable=cooling_arrow_y_var, from_=0, to=1, command=lambda _v, p=phase: self.redraw_phase(p))
+        cooling_arrow_y_scale.grid(row=16, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+
+        ttk.Label(controls, text="2nd Heating arrow X").grid(row=17, column=0, sticky=tk.W)
+        heating_arrow_x_scale = ttk.Scale(controls, variable=heating_arrow_x_var, from_=0, to=1, command=lambda _v, p=phase: self.redraw_phase(p))
+        heating_arrow_x_scale.grid(row=18, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+
+        ttk.Label(controls, text="2nd Heating arrow Y").grid(row=19, column=0, sticky=tk.W)
+        heating_arrow_y_scale = ttk.Scale(controls, variable=heating_arrow_y_var, from_=0, to=1, command=lambda _v, p=phase: self.redraw_phase(p))
+        heating_arrow_y_scale.grid(row=20, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+
+        ttk.Label(controls, text="Tc label X").grid(row=21, column=0, sticky=tk.W)
+        tc_x_scale = ttk.Scale(controls, variable=tc_x_var, from_=0, to=1, command=lambda _v, p=phase: self.redraw_phase(p))
+        tc_x_scale.grid(row=22, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+
+        ttk.Label(controls, text="Tc label Y").grid(row=23, column=0, sticky=tk.W)
+        tc_y_scale = ttk.Scale(controls, variable=tc_y_var, from_=0, to=1, command=lambda _v, p=phase: self.redraw_phase(p))
+        tc_y_scale.grid(row=24, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+
+        ttk.Label(controls, text="Tm label X").grid(row=25, column=0, sticky=tk.W)
+        tm_x_scale = ttk.Scale(controls, variable=tm_x_var, from_=0, to=1, command=lambda _v, p=phase: self.redraw_phase(p))
+        tm_x_scale.grid(row=26, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+
+        ttk.Label(controls, text="Tm label Y").grid(row=27, column=0, sticky=tk.W)
+        tm_y_scale = ttk.Scale(controls, variable=tm_y_var, from_=0, to=1, command=lambda _v, p=phase: self.redraw_phase(p))
+        tm_y_scale.grid(row=28, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+
+        ttk.Label(controls, text="Xc (2nd) label X").grid(row=29, column=0, sticky=tk.W)
+        xc2_x_scale = ttk.Scale(controls, variable=xc2_x_var, from_=0, to=1, command=lambda _v, p=phase: self.redraw_phase(p))
+        xc2_x_scale.grid(row=30, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+
+        ttk.Label(controls, text="Xc (2nd) label Y").grid(row=31, column=0, sticky=tk.W)
+        xc2_y_scale = ttk.Scale(controls, variable=xc2_y_var, from_=0, to=1, command=lambda _v, p=phase: self.redraw_phase(p))
+        xc2_y_scale.grid(row=32, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+
+        ttk.Button(controls, text="Export PNG", command=lambda p=phase: self.export_phase_figure(p, "png")).grid(row=33, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+        ttk.Button(controls, text="Export PDF", command=lambda p=phase: self.export_phase_figure(p, "pdf")).grid(row=34, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+        ttk.Button(controls, text="Copy Image", command=lambda p=phase: self.copy_phase_image(p)).grid(row=35, column=0, sticky=(tk.W, tk.E))
+
+        self.phase_axes[phase] = ax
+        self.phase_figures[phase] = fig
+        self.phase_canvases[phase] = canvas
+        self.phase_controls[phase] = {
+            "cooling_color": cooling_color_var,
+            "heating_color": heating_color_var,
+            "line_width": line_width_var,
+            "label_font_size": label_font_size_var,
+            "arrow_font_size": arrow_font_size_var,
+            "invert_x": invert_x_var,
+            "show_cooling_arrow": show_cooling_arrow_var,
+            "show_heating_arrow": show_heating_arrow_var,
+            "cooling_arrow_x": cooling_arrow_x_var,
+            "cooling_arrow_y": cooling_arrow_y_var,
+            "heating_arrow_x": heating_arrow_x_var,
+            "heating_arrow_y": heating_arrow_y_var,
+            "tc_x": tc_x_var,
+            "tc_y": tc_y_var,
+            "tm_x": tm_x_var,
+            "tm_y": tm_y_var,
+            "xc2_x": xc2_x_var,
+            "xc2_y": xc2_y_var,
+            "cooling_arrow_x_scale": cooling_arrow_x_scale,
+            "cooling_arrow_y_scale": cooling_arrow_y_scale,
+            "heating_arrow_x_scale": heating_arrow_x_scale,
+            "heating_arrow_y_scale": heating_arrow_y_scale,
+            "tc_x_scale": tc_x_scale,
+            "tc_y_scale": tc_y_scale,
+            "tm_x_scale": tm_x_scale,
+            "tm_y_scale": tm_y_scale,
+            "xc2_x_scale": xc2_x_scale,
+            "xc2_y_scale": xc2_y_scale,
+        }
+
     def open_file(self):
         initial_dir = None
         current_foam = self.foam_manager.get_current_foam_type()
@@ -493,7 +666,7 @@ class DSCImageEditor:
             self.parsed = self.parser.parse_file(file_path)
             self._update_summary()
             self._prepare_phase_controls()
-            for phase in self.phase_order:
+            for phase in (*self.phase_order, self.combined_phase):
                 self.redraw_phase(phase)
             self.status_var.set(f"Loaded {os.path.basename(file_path)}")
         except Exception as exc:
@@ -506,6 +679,9 @@ class DSCImageEditor:
         if shared_limits:
             self.phase_plot_limits["1st Heating"] = shared_limits
             self.phase_plot_limits["2nd Heating"] = shared_limits
+        cooling_second_limits = self._shared_cooling_second_limits()
+        if cooling_second_limits:
+            self.phase_plot_limits[self.combined_phase] = cooling_second_limits
 
         for phase in self.phase_order:
             segment = self.parsed["segments"].get(phase)
@@ -569,6 +745,40 @@ class DSCImageEditor:
             dst["x_cryst"].set(src["x_cryst"].get())
             dst["y_cryst"].set(src["y_cryst"].get())
 
+        combined_controls = self.phase_controls.get(self.combined_phase)
+        if combined_controls and cooling_second_limits:
+            x0, x1, y0, y1 = cooling_second_limits
+            x_span = x1 - x0
+            y_span = y1 - y0
+            combined_controls["cooling_arrow_x_scale"].configure(from_=x0, to=x1)
+            combined_controls["cooling_arrow_y_scale"].configure(from_=y0, to=y1)
+            combined_controls["heating_arrow_x_scale"].configure(from_=x0, to=x1)
+            combined_controls["heating_arrow_y_scale"].configure(from_=y0, to=y1)
+            combined_controls["cooling_color"].set("#0072b2")
+            combined_controls["heating_color"].set("#d55e00")
+            combined_controls["line_width"].set(2.2)
+            combined_controls["label_font_size"].set(28.0)
+            combined_controls["arrow_font_size"].set(20.0)
+            combined_controls["invert_x"].set(False)
+            combined_controls["show_cooling_arrow"].set(True)
+            combined_controls["show_heating_arrow"].set(True)
+            combined_controls["cooling_arrow_x"].set(x0 + 0.82 * x_span)
+            combined_controls["cooling_arrow_y"].set(y0 + 0.57 * y_span)
+            combined_controls["heating_arrow_x"].set(x0 + 0.24 * x_span)
+            combined_controls["heating_arrow_y"].set(y0 + 0.35 * y_span)
+            combined_controls["tc_x_scale"].configure(from_=x0, to=x1)
+            combined_controls["tc_y_scale"].configure(from_=y0, to=y1)
+            combined_controls["tm_x_scale"].configure(from_=x0, to=x1)
+            combined_controls["tm_y_scale"].configure(from_=y0, to=y1)
+            combined_controls["xc2_x_scale"].configure(from_=x0, to=x1)
+            combined_controls["xc2_y_scale"].configure(from_=y0, to=y1)
+            combined_controls["tc_x"].set(x0 + 0.23 * x_span)
+            combined_controls["tc_y"].set(y0 + 0.84 * y_span)
+            combined_controls["tm_x"].set(x0 + 0.30 * x_span)
+            combined_controls["tm_y"].set(y0 + 0.17 * y_span)
+            combined_controls["xc2_x"].set(x0 + 0.33 * x_span)
+            combined_controls["xc2_y"].set(y0 + 0.09 * y_span)
+
     def copy_heating_coordinates(self):
         src = self.phase_controls.get("1st Heating")
         dst = self.phase_controls.get("2nd Heating")
@@ -615,6 +825,32 @@ class DSCImageEditor:
         y_pad = 0.08 * (y_max - y_min)
         return (x_min - x_pad, x_max + x_pad, y_min - y_pad, y_max + y_pad)
 
+    def _shared_cooling_second_limits(self):
+        if not self.parsed:
+            return None
+        seg_cooling = self.parsed["segments"].get("Cooling")
+        seg_second = self.parsed["segments"].get("2nd Heating")
+        if seg_cooling is None or seg_second is None or seg_cooling.empty or seg_second.empty:
+            return None
+
+        x_all = np.concatenate([
+            seg_cooling["Ts"].to_numpy(dtype=float),
+            seg_second["Ts"].to_numpy(dtype=float),
+        ])
+        y_all = np.concatenate([
+            seg_cooling["Value"].to_numpy(dtype=float),
+            seg_second["Value"].to_numpy(dtype=float),
+        ])
+        x_min, x_max = float(np.min(x_all)), float(np.max(x_all))
+        y_min, y_max = float(np.min(y_all)), float(np.max(y_all))
+        if x_min == x_max:
+            x_max = x_min + 1.0
+        if y_min == y_max:
+            y_max = y_min + 1.0
+        x_pad = 0.03 * (x_max - x_min)
+        y_pad = 0.08 * (y_max - y_min)
+        return (x_min - x_pad, x_max + x_pad, y_min - y_pad, y_max + y_pad)
+
     def _get_active_results(self):
         if not self.parsed:
             return {"mode": "unknown", "events": []}
@@ -644,7 +880,7 @@ class DSCImageEditor:
         if not self.parsed:
             return
         self._prepare_phase_controls()
-        for phase in self.phase_order:
+        for phase in (*self.phase_order, self.combined_phase):
             self.redraw_phase(phase)
 
     def redraw_phase(self, phase):
@@ -656,6 +892,10 @@ class DSCImageEditor:
 
         axis.clear()
         axis.set_facecolor("white")
+
+        if phase == self.combined_phase:
+            self._redraw_combined_phase(figure, axis, canvas, phase)
+            return
 
         if not self.parsed:
             axis.text(0.5, 0.5, "Load a DSC TXT file", ha="center", va="center", transform=axis.transAxes, fontsize=12)
@@ -747,6 +987,143 @@ class DSCImageEditor:
         self._apply_fixed_layout(figure)
         canvas.draw_idle()
 
+    def _redraw_combined_phase(self, figure, axis, canvas, phase):
+        if not self.parsed:
+            axis.text(0.5, 0.5, "Load a DSC TXT file", ha="center", va="center", transform=axis.transAxes, fontsize=12)
+            self._apply_fixed_layout(figure)
+            canvas.draw_idle()
+            return
+
+        cooling = self.parsed["segments"].get("Cooling")
+        second = self.parsed["segments"].get("2nd Heating")
+        if cooling is None or second is None or cooling.empty or second.empty:
+            axis.text(0.5, 0.5, "No data for Cooling + 2nd Heating", ha="center", va="center", transform=axis.transAxes, fontsize=12)
+            self._apply_fixed_layout(figure)
+            canvas.draw_idle()
+            return
+
+        controls = self.phase_controls[phase]
+        cooling_color = self.resolve_color(controls["cooling_color"].get(), self.phase_colors["Cooling"])
+        heating_color = self.resolve_color(controls["heating_color"].get(), self.phase_colors["2nd Heating"])
+        line_width = self.read_float_value(controls["line_width"], 2.2, minimum=0.4)
+        label_font_size = self.read_float_value(controls["label_font_size"], 28.0, minimum=8.0)
+        arrow_font_size = self.read_float_value(controls["arrow_font_size"], 20.0, minimum=8.0)
+
+        x_cool = cooling["Ts"].to_numpy(dtype=float)
+        y_cool = cooling["Value"].to_numpy(dtype=float)
+        x_heat = second["Ts"].to_numpy(dtype=float)
+        y_heat = second["Value"].to_numpy(dtype=float)
+
+        axis.plot(x_cool, y_cool, color=cooling_color, linewidth=line_width)
+        axis.plot(x_heat, y_heat, color=heating_color, linewidth=line_width)
+        axis.set_xlabel("Temperature (°C)", fontname="DejaVu Sans", fontsize=label_font_size)
+        axis.set_ylabel("Heat Flow ($W \\cdot g^{-1}$)", fontname="DejaVu Sans", fontsize=label_font_size)
+        axis.tick_params(direction="in", top=True, right=True, labelsize=max(8.0, label_font_size - 2.0))
+        axis.grid(False)
+
+        phase_limits = self.phase_plot_limits.get(phase)
+        if phase_limits:
+            x0, x1, y0, y1 = phase_limits
+            axis.set_xlim(x0, x1)
+            axis.set_ylim(y0, y1)
+            x_span = x1 - x0
+            arrow_len = 0.10 * x_span
+            arrow_text_size = max(8.0, arrow_font_size)
+
+            if controls["show_cooling_arrow"].get():
+                cooling_x = controls["cooling_arrow_x"].get()
+                cooling_y = controls["cooling_arrow_y"].get()
+                axis.annotate(
+                    "Cooling",
+                    xy=(cooling_x - arrow_len, cooling_y),
+                    xytext=(cooling_x, cooling_y),
+                    fontsize=arrow_text_size,
+                    fontname="DejaVu Sans",
+                    color="#000000",
+                    ha="left",
+                    va="center",
+                    arrowprops={"arrowstyle": "->", "lw": 1.1, "color": "#000000"},
+                )
+
+            if controls["show_heating_arrow"].get():
+                heating_x = controls["heating_arrow_x"].get()
+                heating_y = controls["heating_arrow_y"].get()
+                axis.annotate(
+                    "2nd Heating",
+                    xy=(heating_x + arrow_len, heating_y),
+                    xytext=(heating_x, heating_y),
+                    fontsize=arrow_text_size,
+                    fontname="DejaVu Sans",
+                    color="#000000",
+                    ha="right",
+                    va="center",
+                    arrowprops={"arrowstyle": "->", "lw": 1.1, "color": "#000000"},
+                )
+
+        cooling_event = self._event_for_phase("Cooling")
+        second_event = self._event_for_phase("2nd Heating")
+        left_cool, right_cool = self.get_integration_limits({}, cooling_event)
+        left_heat, right_heat = self.get_integration_limits({}, second_event)
+        if cooling_event and left_cool is not None and right_cool is not None and left_cool != right_cool:
+            x_sorted_idx = np.argsort(x_cool)
+            x_sorted = x_cool[x_sorted_idx]
+            y_sorted = y_cool[x_sorted_idx]
+            x_left = float(np.clip(left_cool, np.min(x_cool), np.max(x_cool)))
+            x_right = float(np.clip(right_cool, np.min(x_cool), np.max(x_cool)))
+            y_left = float(np.interp(x_left, x_sorted, y_sorted))
+            y_right = float(np.interp(x_right, x_sorted, y_sorted))
+            axis.plot([x_left, x_right], [y_left, y_right], linestyle="--", dashes=(6, 4), linewidth=max(1.2, 0.8 * line_width), color=cooling_color, zorder=5)
+        if second_event and left_heat is not None and right_heat is not None and left_heat != right_heat:
+            x_sorted_idx = np.argsort(x_heat)
+            x_sorted = x_heat[x_sorted_idx]
+            y_sorted = y_heat[x_sorted_idx]
+            x_left = float(np.clip(left_heat, np.min(x_heat), np.max(x_heat)))
+            x_right = float(np.clip(right_heat, np.min(x_heat), np.max(x_heat)))
+            y_left = float(np.interp(x_left, x_sorted, y_sorted))
+            y_right = float(np.interp(x_right, x_sorted, y_sorted))
+            axis.plot([x_left, x_right], [y_left, y_right], linestyle="--", dashes=(6, 4), linewidth=max(1.2, 0.8 * line_width), color=heating_color, zorder=5)
+
+        mode = self._get_active_results()["mode"]
+        if cooling_event and cooling_event.get("temperature") is not None:
+            axis.text(
+                controls["tc_x"].get(),
+                controls["tc_y"].get(),
+                f"$T_{{c}}={cooling_event['temperature']:.2f}$ °C",
+                color="#000000",
+                fontsize=max(8.0, label_font_size - 1.0),
+                fontname="DejaVu Sans",
+            )
+        if second_event and second_event.get("temperature") is not None:
+            second_temp_label = "T_{g}" if second_event.get("temp_label") == "Tg" else "T_{m}"
+            axis.text(
+                controls["tm_x"].get(),
+                controls["tm_y"].get(),
+                f"${second_temp_label}={second_event['temperature']:.2f}$ °C",
+                color="#000000",
+                fontsize=max(8.0, label_font_size - 1.0),
+                fontname="DejaVu Sans",
+            )
+        if second_event and second_event.get("crystallinity") is not None:
+            second_metric = (
+                f"$\\Delta c_p={second_event['crystallinity']:.3f}$ J/gK"
+                if mode == "amorphous"
+                else f"$\\chi_c={second_event['crystallinity']:.2f}\\%$"
+            )
+            axis.text(
+                controls["xc2_x"].get(),
+                controls["xc2_y"].get(),
+                second_metric,
+                color="#000000",
+                fontsize=max(8.0, label_font_size - 1.0),
+                fontname="DejaVu Sans",
+            )
+
+        if controls["invert_x"].get():
+            axis.invert_xaxis()
+
+        self._apply_fixed_layout(figure)
+        canvas.draw_idle()
+
     def pick_color_for_phase(self, phase, key):
         controls = self.phase_controls.get(phase)
         if not controls or key not in controls:
@@ -778,8 +1155,10 @@ class DSCImageEditor:
         return value
 
     def get_integration_limits(self, controls, event):
-        left = self.read_float_value(controls["left_limit"], None)
-        right = self.read_float_value(controls["right_limit"], None)
+        left_var = controls.get("left_limit") if isinstance(controls, dict) else None
+        right_var = controls.get("right_limit") if isinstance(controls, dict) else None
+        left = self.read_float_value(left_var, None) if left_var is not None else None
+        right = self.read_float_value(right_var, None) if right_var is not None else None
         if left is None and event:
             left = event.get("left_limit")
         if right is None and event:
@@ -812,12 +1191,12 @@ class DSCImageEditor:
         if not self.parsed:
             messagebox.showwarning("No data", "Load a DSC TXT file first.")
             return
-        output_dir = filedialog.askdirectory(title=f"Select folder to export 3 {ext.upper()} figures")
+        output_dir = filedialog.askdirectory(title=f"Select folder to export 4 {ext.upper()} figures")
         if not output_dir:
             return
         sample = self.parsed["sample_name"].replace(" ", "_")
         errors = []
-        for phase in self.phase_order:
+        for phase in (*self.phase_order, self.combined_phase):
             try:
                 filename = f"{sample}_{phase.replace(' ', '_')}.{ext}"
                 path = os.path.join(output_dir, filename)
@@ -829,8 +1208,8 @@ class DSCImageEditor:
             messagebox.showerror("Export finished with errors", "\n".join(errors))
             self.status_var.set("Exported with errors")
         else:
-            self.status_var.set(f"Saved 3 {ext.upper()} figures")
-            messagebox.showinfo("Export completed", f"3 {ext.upper()} figures exported to:\n{output_dir}")
+            self.status_var.set(f"Saved 4 {ext.upper()} figures")
+            messagebox.showinfo("Export completed", f"4 {ext.upper()} figures exported to:\n{output_dir}")
 
     def _save_fixed_figure(self, figure, output_path):
         figure.canvas.draw()
@@ -868,3 +1247,7 @@ class DSCImageEditor:
 class DSCImageModule:
     def __init__(self, root):
         self.editor = DSCImageEditor(root)
+
+
+
+

@@ -183,7 +183,7 @@ class TGAImageEditor:
     export_dpi = 600
     mass_color_default = "#0072B2"
     dtg_color_default = "#CC79A7"
-    export_layout = {"left": 0.12, "right": 0.88, "bottom": 0.17, "top": 0.97}
+    export_layout = {"left": 0.14, "right": 0.98, "bottom": 0.17, "top": 0.97}
 
     def __init__(self, root):
         self.root = root
