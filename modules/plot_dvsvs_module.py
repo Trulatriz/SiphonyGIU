@@ -126,12 +126,24 @@ def _log_tick_label(value, _pos):
     if value is None or value <= 0 or not np.isfinite(value):
         return ""
     exponent = np.log10(value)
-    if not np.isclose(exponent, round(exponent), atol=1e-10):
+    rounded_exp = int(np.floor(exponent + 1e-12))
+    mantissa = value / (10 ** rounded_exp)
+    if np.isclose(mantissa, 1.0, atol=1e-10):
+        mantissa = 1
+    elif np.isclose(mantissa, 2.0, atol=1e-10):
+        mantissa = 2
+    elif np.isclose(mantissa, 5.0, atol=1e-10):
+        mantissa = 5
+    else:
         return ""
-    exponent = int(round(exponent))
-    if exponent in (0, 1, 2, 3):
-        return str(int(round(10 ** exponent)))
-    return rf"$10^{{{exponent}}}$"
+    if mantissa == 1:
+        if rounded_exp in (0, 1, 2, 3):
+            return str(int(round(10 ** rounded_exp)))
+        return rf"$10^{{{rounded_exp}}}$"
+    label_value = mantissa * (10 ** rounded_exp)
+    if label_value >= 10000:
+        return rf"${mantissa}\times10^{{{rounded_exp}}}$"
+    return str(int(round(label_value)))
 
 
 class DependentScatterModule:
@@ -1127,13 +1139,13 @@ class DependentScatterModule:
             cur = self.ax.get_ylim()
             self.ax.set_ylim(y_min if y_min is not None else cur[0], y_max if y_max is not None else cur[1])
         if x_scale == "Log":
-            self.ax.xaxis.set_major_locator(mticker.LogLocator(base=10.0))
+            self.ax.xaxis.set_major_locator(mticker.LogLocator(base=10.0, subs=(1.0, 2.0, 5.0)))
             self.ax.xaxis.set_major_formatter(mticker.FuncFormatter(_log_tick_label))
             self.ax.xaxis.set_minor_formatter(mticker.NullFormatter())
         else:
             self.ax.xaxis.set_major_formatter(mticker.ScalarFormatter())
         if y_scale == "Log":
-            self.ax.yaxis.set_major_locator(mticker.LogLocator(base=10.0))
+            self.ax.yaxis.set_major_locator(mticker.LogLocator(base=10.0, subs=(1.0, 2.0, 5.0)))
             self.ax.yaxis.set_major_formatter(mticker.FuncFormatter(_log_tick_label))
             self.ax.yaxis.set_minor_formatter(mticker.NullFormatter())
         else:
