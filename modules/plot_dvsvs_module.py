@@ -13,6 +13,7 @@ import matplotlib
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 from matplotlib import lines as mlines, colors as mcolors
+from matplotlib import ticker as mticker
 
 from .plot_shared import (
     OKABE_ITO,
@@ -119,6 +120,18 @@ def _format_category_value(value, decimals: int | None = None) -> str:
         return f"{num:.3g}"
     except Exception:
         return str(value)
+
+
+def _log_tick_label(value, _pos):
+    if value is None or value <= 0 or not np.isfinite(value):
+        return ""
+    exponent = np.log10(value)
+    if not np.isclose(exponent, round(exponent), atol=1e-10):
+        return ""
+    exponent = int(round(exponent))
+    if exponent in (0, 1, 2, 3):
+        return str(int(round(10 ** exponent)))
+    return rf"$10^{{{exponent}}}$"
 
 
 class DependentScatterModule:
@@ -1113,6 +1126,18 @@ class DependentScatterModule:
         if y_min is not None or y_max is not None:
             cur = self.ax.get_ylim()
             self.ax.set_ylim(y_min if y_min is not None else cur[0], y_max if y_max is not None else cur[1])
+        if x_scale == "Log":
+            self.ax.xaxis.set_major_locator(mticker.LogLocator(base=10.0))
+            self.ax.xaxis.set_major_formatter(mticker.FuncFormatter(_log_tick_label))
+            self.ax.xaxis.set_minor_formatter(mticker.NullFormatter())
+        else:
+            self.ax.xaxis.set_major_formatter(mticker.ScalarFormatter())
+        if y_scale == "Log":
+            self.ax.yaxis.set_major_locator(mticker.LogLocator(base=10.0))
+            self.ax.yaxis.set_major_formatter(mticker.FuncFormatter(_log_tick_label))
+            self.ax.yaxis.set_minor_formatter(mticker.NullFormatter())
+        else:
+            self.ax.yaxis.set_major_formatter(mticker.ScalarFormatter())
 
         legend_count = 0
         right_margin = 0.88

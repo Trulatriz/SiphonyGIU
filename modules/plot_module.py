@@ -65,6 +65,18 @@ def _as_float_array(s: pd.Series) -> np.ndarray:
         return s.to_numpy()
 
 
+def _log_tick_label(value, _pos):
+    if value is None or value <= 0 or not np.isfinite(value):
+        return ""
+    exponent = np.log10(value)
+    if not np.isclose(exponent, round(exponent), atol=1e-10):
+        return ""
+    exponent = int(round(exponent))
+    if exponent in (0, 1, 2, 3):
+        return str(int(round(10 ** exponent)))
+    return rf"$10^{{{exponent}}}$"
+
+
 def _natural_sort_key(val):
     # Try numeric first
     try:
@@ -1030,6 +1042,21 @@ class PlotModule:
 
         self.ax.xaxis.set_major_formatter(mticker.FuncFormatter(_formatter))
 
+    def _apply_log_axis_formatters(self, x_scale: str, y_scale: str, x_display: str):
+        if x_scale == "Log":
+            self.ax.xaxis.set_major_locator(mticker.LogLocator(base=10.0))
+            self.ax.xaxis.set_major_formatter(mticker.FuncFormatter(_log_tick_label))
+            self.ax.xaxis.set_minor_formatter(mticker.NullFormatter())
+        else:
+            self._apply_x_axis_formatter(x_display)
+
+        if y_scale == "Log":
+            self.ax.yaxis.set_major_locator(mticker.LogLocator(base=10.0))
+            self.ax.yaxis.set_major_formatter(mticker.FuncFormatter(_log_tick_label))
+            self.ax.yaxis.set_minor_formatter(mticker.NullFormatter())
+        else:
+            self.ax.yaxis.set_major_formatter(mticker.ScalarFormatter())
+
     def _maybe_jitter(self, x_vals: np.ndarray):
         # Apply small jitter if many overlaps in X
         if x_vals.size == 0:
@@ -1268,7 +1295,7 @@ class PlotModule:
         if y_min is not None or y_max is not None:
             cur = self.ax.get_ylim()
             self.ax.set_ylim(y_min if y_min is not None else cur[0], y_max if y_max is not None else cur[1])
-        self._apply_x_axis_formatter(x_display)
+        self._apply_log_axis_formatters(x_scale, y_scale, x_display)
 
         # Legends
         group_handles, group_labels = [], []

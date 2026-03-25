@@ -295,6 +295,7 @@ Escalas de eje:
 - `Y scale`: `Linear` o `Log`
 - son independientes
 - si intentas usar log con valores `<= 0` o limites manuales incompatibles, el modulo avisa y vuelve ese eje a lineal
+- en escala log, los ticks base se muestran como `1`, `10`, `100` y `1000`; a partir de `10^4` pasan a notacion `10^n`
 - `Group` y `Shape by` pueden usar la misma variable al mismo tiempo; por ejemplo, `Water (g)` puede controlar simultaneamente color/linea y marcador
 - si `Group` y `Shape by` usan exactamente la misma variable, el grafico muestra una sola leyenda combinada en lugar de dos separadas
 - `Psat (MPa)` y `Water (g)` se muestran sin `.0` cuando el valor es entero, tanto en el eje X como en leyendas/categorias
