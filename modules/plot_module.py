@@ -1245,7 +1245,33 @@ class PlotModule:
         # Legends
         group_handles, group_labels = [], []
         shape_handles, shape_labels = [], []
-        if group_display:
+        combined_encoding = bool(group_display and color_display and group_display == color_display)
+
+        if combined_encoding:
+            combined_label = self._format_label(independent_latex(group_display))
+            combined_values = []
+            for value in group_values:
+                if value not in combined_values:
+                    combined_values.append(value)
+            for value in combined_values:
+                color, linestyle = group_style_map.get(value, fallback_style)
+                marker = shape_map.get(value, "o")
+                legend_linestyle = linestyle if connect else ""
+                legend_linewidth = 1.5 if connect else 0.0
+                h = matplotlib.lines.Line2D(
+                    [0],
+                    [0],
+                    color=color,
+                    marker=marker,
+                    linestyle=legend_linestyle,
+                    linewidth=legend_linewidth,
+                    markerfacecolor=color,
+                    markeredgecolor="black",
+                    markeredgewidth=0.6,
+                )
+                group_handles.append(h)
+                group_labels.append(f"{combined_label} = {value}")
+        elif group_display:
             group_label = self._format_label(independent_latex(group_display))
             for gval in group_values:
                 color, linestyle = group_style_map.get(gval, fallback_style)
@@ -1264,7 +1290,7 @@ class PlotModule:
                 )
                 group_handles.append(h)
                 group_labels.append(f"{group_label} = {gval}")
-        if color_display:
+        if color_display and not combined_encoding:
             shape_label = self._format_label(independent_latex(color_display))
             for sval in shape_values:
                 marker = shape_map.get(sval, "o")
