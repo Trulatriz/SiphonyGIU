@@ -783,16 +783,12 @@ class PlotModule:
     def _on_group_change(self):
         if self.group_var.get() == self.x_var.get():
             self.group_var.set("<None>")
-        if self.group_var.get() == self.color_var.get():
-            self.group_var.set("<None>")
         self._update_errorbar_state()
         self._apply_constraint_enablement()
         self._persist_current_state()
 
     def _on_color_change(self):
         if self.color_var.get() == self.x_var.get():
-            self.color_var.set("<None>")
-        if self.color_var.get() == self.group_var.get():
             self.color_var.set("<None>")
         self._apply_constraint_enablement()
         self._persist_current_state()

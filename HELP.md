@@ -295,6 +295,7 @@ Escalas de eje:
 - `Y scale`: `Linear` o `Log`
 - son independientes
 - si intentas usar log con valores `<= 0` o limites manuales incompatibles, el modulo avisa y vuelve ese eje a lineal
+- `Group` y `Shape by` pueden usar la misma variable al mismo tiempo; por ejemplo, `Water (g)` puede controlar simultaneamente color/linea y marcador
 
 Los tamanos de exportacion estan fijados internamente para mantener consistencia de publicacion.
 
