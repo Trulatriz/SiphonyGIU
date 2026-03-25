@@ -38,6 +38,7 @@ matplotlib.use("TkAgg")
 # Width significantly larger than height so legends on the right have
 # generous space in both GUI and saved files.
 PUBLICATION_FIGSIZE = (8.0, 6.0)
+AXIS_SCALE_OPTIONS = ["Linear", "Log"]
 
 COLOR_BINS = 5
 SHAPE_BINS = 5
@@ -156,6 +157,8 @@ class DependentScatterModule:
         self.xmax_var = tk.StringVar()
         self.ymin_var = tk.StringVar()
         self.ymax_var = tk.StringVar()
+        self.xscale_var = tk.StringVar(value="Linear")
+        self.yscale_var = tk.StringVar(value="Linear")
 
         # Filters and encoding info
         self.filter_controls: dict[str, dict] = {}
@@ -254,6 +257,14 @@ class DependentScatterModule:
         ttk.Entry(actions, textvariable=self.ymin_var, width=10).grid(row=1, column=5, sticky=tk.W, pady=(4, 0))
         ttk.Label(actions, text="Y max:").grid(row=1, column=6, sticky=tk.E, pady=(4, 0))
         ttk.Entry(actions, textvariable=self.ymax_var, width=10).grid(row=1, column=7, sticky=tk.W, pady=(4, 0))
+        ttk.Label(actions, text="X scale:").grid(row=2, column=0, sticky=tk.E, pady=(4, 0))
+        self.xscale_combo = ttk.Combobox(actions, textvariable=self.xscale_var, values=AXIS_SCALE_OPTIONS, state="readonly", width=10)
+        self.xscale_combo.grid(row=2, column=1, sticky=tk.W, pady=(4, 0))
+        self.xscale_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_option_change())
+        ttk.Label(actions, text="Y scale:").grid(row=2, column=2, sticky=tk.E, pady=(4, 0))
+        self.yscale_combo = ttk.Combobox(actions, textvariable=self.yscale_var, values=AXIS_SCALE_OPTIONS, state="readonly", width=10)
+        self.yscale_combo.grid(row=2, column=3, sticky=tk.W, pady=(4, 0))
+        self.yscale_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_option_change())
 
         # Canvas
         canvas_frame = ttk.Frame(container)
@@ -288,7 +299,7 @@ class DependentScatterModule:
         )
 
     def _set_controls_state(self, state: str):
-        for widget in [self.x_combo, self.y_combo, self.color_combo, self.shape_combo, self.err_chk, self.mono_chk]:
+        for widget in [self.x_combo, self.y_combo, self.color_combo, self.shape_combo, self.err_chk, self.mono_chk, self.xscale_combo, self.yscale_combo]:
             try:
                 widget.configure(state=state)
             except Exception:
@@ -415,6 +426,8 @@ class DependentScatterModule:
             "errorbars": bool(self.errorbar_var.get()),
             "monochrome": bool(self.mono_var.get()),
             "dpi": int(self.dpi_var.get()),
+            "x_scale": self.xscale_var.get(),
+            "y_scale": self.yscale_var.get(),
         }
 
     def _apply_stored_state(self, sheet_name: str):
@@ -443,6 +456,10 @@ class DependentScatterModule:
             self.mono_var.set(bool(state.get("monochrome")))
             # Force 600 dpi for publication consistency; ignore legacy 300 dpi.
             self.dpi_var.set(600)
+            x_scale = state.get("x_scale", "Linear")
+            y_scale = state.get("y_scale", "Linear")
+            self.xscale_var.set(x_scale if x_scale in AXIS_SCALE_OPTIONS else "Linear")
+            self.yscale_var.set(y_scale if y_scale in AXIS_SCALE_OPTIONS else "Linear")
         finally:
             self._suspend_state_events = False
 
@@ -575,6 +592,38 @@ class DependentScatterModule:
     def _on_option_change(self):
         if not self._suspend_state_events:
             self._persist_current_state()
+
+    def _ensure_log_scale_allowed(self, values, axis_name: str, scale_name: str, var: tk.StringVar, lower_limit: float | None, upper_limit: float | None) -> bool:
+        if scale_name != "Log":
+            return True
+        numeric = np.asarray(values, dtype=float)
+        finite = numeric[np.isfinite(numeric)]
+        if finite.size == 0:
+            var.set("Linear")
+            messagebox.showwarning(
+                f"{axis_name} axis scale",
+                f"The {axis_name} axis cannot use logarithmic scale because there are no valid positive values to plot.",
+            )
+            self._persist_current_state()
+            return False
+        if np.any(finite <= 0):
+            var.set("Linear")
+            messagebox.showwarning(
+                f"{axis_name} axis scale",
+                f"The {axis_name} axis cannot use logarithmic scale because the plotted data contain values less than or equal to 0.",
+            )
+            self._persist_current_state()
+            return False
+        for limit_value, limit_label in ((lower_limit, "minimum"), (upper_limit, "maximum")):
+            if limit_value is not None and limit_value <= 0:
+                var.set("Linear")
+                messagebox.showwarning(
+                    f"{axis_name} axis scale",
+                    f"The {axis_name} axis cannot use logarithmic scale because the manual {limit_label} limit is less than or equal to 0.",
+                )
+                self._persist_current_state()
+                return False
+        return True
 
     # ---------- Filters ----------
     def _is_numeric_column(self, column: str) -> bool:
@@ -1050,6 +1099,14 @@ class DependentScatterModule:
         x_max = _parse_float(self.xmax_var.get())
         y_min = _parse_float(self.ymin_var.get())
         y_max = _parse_float(self.ymax_var.get())
+        x_scale = self.xscale_var.get()
+        y_scale = self.yscale_var.get()
+        if not self._ensure_log_scale_allowed(valid[x_column].to_numpy(), "X", x_scale, self.xscale_var, x_min, x_max):
+            return
+        if not self._ensure_log_scale_allowed(valid[y_column].to_numpy(), "Y", y_scale, self.yscale_var, y_min, y_max):
+            return
+        self.ax.set_xscale("log" if x_scale == "Log" else "linear")
+        self.ax.set_yscale("log" if y_scale == "Log" else "linear")
         if x_min is not None or x_max is not None:
             cur = self.ax.get_xlim()
             self.ax.set_xlim(x_min if x_min is not None else cur[0], x_max if x_max is not None else cur[1])
@@ -1261,6 +1318,10 @@ class DependentScatterModule:
                 "color_encoding": self.last_encoding_info.get("color"),
                 "shape_encoding": self.last_encoding_info.get("shape"),
                 "dpi": int(self.dpi_var.get()),
+                "axis_scales": {
+                    "x": self.xscale_var.get(),
+                    "y": self.yscale_var.get(),
+                },
                 "n_total": int(len(self.df_filtered)),
             }
             json_path = os.path.splitext(csv_path)[0] + ".json"

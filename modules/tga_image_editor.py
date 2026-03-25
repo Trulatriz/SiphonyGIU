@@ -32,11 +32,11 @@ class TGATextParser:
         sample_name, mass_mg = self._parse_sample_info(full_text, file_path)
         curves = self._parse_curve_blocks(lines)
         if not curves:
-            raise ValueError("No se encontraron bloques 'Curve Values' válidos.")
+            raise ValueError("No valid 'Curve Values' blocks were found.")
 
         mass_curve = self._select_mass_curve(curves)
         if mass_curve is None or mass_curve.empty:
-            raise ValueError("No se pudo extraer la curva de pérdida de masa.")
+            raise ValueError("Could not extract the mass-loss curve.")
 
         derivative_curve = self._select_derivative_curve(curves)
         derivative_scale_factor = 100.0

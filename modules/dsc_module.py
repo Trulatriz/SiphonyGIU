@@ -100,7 +100,7 @@ class DSCModule:
         self.load_suggested_paths()
 
         # Scan button
-        ttk.Button(config, text="🔍 Scan DSC Files", command=self.scan_dsc_files).grid(row=1, column=0, pady=(10, 5))
+        ttk.Button(config, text="Scan DSC Files", command=self.scan_dsc_files).grid(row=1, column=0, pady=(10, 5))
 
         # Files table
         file_frame = ttk.LabelFrame(main, text="Selected DSC Files", padding="10")
@@ -135,10 +135,10 @@ class DSCModule:
         # Buttons
         btns = ttk.Frame(main)
         btns.grid(row=5, column=0, pady=10)
-        ttk.Button(btns, text=" Process Selected", command=self.process_files).grid(row=0, column=0, padx=(0, 10))
-        ttk.Button(btns, text="📊 Open/Create Results", command=self.open_or_create_results_file).grid(row=0, column=1, padx=(0, 10))
-        ttk.Button(btns, text="💾 Save Paths", command=self.save_current_paths).grid(row=0, column=2, padx=(0, 10))
-        ttk.Button(btns, text="❌ Close", command=self.root.destroy).grid(row=0, column=3)
+        ttk.Button(btns, text="Process Selected", command=self.process_files).grid(row=0, column=0, padx=(0, 10))
+        ttk.Button(btns, text="Open/Create Results", command=self.open_or_create_results_file).grid(row=0, column=1, padx=(0, 10))
+        ttk.Button(btns, text="Save Paths", command=self.save_current_paths).grid(row=0, column=2, padx=(0, 10))
+        ttk.Button(btns, text="Close", command=self.root.destroy).grid(row=0, column=3)
 
         # Status + progress
         self.status_var = tk.StringVar(value="Ready - Select foam type and configure paths")

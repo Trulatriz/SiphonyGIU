@@ -32,7 +32,7 @@ class DSCTextParser:
         sample_name, mass_mg, results_body = self._parse_header(full_text)
         data = self._parse_numeric_data(full_text)
         if data.empty:
-            raise ValueError("No se encontraron filas de datos numéricos en el fichero.")
+            raise ValueError("No numeric data rows were found in the file.")
 
         segments = self._split_segments(data)
         parsed_results = self._parse_results(results_body or "")
@@ -970,7 +970,7 @@ class DSCImageEditor:
                 "Tc": "T_{c}",
                 "Tg": "T_{g}",
             }.get(temp_label, temp_label)
-            temp_text = f"${latex_temp_label}={event['temperature']:.2f}$ °C"
+            temp_text = f"${latex_temp_label}={event['temperature']:.1f}$ °C"
             axis.text(
                 controls["x_temp"].get(),
                 controls["y_temp"].get(),
@@ -982,9 +982,9 @@ class DSCImageEditor:
 
         if event and controls["show_cryst"].get() and event.get("crystallinity") is not None:
             if mode == "amorphous":
-                cryst_text = f"$\\Delta c_p={event['crystallinity']:.3f}$ J/gK"
+                cryst_text = f"$\\Delta c_p={event['crystallinity']:.1f}$ J/gK"
             else:
-                cryst_text = f"$\\chi_c={event['crystallinity']:.2f}\\%$"
+                cryst_text = f"$\\chi_c={event['crystallinity']:.1f}\\%$"
             axis.text(
                 controls["x_cryst"].get(),
                 controls["y_cryst"].get(),
@@ -1122,7 +1122,7 @@ class DSCImageEditor:
             axis.text(
                 controls["tc_x"].get(),
                 controls["tc_y"].get(),
-                f"$T_{{c}}={cooling_event['temperature']:.2f}$ °C",
+                f"$T_{{c}}={cooling_event['temperature']:.1f}$ °C",
                 color="#000000",
                 fontsize=max(8.0, label_font_size - 1.0),
                 fontname="DejaVu Sans",
@@ -1132,16 +1132,16 @@ class DSCImageEditor:
             axis.text(
                 controls["tm_x"].get(),
                 controls["tm_y"].get(),
-                f"${second_temp_label}={second_event['temperature']:.2f}$ °C",
+                f"${second_temp_label}={second_event['temperature']:.1f}$ °C",
                 color="#000000",
                 fontsize=max(8.0, label_font_size - 1.0),
                 fontname="DejaVu Sans",
             )
         if second_event and second_event.get("crystallinity") is not None:
             second_metric = (
-                f"$\\Delta c_p={second_event['crystallinity']:.3f}$ J/gK"
+                f"$\\Delta c_p={second_event['crystallinity']:.1f}$ J/gK"
                 if mode == "amorphous"
-                else f"$\\chi_c={second_event['crystallinity']:.2f}\\%$"
+                else f"$\\chi_c={second_event['crystallinity']:.1f}\\%$"
             )
             axis.text(
                 controls["xc2_x"].get(),

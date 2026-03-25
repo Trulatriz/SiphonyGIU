@@ -910,7 +910,7 @@ class PaperSelector:
         self.paper_combo.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(0, 10))
         self.paper_combo.bind("<<ComboboxSelected>>", self.on_paper_changed)
 
-        ttk.Button(frame, text="❌ Remove", command=self.remove_paper).grid(row=0, column=2)
+        ttk.Button(frame, text="Remove", command=self.remove_paper).grid(row=0, column=2)
 
     def on_paper_changed(self, event=None):
         new_paper = self.paper_var.get()
@@ -963,8 +963,8 @@ class PaperDialog:
         btns = ttk.Frame(frame)
         btns.grid(row=2, column=0, columnspan=4, pady=(10, 0), sticky=(tk.E))
 
-        ttk.Button(btns, text="🆕 New Paper", command=self.new_paper).grid(row=0, column=0, padx=(0, 8))
-        ttk.Button(btns, text="⚙️ Manage Foams", command=self.manage_foams).grid(row=0, column=1, padx=(0, 8))
+        ttk.Button(btns, text="New Paper", command=self.new_paper).grid(row=0, column=0, padx=(0, 8))
+        ttk.Button(btns, text="Manage Foams", command=self.manage_foams).grid(row=0, column=1, padx=(0, 8))
         ttk.Button(btns, text="OK", command=self.on_ok).grid(row=0, column=2, padx=(0, 8))
         ttk.Button(btns, text="Cancel", command=self.on_cancel).grid(row=0, column=3)
 
@@ -1399,14 +1399,14 @@ class AdditiveManagerDialog:
         ttk.Label(form, text="Loadings (%):").grid(row=1, column=0, sticky=tk.W, pady=(6, 0))
         self.loadings_var = tk.StringVar()
         ttk.Entry(form, textvariable=self.loadings_var, width=18).grid(row=1, column=1, sticky=(tk.W, tk.E), padx=(6, 0), pady=(6, 0))
-        ttk.Label(form, text="Ej.: 1, 3, 5   (vacío = sin % específica)").grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=(6, 0))
+        ttk.Label(form, text="Example: 1, 3, 5   (blank = no specific loading %)").grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=(6, 0))
 
         btns = ttk.Frame(form)
         btns.grid(row=3, column=0, columnspan=2, pady=(8, 0), sticky=tk.W)
-        ttk.Button(btns, text="Guardar", command=self.save_current).grid(row=0, column=0, padx=(0, 6))
-        ttk.Button(btns, text="Eliminar", command=self.delete_current).grid(row=0, column=1)
+        ttk.Button(btns, text="Save", command=self.save_current).grid(row=0, column=0, padx=(0, 6))
+        ttk.Button(btns, text="Delete", command=self.delete_current).grid(row=0, column=1)
 
-        ttk.Button(frame, text="Cerrar", command=self.close).grid(row=3, column=1, sticky=tk.E, pady=(12, 0))
+        ttk.Button(frame, text="Close", command=self.close).grid(row=3, column=1, sticky=tk.E, pady=(12, 0))
 
         self._refresh_list()
 
@@ -1417,7 +1417,7 @@ class AdditiveManagerDialog:
     def _refresh_list(self):
         self.listbox.delete(0, "end")
         for additive, loads in self._get_current_additives().items():
-            loads_txt = ", ".join(str(l) for l in loads) if loads else "(sin %)"
+            loads_txt = ", ".join(str(l) for l in loads) if loads else "(no %)"
             self.listbox.insert("end", f"{additive}: {loads_txt}")
         self.additive_var.set("")
         self.loadings_var.set("")
@@ -1454,14 +1454,14 @@ class AdditiveManagerDialog:
         foam = self.foam_var.get()
         additive = self.additive_var.get().strip()
         if not foam or not additive:
-            messagebox.showwarning("Falta información", "Selecciona una espuma y escribe un aditivo.")
+            messagebox.showwarning("Missing information", "Select a foam and enter an additive.")
             return
         loads = self._parse_loadings(self.loadings_var.get())
         self.formulations.setdefault(foam, {})[additive] = loads
         self.foam_manager.set_formulations(self.formulations)
         self.foam_manager.create_foam_folders_if_needed(foam)
         self._refresh_list()
-        messagebox.showinfo("Guardado", f"Aditivo '{additive}' actualizado para {foam}.")
+        messagebox.showinfo("Saved", f"Additive '{additive}' updated for {foam}.")
 
     def delete_current(self):
         from tkinter import messagebox
@@ -1476,7 +1476,7 @@ class AdditiveManagerDialog:
                 del self.formulations[foam]
             self.foam_manager.set_formulations(self.formulations)
             self._refresh_list()
-            messagebox.showinfo("Eliminado", f"Aditivo '{additive}' borrado de {foam}.")
+            messagebox.showinfo("Deleted", f"Additive '{additive}' deleted from {foam}.")
 
     def close(self):
         self.top.grab_release()

@@ -66,13 +66,13 @@ class PDRModule:
         ttk.Label(setup_frame, text="PDR Results File:").grid(row=2, column=0, sticky=tk.W, pady=(0, 5))
         self.registros_file_var = tk.StringVar()
         ttk.Entry(setup_frame, textvariable=self.registros_file_var, state='readonly', width=60).grid(row=2, column=1, sticky=(tk.W, tk.E), padx=(10, 5), pady=(0, 5))
-        ttk.Button(setup_frame, text="📊 Open/Create", command=self.open_or_create_registros_file).grid(row=2, column=2, pady=(0, 5))
+        ttk.Button(setup_frame, text="Open/Create", command=self.open_or_create_registros_file).grid(row=2, column=2, pady=(0, 5))
 
         # Load suggested paths (after variables exist)
         self.load_suggested_paths()
 
         # Scan button
-        ttk.Button(setup_frame, text="🔍 Scan CSV Files", command=self.scan_csv_files).grid(row=3, column=0, pady=(10, 5))
+        ttk.Button(setup_frame, text="Scan CSV Files", command=self.scan_csv_files).grid(row=3, column=0, pady=(10, 5))
 
         # File selection frame
         file_frame = ttk.LabelFrame(main_frame, text="Select CSV Files to Process", padding="10")
@@ -113,10 +113,10 @@ class PDRModule:
         button_frame = ttk.Frame(main_frame)
         button_frame.grid(row=4, column=0, pady=10)
 
-        ttk.Button(button_frame, text="🚀 Process Selected Files", command=self.process_files).grid(row=0, column=0, padx=(0, 10))
-        ttk.Button(button_frame, text="📊 Open/Create Registros File", command=self.open_or_create_registros_file).grid(row=0, column=1, padx=(0, 10))
-        ttk.Button(button_frame, text="💾 Save Paths", command=self.save_current_paths).grid(row=0, column=2, padx=(0, 10))
-        ttk.Button(button_frame, text="❌ Close", command=self.root.destroy).grid(row=0, column=3)
+        ttk.Button(button_frame, text="Process Selected Files", command=self.process_files).grid(row=0, column=0, padx=(0, 10))
+        ttk.Button(button_frame, text="Open/Create PDR Results File", command=self.open_or_create_registros_file).grid(row=0, column=1, padx=(0, 10))
+        ttk.Button(button_frame, text="Save Paths", command=self.save_current_paths).grid(row=0, column=2, padx=(0, 10))
+        ttk.Button(button_frame, text="Close", command=self.root.destroy).grid(row=0, column=3)
 
         # Status bar
         self.status_var = tk.StringVar(value="Ready - Select foam type and configure paths")
@@ -253,7 +253,7 @@ class PDRModule:
         if filename:
             self.registros_file = filename
             self.registros_file_var.set(filename)
-            self.status_var.set(f"Registros file set: {os.path.basename(filename)}")
+            self.status_var.set(f"PDR results file set: {os.path.basename(filename)}")
             
     def scan_csv_files(self):
         """Scan input folder for CSV files"""
@@ -316,11 +316,11 @@ class PDRModule:
         if not self.registros_file:
             # Ask user if they want to create a new registros file
             result = messagebox.askyesnocancel(
-                "No Registros File", 
-                "No registros file selected. Would you like to:\\n\\n" +
-                "• YES: Create a new registros file\\n" +
-                "• NO: Process without updating registros\\n" +
-                "• CANCEL: Go back to select a file"
+                "No PDR Results File", 
+                "No PDR results file selected. Would you like to:\\n\\n" +
+                "- YES: Create a new PDR results file\\n" +
+                "- NO: Process without updating results\\n" +
+                "- CANCEL: Go back to select a file"
             )
             
             if result is None:  # Cancel
@@ -333,7 +333,7 @@ class PDRModule:
             
         # Validate existing registros file if provided
         if self.registros_file and not os.path.exists(self.registros_file):
-            messagebox.showerror("Error", "Registros file does not exist. Please select a valid file or create a new one.")
+            messagebox.showerror("Error", "The PDR results file does not exist. Select a valid file or create a new one.")
             return
             
         selected_items = self.file_tree.selection()
@@ -888,9 +888,9 @@ class PDRModule:
             # File exists, open it directly
             try:
                 os.startfile(self.registros_file)
-                self.status_var.set("Registros file opened in Excel")
+                self.status_var.set("PDR results file opened in Excel")
             except Exception as e:
-                messagebox.showerror("Error", f"Failed to open registros file: {str(e)}")
+                messagebox.showerror("Error", f"Failed to open PDR results file: {str(e)}")
         else:
             # File doesn't exist or not selected, ask to create
             if not self.output_folder:
@@ -953,18 +953,18 @@ class PDRModule:
     def open_registros_file(self):
         """Open the registros file in Excel"""
         if not self.registros_file:
-            messagebox.showwarning("Warning", "No registros file selected. Please browse for a file or create a new one.")
+            messagebox.showwarning("Warning", "No PDR results file selected. Please browse for a file or create a new one.")
             return
             
         if not os.path.exists(self.registros_file):
-            messagebox.showerror("Error", "Registros file not found. Please check the file path.")
+            messagebox.showerror("Error", "PDR results file not found. Check the file path.")
             return
             
         try:
             os.startfile(self.registros_file)
-            self.status_var.set("Registros file opened in Excel")
+            self.status_var.set("PDR results file opened in Excel")
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to open registros file: {str(e)}")
+            messagebox.showerror("Error", f"Failed to open PDR results file: {str(e)}")
 
 
 def main():

@@ -1,123 +1,420 @@
 ﻿# PressTech – Siphony GUI Help
 
-This document explains how to work with the application: folder layout, required file formats, and how to use every module from the main dashboard. Follow it to avoid missing data or validation errors.
+Esta ayuda refleja el comportamiento real del proyecto tal como esta implementado ahora mismo. Usala como referencia para preparar carpetas, entender que espera cada modulo y saber que archivos produce cada flujo.
 
-## 1. Workflow Overview
-- Everything is driven from the GUI; you do not need to edit JSON files manually.
-- Each paper has a clean tree: per-module **Input** and **Output** folders.
-- Typical order of operations:
-  1. **Data Extraction** (collect and consolidate raw measurements).
-  2. **Data Analysis** (publication plots and exploratory heatmaps).
-  3. **Organization** (keep papers and foam types tidy).
+## 1. Que hace la aplicacion
 
-The main window is split accordingly:
-- **DATA EXTRACTION**
-  - ⚡ **SMART COMBINE** – merges DoE, density, PDR, DSC, SEM, and OC outputs into `All_Results.xlsx`.
-  - 🔬 **FOAM-SPECIFIC ANALYSIS** – quick access to polymer-specific tools (PDR, OC/Pycnometry, DSC, SEM editor).
-- **DATA ANALYSIS**
-  - 📈 **SCATTER PLOTS** – publication plots with constancy-rule filters, groups, and error bars.
-  - 🔥 **HEATMAPS** – Spearman/Pearson/distance-correlation matrices with column multi-select.
-- **ORGANIZATION**
-  - 📁 **MANAGE PAPERS** – add/remove papers, change root directories, relocate paths.
-  - 🧶 **MANAGE FOAMS** – add/delete foam types globally or per paper.
+La aplicacion organiza el trabajo por:
 
-## 2. Paper Folder Structure
-When you create a paper via **Manage Papers > New Paper**, the application builds:
+- `Paper`: contexto principal.
+- `Foam type`: contexto secundario para modulos especificos de una espuma.
+
+Desde la ventana principal tienes estos bloques:
+
+- `SMART COMBINE`: fusiona `DoE`, `Density`, `PDR`, `DSC`, `SEM` y `OC` en un `All_Results_YYYYMMDD.xlsx`.
+- `FOAM-SPECIFIC ANALYSIS`: acceso rapido a `PDR`, `OC`, `DSC`, combinador SEM y `Cell wall`.
+- `SCATTER PLOTS`: graficas de publicacion a partir de `All_Results`.
+- `HEATMAPS`: matrices de correlacion sobre hojas de `All_Results`.
+- `PAPER IMAGES`: editores de imagen para `SEM`, `DSC` y `TGA`.
+
+## 2. Archivos de configuracion
+
+La aplicacion guarda estado local en:
+
+- `settings.json`: ultimos archivos, tamano de ventana y ajustes generales.
+- `foam_types_config.json`: papers, foam types, asociaciones paper-foam y rutas guardadas por modulo.
+
+Normalmente no hace falta editarlos a mano.
+
+## 3. Estructura recomendada de carpetas
+
+Cuando creas un paper y foam types desde el gestor, el proyecto trabaja mejor con una estructura como esta:
+
+```text
+<Paper>/
+|- DoE.xlsx
+|- Density.xlsx
+|- Results/
+|- <FoamType>/
+|  |- PDR/
+|  |  |- Input/
+|  |  \- Output/
+|  |- DSC/
+|  |  |- Input/
+|  |  \- Output/
+|  |- SEM/
+|  |  |- Input/
+|  |  \- Output/
+|  |- Cell wall/
+|  |  |- Input/
+|  |  \- Output/
+|  |- Open-cell content/
+|  |  |- Input/
+|  |  \- Output/
+|  \- Combine/
+|     \- Previous results/
 ```
-Paper/
-├─ DoE.xlsx
-├─ Density.xlsx
-├─ Results/
-└─ <FoamType>/
-   ├─ PDR/ Input, Output
-   ├─ Open-cell content/ Input, Output
-   ├─ DSC/ Input, Output
-   └─ SEM/ Input, Output
-```
-Guidelines:
-- Place raw inputs in the corresponding `Input` folder; the GUI writes outputs beside them.
-- Do not rename subfolders created by the wizard; modules assume these names.
 
-## 3. Managing Papers & Foams
-- **New paper**: File → *Select Paper…* → *New Paper*. Choose the name and associated foams.
-- **Switch paper**: File → *Select Paper…*.
-- **Switch foam type**: File → *Select Foam Type…*.
-- **Update foams for a paper**: use *Manage Foams* from the selector.
+Notas:
 
-## 4. Column & File Requirements
-Respect headings exactly (including case, units, spaces). Key expectations:
+- `DoE.xlsx` y `Density.xlsx` son de nivel `Paper`.
+- `PDR`, `DSC`, `SEM`, `OC` y `Cell wall` son por `Foam type`.
+- `Results/` es el destino natural del `All_Results`.
 
-### DoE.xlsx (paper level)
-- One workbook with one sheet per foam type (sheet name = foam type).
-- Required columns: `Label`, `m(g)`, `Water (g)`, `T (°C)`, `P CO2 (bar)`, `t (min)`.
+## 4. Flujo recomendado
 
-### Density.xlsx (paper level)
-- One sheet per foam type.
-- Recommended columns (used by Combine/OC modules):
-  - `Label`, `Av Exp ρ foam (g/cm3)`, `Desvest Exp ρ foam (g/cm3)`, `%DER Exp ρ foam (g/cm3)`, `ρr`, `X`, `Porosity (%)`.
-  - For OC, ensure `Density (g/cm3)` is present.
+Orden practico:
 
-### PDR CSV (foam level)
-- Columns: `Time`, `T1 (°C)`, `T2 (°C)`, `P (bar)`.
-- Output workbook: `PDR/Output/registros_promedios.xlsx` with sheet `Registros`.
+1. Crear o seleccionar `Paper` y `Foam type`.
+2. Preparar `DoE.xlsx` y `Density.xlsx`.
+3. Generar resultados por modulo:
+   - `PDR_Results_<Foam>.xlsx`
+   - `DSC_Results_<Foam>.xlsx` o `DSC_Results_<Foam>_Tg.xlsx`
+   - `SEM_Results_<Foam>.xlsx`
+   - `OC_Results_<Foam>.xlsx`
+4. Ejecutar `SMART COMBINE`.
+5. Analizar el nuevo `All_Results_YYYYMMDD.xlsx` con `Scatter Plots` y `Heatmaps`.
+6. Usar los editores de `SEM`, `DSC` y `TGA` para figuras finales de publicacion.
 
-### OC / Picnometry (foam level)
-- Original Excel files live in `Open-cell content/Input`.
-- Module output (recommended): `Open-cell content/Output/<Foam>_OC.xlsx` containing `%OC` column for Combine.
+## 5. Requisitos reales de entrada
 
-### DSC TXT (foam level)
-- Place `.txt` files in `DSC/Input`.
-- Output: `DSC/Output/DSC_<Foam>.xlsx` with Tg, Tm, Xc columns.
+### 5.1 DoE.xlsx
 
-### SEM (foam level)
-- Images or histogram summary Excel go into `SEM/Input`.
-- Use the SEM Image Editor for annotations or histogram combiner as needed.
+`SMART COMBINE` trabaja con una hoja por foam type.
 
-### All_Results.xlsx
-- Produced by Smart Combine in `Results/`.
-- Contains all canonical columns (`m(g)`, `Water (g)`, `T (°C)`, … `DSC Tg (°C)`). This file feeds scatter plots and heatmaps.
+Columnas canonicas que forman parte del flujo real:
 
-## 5. Modules
+- `Polymer`
+- `Additive`
+- `Additive %`
+- `Label`
+- `m(g)`
+- `Water (g)`
+- `T (degC)`
+- `P CO2 (bar)`
+- `Psat (MPa)`
+- `t (min)`
 
-### 5.1 Smart Combine (⚡)
-1. Open **SMART COMBINE**.
-2. Select the paper base folder; missing paths are hinted from template structure.
-3. Review detected files (DoE, Density, PDR, DSC, SEM, OC). Fill gaps if needed.
-4. Run combine. Output: `Results/All_Results_YYYYMMDD.xlsx` plus logs.
+Importante:
 
-### 5.2 Foam-Specific Tools (🔬)
-- **PDR**: computes Pi, Pf, and PDR per experiment. Appends rows only for new CSVs.
-- **OC / Picnometry**: parses comments, lets you override ball counts, outputs `%OC` for Combine.
-- **DSC**: extracts Tg/Tm/Xc based on polymer settings.
-- **SEM**: image editor and optional histogram combiner.
+- `Additive` y `Additive %` si se usan en el combine y si pasan al `All_Results`.
+- El codigo tiene compatibilidad por cabecera, pero sigue existiendo logica posicional heredada. No conviene cambiar el orden libremente.
+- Si `Psat (MPa)` no existe o esta vacio, se deriva como `P CO2 (bar) / 10`.
 
-### 5.3 Scatter Plots (📈)
-1. Load the desired `All_Results` workbook (any sheet containing the required columns).
-2. Select sheet, X/Y axes, grouping column (optional), **Shape by** (marker shapes), and constancy filters. Error bars auto-enable when matching deviation columns exist.
-3. Render scatter to visualize trends with the constancy rule enforced.
-4. Actions:
-   - *Render Plot* refreshes the scatter tab.
-   - *Save Scatter* / *Copy Scatter* export the current figure.
-   - *Export Data* writes filtered data + JSON config for reproduction.
+### 5.2 Density.xlsx
 
-### 5.4 Heatmaps (🔥) – separate module
-1. Launch **HEATMAPS** (button or Tools menu).
-2. Default path uses the last heatmap file or the last Combine output.
-3. Load workbook → choose sheet. Independent and dependent variables appear in dedicated lists.
-4. Select columns (multi-select with Ctrl/Shift). *Select all* and *Clear selection* apply to both lists.
-5. Choose correlation method:
-   - **Spearman** (default): robust to monotonic but nonlinear relationships.
-   - **Pearson**: classic linear correlation; use when relationships are known to be linear.
-   - **Distance (dCor)**: captures general dependence patterns (recommended when nonlinear effects dominate). Slightly heavier computationally.
-6. Render heatmap → copy or save figure. The status bar summarizes sheet and variables used.
+Se espera un libro con una hoja por foam type.
 
-## 6. Frequent Issues & Tips
-- **Column mismatch**: errors always list missing columns; adjust Excel headers accordingly.
-- **Constancy rule (scatter)**: you must pin all independent variables except X and Group; the app guides you via combobox filters.
-- **Heatmap selection**: requires ≥2 numeric columns after removing constant/empty ones; the module reports if selection is insufficient.
-- **Clipboard copy on Windows**: requires `pywin32`. Install via `pip install pywin32` if copy buttons show errors.
-- **State persistence**: scatter plots remember settings per sheet & file; if a workbook moves, reset selections as needed.
-- **Git-friendly exports**: outputs are stored under `Results/` or module-specific `Output/` folders so you can version control only what matters.
+Columnas usadas o derivadas por el flujo:
 
----
-With these guidelines you can manage papers, keep foams organized, extract raw metrics, and generate both scatter plots and correlation heatmaps ready for publication. Document unusual workflows in `Results/` notes so future combines remain reproducible.
+- `Label`
+- `rho foam (g/cm^3)`
+- `rho foam (kg/m^3)`
+- `Desvest rho foam (g/cm^3)`
+- `Desvest rho foam (kg/m^3)`
+- `%DER rho foam (g/cm^3)`
+- `rho_r`
+- `X`
+
+`OC` ademas usa la hoja de la espuma actual para recuperar densidad y `rho_r`.
+
+### 5.3 PDR
+
+Entrada:
+
+- carpeta con archivos `.csv`
+
+Salida principal:
+
+- archivos procesados `* procesado.xlsx` en `PDR/Output`
+- resumen `PDR_Results_<Foam>.xlsx` con hoja `Registros`
+
+Comportamiento relevante:
+
+- puede crear el fichero de resultados si no existe
+- trabaja de forma incremental
+- intenta no duplicar muestras ya registradas
+- en Windows puede usar Excel COM para copiar graficos al resumen; si falla, usa un fallback sin grafico
+
+### 5.4 DSC
+
+Entrada:
+
+- carpeta con archivos `.txt`
+
+Modos:
+
+- `Semicrystalline Analysis`
+- `Amorphous Analysis`
+
+Salida:
+
+- `DSC_Results_<Foam>.xlsx`
+- `DSC_Results_<Foam>_Tg.xlsx`
+
+Comportamiento relevante:
+
+- extrae datos de la seccion `Results:`
+- anade solo muestras nuevas si el Excel ya existe
+- para semicristalinos guarda datos de primer calentamiento, enfriamiento y segundo calentamiento
+- para amorfos guarda Tg y Dcp
+
+### 5.5 Open-Cell Content (OC)
+
+Entrada:
+
+- carpeta con archivos de picnometria `.xlsx` o `.xls`
+- `Density.xlsx` a nivel paper
+
+Salida:
+
+- `OC_Results_<Foam>.xlsx`
+
+Comportamiento relevante:
+
+- permite elegir tipo de espuma/instrumento: `Flexible` o `Rigid`
+- calcula o corrige `Vpyc`
+- abre una ventana de revision antes de guardar
+- permite corregir manualmente el volumen de bolas detectado
+- guarda formulas de Excel para `Vext`, `Vext - Vpyc`, `1-rho_r`, `Vext(1-rho_r)` y `%OC`
+
+### 5.6 SEM
+
+Hay dos piezas separadas:
+
+- `SEM Image Editor`: editor de imagenes para calibrar, recortar y anadir elementos graficos.
+- `Combine SEM Results`: combina histogramas `histogram_*.xlsx` en un `SEM_Results_<Foam>.xlsx`.
+
+Entrada del combinador:
+
+- carpeta `SEM/Output` con archivos `histogram_*.xlsx`
+
+Salida:
+
+- `SEM_Results_<Foam>.xlsx`
+
+Advertencia:
+
+- si alguna celda sale `NaN`, a veces hace falta abrir el `histogram_*.xlsx` original en Excel y guardarlo manualmente para recalcular su cache.
+
+### 5.7 Cell wall
+
+Entrada:
+
+- carpeta con mascaras binarias `*_binary_mask.png`
+
+Salida:
+
+- histogramas, hojas de trabajo y metricas en `Cell wall/Output`
+
+Funciones relevantes:
+
+- escaneo de mascaras
+- editor de inclusiones y exclusiones
+- ajuste de histogramas
+- exportacion de tablas combinadas y metricas como `walls_vs_struts`
+
+## 6. Que genera Smart Combine
+
+`SMART COMBINE` fusiona por `Label` normalizada y construye estas columnas canonicas:
+
+- `Polymer`
+- `Additive`
+- `Additive %`
+- `Label`
+- `m(g)`
+- `Water (g)`
+- `T (degC)`
+- `P CO2 (bar)`
+- `Psat (MPa)`
+- `t (min)`
+- `Pi (MPa)`
+- `Pf (MPa)`
+- `PDR (MPa/s)`
+- `n SEM images`
+- `o (um)`
+- `Desvest o (um)`
+- `RSD o (%)`
+- `Nv (cells*cm^3)`
+- `Desvest Nv (cells*cm^3)`
+- `RSD Nv (%)`
+- `rho foam (g/cm^3)`
+- `rho foam (kg/m^3)`
+- `Desvest rho foam (g/cm^3)`
+- `Desvest rho foam (kg/m^3)`
+- `%DER rho foam (g/cm^3)`
+- `rho_r`
+- `X`
+- `OC (%)`
+- `DSC Tm (degC)`
+- `DSC Xc (%)`
+- `DSC Tg (degC)`
+
+Comportamiento relevante:
+
+- crea `All_Results_YYYYMMDD.xlsx`
+- escribe una hoja global `All_Results` y hojas por foam type
+- mueve resultados anteriores a `Previous results`
+- copia tambien el nuevo resultado a `Previous results`
+
+## 7. Scatter plots
+
+Hay dos modulos:
+
+- `Independent vs Dependent`
+- `Dependent vs Dependent`
+
+Entrada:
+
+- cualquier `All_Results*.xlsx` con columnas validas
+
+Funciones importantes:
+
+- seleccion por hoja
+- filtros y constancy rule
+- agrupacion por color y/o forma
+- barras de error cuando existe la desviacion correspondiente
+- exportacion de figura
+- copia al portapapeles en Windows
+- exportacion de datos filtrados con JSON de reproduccion
+
+Escalas de eje:
+
+- `X scale`: `Linear` o `Log`
+- `Y scale`: `Linear` o `Log`
+- son independientes
+- si intentas usar log con valores `<= 0` o limites manuales incompatibles, el modulo avisa y vuelve ese eje a lineal
+
+Los tamanos de exportacion estan fijados internamente para mantener consistencia de publicacion.
+
+## 8. Heatmaps
+
+Entrada:
+
+- `All_Results*.xlsx`
+
+Funciones:
+
+- seleccion por hoja
+- seleccion multiple de columnas independientes y dependientes
+- metodos:
+  - `Spearman`
+  - `Pearson`
+  - `Distance (dCor)`
+- guardado a imagen
+- copia al portapapeles en Windows
+
+Solo usa columnas permitidas del modelo de datos del proyecto.
+
+## 9. Editores de imagen
+
+### 9.1 SEM Image Editor
+
+Flujo:
+
+1. abrir imagen
+2. calibrar con linea horizontal
+3. recortar region
+4. configurar elementos
+5. guardar imagen
+
+Incluye:
+
+- deshacer / rehacer
+- barra de escala
+- borde
+- overlay opcional de cell size
+- overlay opcional de densidad
+
+### 9.2 DSC Image Editor
+
+Entrada:
+
+- un `.txt` de DSC
+
+Salida:
+
+- figuras individuales o exportacion masiva de 4 PNG
+- copia al portapapeles
+
+Caracteristicas:
+
+- `600 dpi`
+- layout fijo de exportacion
+- varias fases del experimento
+- copia de coordenadas `Tm/Xc` desde `1st Heating`
+
+### 9.3 TGA Image Editor
+
+Entrada:
+
+- un `.txt` de TGA
+
+Salida:
+
+- figura overlay masa + DTG
+- exportacion PNG
+- copia al portapapeles
+
+Caracteristicas:
+
+- `600 dpi`
+- layout fijo de exportacion
+- control de leyenda, linea y etiqueta de `Td`
+- inversion opcional del eje X
+
+## 10. Gestion de papers y foams
+
+`FoamTypeManager` guarda:
+
+- lista global de papers
+- lista global de foam types
+- que foams pertenecen a cada paper
+- ruta raiz de cada paper
+- rutas guardadas por modulo
+- rutas de `All_Results`
+
+Consejos:
+
+- cambia de `Paper` antes de trabajar con archivos
+- cambia de `Foam type` antes de procesar modulos especificos
+- usa `Save Paths` en los modulos si quieres fijar una ruta no estandar
+
+## 11. Particularidades importantes
+
+- El proyecto esta claramente orientado a Windows en varias funciones de portapapeles y automatizacion de Excel.
+- Para copiar figuras al portapapeles necesitas `pywin32`.
+- `PDR` y `DSC` son incrementales: no vuelven a anadir automaticamente muestras ya registradas.
+- `SEM Image Editor` no genera por si solo `SEM_Results_<Foam>.xlsx`; eso lo hace el combinador de histogramas o la herramienta externa de analisis.
+- `SMART COMBINE` funciona mejor si mantienes nombres de archivo y estructura de carpetas coherentes con la plantilla del proyecto.
+
+## 12. Problemas frecuentes
+
+- `No usable sheets` en heatmaps:
+  la hoja no tiene suficientes columnas validas y numericas.
+
+- advertencias en scatter:
+  falta renderizar antes de guardar/copiar o no se cumple la constancy rule.
+
+- log scale no disponible:
+  hay valores `0`, negativos o limites manuales no compatibles.
+
+- `NaN` en resultados SEM:
+  abre y guarda manualmente el `histogram_*.xlsx` original en Excel.
+
+- `Density file not loaded` en OC:
+  revisa que `Density.xlsx` exista y que la hoja tenga el nombre exacto del foam type.
+
+- muestras ausentes o mal alineadas en combine:
+  revisa la normalizacion de `Label` en todos los ficheros de entrada.
+
+## 13. Nombres de salida importantes
+
+- `Results/All_Results_YYYYMMDD.xlsx`
+- `PDR/Output/PDR_Results_<Foam>.xlsx`
+- `DSC/Output/DSC_Results_<Foam>.xlsx`
+- `DSC/Output/DSC_Results_<Foam>_Tg.xlsx`
+- `SEM/Output/SEM_Results_<Foam>.xlsx`
+- `Open-cell content/Output/OC_Results_<Foam>.xlsx`
+
+Si mantienes esas rutas y nombres, el flujo completo funciona con muchas menos correcciones manuales.

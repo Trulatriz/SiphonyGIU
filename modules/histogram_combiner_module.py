@@ -96,7 +96,7 @@ class HistogramCombinerModule:
 
         ttk.Label(main_frame, text="Combine SEM Results", font=("Arial", 16, "bold")).pack(pady=(0, 20))
 
-        # Foam type selector (allows switching without cerrar ventana)
+        # Foam type selector (allows switching without closing the window)
         foam_frame = ttk.Frame(main_frame)
         foam_frame.pack(fill=tk.X, pady=(0, 15))
         ttk.Label(foam_frame, text="Foam Type:").pack(side=tk.LEFT)
@@ -117,8 +117,10 @@ class HistogramCombinerModule:
                 "2. Choose where to save the combined SEM results\n"
                 "3. Click 'Combine'")
         ttk.Label(main_frame, text=desc, wraplength=700, justify=tk.LEFT).pack(pady=(0, 20))
-        warning_text = ("¡IMPORTANTE!: SI ALGÚN DATO APARECE VACÍO (NaN) EN EL RESULTADO, ES NECESARIO ABRIR EL ARCHIVO "
-                        "'histogram_*.xlsx' CORRESPONDIENTE EN EXCEL Y GUARDARLO MANUALMENTE PARA RECALCULAR LA CACHÉ.")
+        warning_text = (
+            "IMPORTANT: if any result appears empty (NaN), open the corresponding "
+            "`histogram_*.xlsx` file in Excel and save it manually to refresh the cached values."
+        )
         tk.Label(
             main_frame,
             text=warning_text,
@@ -189,17 +191,17 @@ class HistogramCombinerModule:
         new_ft = self.foam_var.get().strip()
         if not new_ft:
             return
-        # Persist selection globally so otros módulos lo vean
+        # Persist selection globally so other modules can reuse it
         try:
             self.foam_manager.set_current_foam_type(new_ft)
         except Exception:
             pass
-        # Recalcular rutas solo si estaban vacías o pertenecen a otra espuma
+        # Recompute paths only when they were empty or belonged to another foam
         prev_out = self.output_file_var.get()
         if (not prev_out) or (f'SEM_Results_' in prev_out and not prev_out.endswith(f'{new_ft}.xlsx')):
             self.load_default_paths()
         else:
-            # Solo actualizar nombre archivo si se cambió espuma pero usuario mantiene carpeta custom
+            # Only update the filename if the foam changed but the user keeps a custom folder
             out_dir = self.output_folder_var.get() or os.path.dirname(prev_out)
             if out_dir:
                 self.output_file_var.set(os.path.join(out_dir, f'SEM_Results_{new_ft}.xlsx'))

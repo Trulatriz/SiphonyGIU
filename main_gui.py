@@ -351,7 +351,7 @@ class PressTechGUI:
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
-        help_menu.add_command(label="Instrucciones (HELP.md)", command=self.show_help)
+        help_menu.add_command(label="Instructions (HELP.md)", command=self.show_help)
         help_menu.add_command(label="Documentation", command=self.show_documentation)
         help_menu.add_command(label="About", command=self.show_about)
 
@@ -462,37 +462,37 @@ class PressTechGUI:
         
         # Instructions content
         instructions = [
-            ("ðŸ“ PreparaciÃ³n de imÃ¡genes:", [
-                "â€¢ Una muestra por vez (no mezclar diferentes muestras)",
-                "â€¢ Nombres similares para rÃ©plicas de la misma muestra",
-                "â€¢ AÃ±adir '_1' a la primera rÃ©plica si las otras tienen '_2', '_3', etc.",
-                "â€¢ Reemplazar espacios con guiones bajos (_)",
+            ("Image Preparation:", [
+                "- One sample at a time; do not mix different samples",
+                "- Use similar names for replicates of the same sample",
+                "- Add '_1' to the first replicate if the others use '_2', '_3', etc.",
+                "- Replace spaces with underscores (_)",
                 "",
-                "Ejemplo de nombres correctos:",
+                "Correct filename examples:",
                 "  PS_20250214_1_001.tif",
                 "  PS_20250214_1_005.tif", 
                 "  PS_20250214_2_001.tif",
                 "  PS_20250214_2_002.tif"
             ]),
-            ("âš™ï¸ Datos de entrada:", [
-                "â€¢ Densidad: Introducir densidad del material sÃ³lido (la del espumado no se usa)",
-                "â€¢ Escala (preferible manual para evitar errores):",
-                "  - AutomÃ¡tica: se detecta de las lÃ­neas de referencia x10 = micrÃ³metros",
-                "  - Manual: introducir el nÃºmero que aparece abajo a la derecha de la imagen",
-                "    (en micrÃ³metros), separados por comas en orden de las imÃ¡genes"
+            ("Input Data:", [
+                "- Density: enter the solid-material density; foam density is not used here",
+                "- Scale (manual is recommended to avoid errors):",
+                "  - Automatic: detected from the x10 reference lines in micrometers",
+                "  - Manual: enter the number shown at the bottom-right of each image",
+                "    in micrometers, separated by commas and in image order"
             ]),
-            ("ðŸ” Tipos de anÃ¡lisis:", [
-                "â€¢ AutomÃ¡tico: Sube imÃ¡genes â†’ detecta poros automÃ¡ticamente â†’ genera histograma",
-                "â€¢ Con ROIs: Usa regiones predefinidas/editadas en ImageJ (archivo '_rois.zip')"
+            ("Analysis Modes:", [
+                "- Automatic: upload images, detect pores automatically, and generate a histogram",
+                "- With ROIs: use predefined or edited ImageJ regions (`_rois.zip`)"
             ]),
-            ("ðŸ“Š Resultados:", [
-                "â€¢ Histograma Excel con hoja por rÃ©plica + hoja combinada",
-                "â€¢ ImÃ¡genes con poros detectados",
-                "â€¢ ROIs editables en ImageJ si es necesario"
+            ("Outputs:", [
+                "- Excel histogram with one sheet per replicate plus one combined sheet",
+                "- Images with detected pores",
+                "- Editable ROIs for ImageJ when needed"
             ]),
-            ("âš ï¸ Errores comunes:", [
-                "â€¢ Error 500: Escala mal detectada â†’ usar escala manual",
-                "â€¢ 'Failed to fetch': Nombres de archivo incorrectos"
+            ("Common Errors:", [
+                "- Error 500: scale was detected incorrectly; use manual scale",
+                "- 'Failed to fetch': incorrect file naming"
             ])
         ]
         
@@ -513,12 +513,12 @@ class PressTechGUI:
         button_frame.pack(pady=(30, 10))
         
         # Open web tool button
-        web_btn = ttk.Button(button_frame, text="Abrir Herramienta Web", 
+        web_btn = ttk.Button(button_frame, text="Open Web Tool", 
                            command=lambda: self.open_web_tool())
         web_btn.pack(side=tk.LEFT, padx=(0, 10))
         
         # Close button
-        close_btn = ttk.Button(button_frame, text="Cerrar", command=dialog.destroy)
+        close_btn = ttk.Button(button_frame, text="Close", command=dialog.destroy)
         close_btn.pack(side=tk.LEFT)
         
         # Pack canvas and scrollbar
@@ -751,9 +751,9 @@ class PressTechGUI:
             if os.path.exists(help_path):
                 webbrowser.open(f"file://{help_path}")
             else:
-                messagebox.showinfo("Help", "HELP.md no encontrado en la carpeta de la aplicaciÃ³n.")
+                messagebox.showinfo("Help", "HELP.md was not found in the application folder.")
         except Exception as e:
-            messagebox.showerror("Error", f"No se pudo abrir la ayuda: {str(e)}")
+            messagebox.showerror("Error", f"Could not open help: {str(e)}")
     
     def show_about(self):
         """Show about dialog"""
@@ -762,13 +762,13 @@ class PressTechGUI:
 An integrated analysis tool for foam processing research.
 
 Features:
-â€¢ Smart data combination with incremental updates
-â€¢ Statistical analysis and visualization
-â€¢ DSC thermal analysis
-â€¢ SEM image editing
-â€¢ Open-cell content calculation
-â€¢ Pressure drop rate analysis
-â€¢ Cell size and density analysis
+- Smart data combination with incremental updates
+- Statistical analysis and visualization
+- DSC thermal analysis
+- SEM image editing
+- Open-cell content calculation
+- Pressure drop rate analysis
+- Cell size and density analysis
 
 Developed for advanced polymer foam research.
 """

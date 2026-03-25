@@ -7,7 +7,7 @@ import os
 class SEMImageEditor:
     def __init__(self, root):
         self.root = root
-        self.base_title = "Editor de Imágenes SEM"
+        self.base_title = "SEM Image Editor"
         self.root.title(self.base_title)
         # Tamaño optimizado para imágenes SEM de 1280x960
         # Ventana ligeramente más grande para incluir controles y márgenes
@@ -63,49 +63,49 @@ class SEMImageEditor:
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Panel de instrucciones
-        self.instruction_frame = ttk.LabelFrame(main_frame, text="Instrucciones", padding=10)
+        # Instructions panel
+        self.instruction_frame = ttk.LabelFrame(main_frame, text="Instructions", padding=10)
         self.instruction_frame.pack(fill=tk.X, pady=(0, 10))
         
         self.instruction_label = ttk.Label(self.instruction_frame, text="", wraplength=800, justify=tk.LEFT)
         self.instruction_label.pack()
         
-        # Frame superior con controles
+        # Top controls frame
         control_frame = ttk.Frame(main_frame)
         control_frame.pack(fill=tk.X, pady=(0, 10))
         
-        # Botones principales
-        self.load_btn = ttk.Button(control_frame, text="1. Abrir Imagen", command=self.load_image)
+        # Main buttons
+        self.load_btn = ttk.Button(control_frame, text="1. Open Image", command=self.load_image)
         self.load_btn.pack(side=tk.LEFT, padx=(0, 5))
         
-        self.calibrate_btn = ttk.Button(control_frame, text="2. Trazar Línea Horizontal", command=self.start_calibration, state=tk.DISABLED)
+        self.calibrate_btn = ttk.Button(control_frame, text="2. Draw Horizontal Line", command=self.start_calibration, state=tk.DISABLED)
         self.calibrate_btn.pack(side=tk.LEFT, padx=5)
         
-        self.crop_btn = ttk.Button(control_frame, text="3. Seleccionar Región", command=self.start_region_selection, state=tk.DISABLED)
+        self.crop_btn = ttk.Button(control_frame, text="3. Select Region", command=self.start_region_selection, state=tk.DISABLED)
         self.crop_btn.pack(side=tk.LEFT, padx=5)
         
         self.auto_crop_btn = ttk.Button(
             control_frame,
-            text="3b. Recorte 1280×900",
+            text="3b. Crop to 1280x900",
             command=self.auto_crop_to_target,
             state=tk.DISABLED
         )
         self.auto_crop_btn.pack(side=tk.LEFT, padx=5)
         
-        self.config_btn = ttk.Button(control_frame, text="4. Configurar Elementos", command=self.open_config, state=tk.DISABLED)
+        self.config_btn = ttk.Button(control_frame, text="4. Configure Elements", command=self.open_config, state=tk.DISABLED)
         self.config_btn.pack(side=tk.LEFT, padx=5)
         
-        self.save_btn = ttk.Button(control_frame, text="5. Guardar Imagen", command=self.save_image, state=tk.DISABLED)
+        self.save_btn = ttk.Button(control_frame, text="5. Save Image", command=self.save_image, state=tk.DISABLED)
         self.save_btn.pack(side=tk.LEFT, padx=5)
         
-        # Separador
+        # Separator
         ttk.Separator(control_frame, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
         
-        # Botones de deshacer/rehacer
-        self.undo_btn = ttk.Button(control_frame, text="↶ Deshacer", command=self.undo, state=tk.DISABLED)
+        # Undo / redo
+        self.undo_btn = ttk.Button(control_frame, text="Undo", command=self.undo, state=tk.DISABLED)
         self.undo_btn.pack(side=tk.LEFT, padx=5)
         
-        self.redo_btn = ttk.Button(control_frame, text="↷ Rehacer", command=self.redo, state=tk.DISABLED)
+        self.redo_btn = ttk.Button(control_frame, text="Redo", command=self.redo, state=tk.DISABLED)
         self.redo_btn.pack(side=tk.LEFT, padx=5)
         
         # Frame para la imagen
@@ -140,11 +140,11 @@ class SEMImageEditor:
     
     def update_workflow_instructions(self):
         instructions = [
-            "Paso 1: Haga clic en 'Abrir Imagen' para cargar una imagen SEM (.tiff, .png, .jpeg)",
-            "Paso 2: Haga clic en 'Trazar Línea Horizontal' y dibuje una línea horizontal sobre un elemento de referencia conocido",
-            "Paso 3: Haga clic en 'Seleccionar Región' y arrastre para seleccionar el área de la imagen que desea conservar",
-            "Paso 4: Configure los elementos adicionales (color del borde, escala, cell size opcional)",
-            "Paso 5: Guarde la imagen procesada en formato TIFF"
+            "Step 1: Click 'Open Image' to load a SEM image (.tiff, .png, .jpeg).",
+            "Step 2: Click 'Draw Horizontal Line' and draw a horizontal line over a known reference feature.",
+            "Step 3: Click 'Select Region' and drag to choose the image area you want to keep.",
+            "Step 4: Configure extra elements such as border color, scale, and optional cell size.",
+            "Step 5: Save the processed image as TIFF."
         ]
         
         if self.workflow_step < len(instructions):
@@ -248,14 +248,14 @@ class SEMImageEditor:
     
     def load_image(self):
         file_path = filedialog.askopenfilename(
-            title="Seleccionar imagen SEM",
+            title="Select SEM image",
             initialdir=self.last_open_dir,
             filetypes=[
-                ("Archivos de imagen", "*.tiff *.tif *.png *.jpg *.jpeg"),
+                ("Image files", "*.tiff *.tif *.png *.jpg *.jpeg"),
                 ("TIFF files", "*.tiff *.tif"),
                 ("PNG files", "*.png"),
                 ("JPEG files", "*.jpg *.jpeg"),
-                ("Todos los archivos", "*.*")
+                ("All files", "*.*")
             ]
         )
         
@@ -289,24 +289,24 @@ class SEMImageEditor:
                 self.save_state()
                 
             except Exception as e:
-                messagebox.showerror("Error", f"No se pudo cargar la imagen: {str(e)}")
+                messagebox.showerror("Error", f"Could not load the image: {str(e)}")
     
     def start_region_selection(self):
         if self.pixels_per_micron is None:
-            messagebox.showerror("Error", "Flujo de trabajo incorrecto. Primero calibre la escala.")
+            messagebox.showerror("Error", "Invalid workflow. Calibrate the scale first.")
             return
         
         self.selecting_region = True
         self.selection_rect = None
         self.selection_start = None
-        messagebox.showinfo("Selección de Región", "Arrastre para seleccionar la región de la imagen que desea conservar.")
+        messagebox.showinfo("Region Selection", "Drag to select the image region you want to keep.")
     
     def auto_crop_to_target(self):
         if self.pixels_per_micron is None:
-            messagebox.showerror("Error", "Flujo de trabajo incorrecto. Primero calibre la escala.")
+            messagebox.showerror("Error", "Invalid workflow. Calibrate the scale first.")
             return
         if self.current_image is None:
-            messagebox.showerror("Error", "No hay imagen cargada para recortar.")
+            messagebox.showerror("Error", "No image is loaded for cropping.")
             return
 
         target_width = 1280
@@ -315,8 +315,8 @@ class SEMImageEditor:
 
         if height < target_height:
             messagebox.showwarning(
-                "Altura insuficiente",
-                f"La imagen tiene una altura de {height}px, menor que el objetivo de {target_height}px."
+                "Insufficient Height",
+                f"The image height is {height}px, smaller than the target {target_height}px."
             )
             return
 
@@ -341,18 +341,18 @@ class SEMImageEditor:
             self.update_workflow_buttons()
             self.save_state()
         except Exception as exc:
-            messagebox.showerror("Error de recorte", f"No se pudo aplicar el recorte automático: {exc}")
+            messagebox.showerror("Crop Error", f"Could not apply the automatic crop: {exc}")
     
     def start_calibration(self):
         if self.current_image is None:
-            messagebox.showerror("Error", "Flujo de trabajo incorrecto. Primero cargue una imagen.")
+            messagebox.showerror("Error", "Invalid workflow. Load an image first.")
             return
         
         self.drawing_line = True
         self.calibration_line = None
         self.line_start = None
         self.line_end = None
-        messagebox.showinfo("Calibración", "Dibuje una línea horizontal sobre un elemento de referencia conocido en la imagen.")
+        messagebox.showinfo("Calibration", "Draw a horizontal line over a known reference feature in the image.")
     
     def on_canvas_click(self, event):
         canvas_x = self.canvas.canvasx(event.x)
@@ -444,7 +444,7 @@ class SEMImageEditor:
                 # Guardar estado después del recorte
                 self.save_state()
             else:
-                messagebox.showwarning("Región muy pequeña", "Por favor, seleccione una región más grande.")
+                messagebox.showwarning("Region Too Small", "Please select a larger region.")
                 if self.selection_rect:
                     self.canvas.delete(self.selection_rect)
                 self.selection_start = None
@@ -459,7 +459,7 @@ class SEMImageEditor:
             if pixel_length > 5:  # Línea mínima válida
                 self.ask_real_length(pixel_length)
             else:
-                messagebox.showwarning("Línea muy corta", "Por favor, dibuje una línea más larga.")
+                messagebox.showwarning("Line Too Short", "Please draw a longer line.")
                 if self.calibration_line:
                     self.canvas.delete(self.calibration_line)
                 self.line_start = None
@@ -468,12 +468,12 @@ class SEMImageEditor:
     def ask_real_length(self, pixel_length):
         # Ventana para pedir la longitud real
         dialog = tk.Toplevel(self.root)
-        dialog.title("Calibración de Escala")
+        dialog.title("Scale Calibration")
         dialog.geometry("300x150")
         dialog.transient(self.root)
         dialog.grab_set()
         
-        ttk.Label(dialog, text="Ingrese la longitud real de la línea trazada:").pack(pady=10)
+        ttk.Label(dialog, text="Enter the real length of the drawn line:").pack(pady=10)
         
         entry_frame = ttk.Frame(dialog)
         entry_frame.pack(pady=5)
@@ -487,7 +487,7 @@ class SEMImageEditor:
             try:
                 real_length = float(length_var.get())
                 if real_length <= 0:
-                    raise ValueError("La longitud debe ser positiva")
+                    raise ValueError("Length must be positive")
                 
                 self.pixels_per_micron = pixel_length / real_length
                 self.scale_length_um = real_length
@@ -509,10 +509,10 @@ class SEMImageEditor:
                 # Guardar estado después de la calibración
                 self.save_state()
                 
-                messagebox.showinfo("Calibración", f"Calibración completada: {real_length} μm = {pixel_length:.1f} píxeles")
+                messagebox.showinfo("Calibration", f"Calibration completed: {real_length} μm = {pixel_length:.1f} pixels")
                 
             except ValueError as e:
-                messagebox.showerror("Error", "Por favor, ingrese un número válido mayor que 0")
+                messagebox.showerror("Error", "Enter a valid number greater than 0.")
         
         def cancel_calibration():
             dialog.destroy()
@@ -525,26 +525,26 @@ class SEMImageEditor:
         button_frame = ttk.Frame(dialog)
         button_frame.pack(pady=10)
         
-        ttk.Button(button_frame, text="Confirmar", command=confirm_calibration).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Cancelar", command=cancel_calibration).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Confirm", command=confirm_calibration).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=cancel_calibration).pack(side=tk.LEFT, padx=5)
         
         entry.focus()
         dialog.bind('<Return>', lambda e: confirm_calibration())
     
     def open_config(self):
         if self.pixels_per_micron is None:
-            messagebox.showerror("Error", "Flujo de trabajo incorrecto. Primero complete la calibración y el recorte.")
+            messagebox.showerror("Error", "Invalid workflow. Complete calibration and cropping first.")
             return
         
         # Ventana de configuración
         config_window = tk.Toplevel(self.root)
-        config_window.title("Configuración de Elementos")
+        config_window.title("Element Configuration")
         config_window.geometry("500x480")
         config_window.transient(self.root)
         config_window.grab_set()
         
         # Color del borde
-        color_frame = ttk.LabelFrame(config_window, text="Color del Borde y Escala", padding=10)
+        color_frame = ttk.LabelFrame(config_window, text="Border and Scale Color", padding=10)
         color_frame.pack(fill=tk.X, padx=10, pady=5)
         
         self.color_display = tk.Label(color_frame, bg=self.border_color, width=10, height=2)
@@ -553,11 +553,11 @@ class SEMImageEditor:
         self.color_hex_var = tk.StringVar(value=self.border_color.upper())
         ttk.Label(color_frame, textvariable=self.color_hex_var).pack(side=tk.LEFT, padx=(0, 10))
         
-        ttk.Button(color_frame, text="Elegir Color...", command=lambda: self.open_color_dialog(config_window)).pack(side=tk.LEFT)
+        ttk.Button(color_frame, text="Choose Color...", command=lambda: self.open_color_dialog(config_window)).pack(side=tk.LEFT)
 
         palette_frame = ttk.Frame(color_frame)
         palette_frame.pack(fill=tk.X, pady=(10, 0))
-        ttk.Label(palette_frame, text="Paleta rápida:").pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Label(palette_frame, text="Quick palette:").pack(side=tk.LEFT, padx=(0, 10))
         self.quick_palette_colors = ["#0072B2", "#E69F00", "#009E73", "#F0E442", "#56B4E9", "#CC79A7"]
         for color_hex in self.quick_palette_colors:
             btn = tk.Button(
@@ -573,18 +573,18 @@ class SEMImageEditor:
         border_frame = ttk.Frame(color_frame)
         border_frame.pack(fill=tk.X, pady=(10, 0))
         
-        ttk.Label(border_frame, text="Grosor del borde: ").pack(side=tk.LEFT)
+        ttk.Label(border_frame, text="Border width: ").pack(side=tk.LEFT)
         self.border_width_var = tk.StringVar(value=str(self.border_width))
         border_entry = ttk.Entry(border_frame, textvariable=self.border_width_var, width=5)
         border_entry.pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Label(border_frame, text="píxeles").pack(side=tk.LEFT)
+        ttk.Label(border_frame, text="pixels").pack(side=tk.LEFT)
         
         # Cell size opcional
-        cellsize_frame = ttk.LabelFrame(config_window, text="Cell Size (Opcional)", padding=10)
+        cellsize_frame = ttk.LabelFrame(config_window, text="Cell Size (Optional)", padding=10)
         cellsize_frame.pack(fill=tk.X, padx=10, pady=5)
         
         self.cellsize_var = tk.BooleanVar(value=self.cell_size_enabled)
-        cellsize_check = ttk.Checkbutton(cellsize_frame, text="Añadir cell size (ø)", 
+        cellsize_check = ttk.Checkbutton(cellsize_frame, text="Add cell size (ø)", 
                                        variable=self.cellsize_var, command=self.toggle_cellsize)
         cellsize_check.pack(anchor=tk.W)
         
@@ -600,13 +600,13 @@ class SEMImageEditor:
         self.toggle_cellsize()
 
         # Overlay de densidad
-        density_frame = ttk.LabelFrame(config_window, text="Densidad (Opcional)", padding=10)
+        density_frame = ttk.LabelFrame(config_window, text="Density (Optional)", padding=10)
         density_frame.pack(fill=tk.X, padx=10, pady=5)
 
         self.density_enabled_var = tk.BooleanVar(value=self.density_overlay_enabled)
         density_check = ttk.Checkbutton(
             density_frame,
-            text="Añadir etiqueta de densidad",
+            text="Add density label",
             variable=self.density_enabled_var,
             command=self.toggle_density_controls
         )
@@ -637,7 +637,7 @@ class SEMImageEditor:
         density_value_frame = ttk.Frame(density_frame)
         density_value_frame.pack(fill=tk.X, pady=(5, 0))
 
-        ttk.Label(density_value_frame, text="Valor:").pack(side=tk.LEFT)
+        ttk.Label(density_value_frame, text="Value:").pack(side=tk.LEFT)
         self.density_value_var = tk.StringVar(value=self.density_value)
         self.density_entry = ttk.Entry(density_value_frame, textvariable=self.density_value_var, width=12)
         self.density_entry.pack(side=tk.LEFT, padx=(5, 5))
@@ -648,13 +648,13 @@ class SEMImageEditor:
         self.toggle_density_controls()
         
         # Longitud de escala
-        scale_frame = ttk.LabelFrame(config_window, text="Configuración de Escala", padding=10)
+        scale_frame = ttk.LabelFrame(config_window, text="Scale Configuration", padding=10)
         scale_frame.pack(fill=tk.X, padx=10, pady=5)
         
         scale_entry_frame = ttk.Frame(scale_frame)
         scale_entry_frame.pack(fill=tk.X)
         
-        ttk.Label(scale_entry_frame, text="Longitud de escala: ").pack(side=tk.LEFT)
+        ttk.Label(scale_entry_frame, text="Scale length: ").pack(side=tk.LEFT)
         self.scale_entry_var = tk.StringVar(value=str(int(self.scale_length_um)))
         scale_entry = ttk.Entry(scale_entry_frame, textvariable=self.scale_entry_var, width=10)
         scale_entry.pack(side=tk.LEFT, padx=(0, 5))
@@ -675,16 +675,16 @@ class SEMImageEditor:
                 raw_density_value = self.density_value_var.get().strip()
                 
                 if self.scale_length_um <= 0:
-                    raise ValueError("La longitud de escala debe ser positiva")
+                    raise ValueError("Scale length must be positive")
                 
                 if self.border_width < 1:
-                    raise ValueError("El grosor del borde debe ser al menos 1 píxel")
+                    raise ValueError("Border width must be at least 1 pixel")
                 
                 if self.cell_size_enabled and not self.cell_size_value:
-                    raise ValueError("Ingrese un valor para el cell size")
+                    raise ValueError("Enter a value for the cell size")
                 
                 if self.density_overlay_enabled and not raw_density_value:
-                    raise ValueError("Ingrese un valor para la densidad seleccionada")
+                    raise ValueError("Enter a value for the selected density")
                 
                 self.density_value = raw_density_value
                 
@@ -694,12 +694,12 @@ class SEMImageEditor:
             except ValueError as e:
                 messagebox.showerror("Error", str(e))
         
-        ttk.Button(button_frame, text="Aplicar", command=apply_config).pack(side=tk.RIGHT, padx=(5, 0))
-        ttk.Button(button_frame, text="Cancelar", command=config_window.destroy).pack(side=tk.RIGHT)
+        ttk.Button(button_frame, text="Apply", command=apply_config).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(button_frame, text="Cancel", command=config_window.destroy).pack(side=tk.RIGHT)
     
     def open_color_dialog(self, parent):
         dialog = tk.Toplevel(parent)
-        dialog.title("Seleccionar color")
+        dialog.title("Select color")
         dialog.transient(parent)
         dialog.grab_set()
         dialog.resizable(False, False)
@@ -726,9 +726,9 @@ class SEMImageEditor:
             if color[1]:
                 set_preview(color[1])
 
-        ttk.Button(dialog, text="Selector…", command=pick_from_dialog).grid(row=1, column=2, padx=(0, 12), pady=(0, 12))
+        ttk.Button(dialog, text="Picker...", command=pick_from_dialog).grid(row=1, column=2, padx=(0, 12), pady=(0, 12))
 
-        palette_frame = ttk.LabelFrame(dialog, text="Paleta rápida", padding=10)
+        palette_frame = ttk.LabelFrame(dialog, text="Quick palette", padding=10)
         palette_frame.grid(row=2, column=0, columnspan=3, padx=12, pady=(0, 12), sticky=tk.W)
         for idx, color_hex in enumerate(self.quick_palette_colors):
             btn = tk.Button(
@@ -752,23 +752,23 @@ class SEMImageEditor:
             self.set_border_color(normalized)
             dialog.destroy()
 
-        ttk.Button(button_frame, text="Cancelar", command=dialog.destroy).pack(side=tk.RIGHT, padx=(8, 0))
-        ttk.Button(button_frame, text="Aplicar", command=apply_color).pack(side=tk.RIGHT)
+        ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=(8, 0))
+        ttk.Button(button_frame, text="Apply", command=apply_color).pack(side=tk.RIGHT)
 
         hex_entry.focus()
 
     def _normalize_hex(self, raw_value):
         raw = (raw_value or "").strip()
         if not raw:
-            raise ValueError("El código HEX no puede estar vacío.")
+            raise ValueError("The HEX code cannot be empty.")
         if not raw.startswith("#"):
             raw = f"#{raw}"
         if len(raw) != 7:
-            raise ValueError("El código HEX debe tener el formato #RRGGBB.")
+            raise ValueError("The HEX code must use the format #RRGGBB.")
         try:
             int(raw[1:], 16)
         except ValueError:
-            raise ValueError("El código HEX contiene caracteres no válidos.")
+            raise ValueError("The HEX code contains invalid characters.")
         return raw.upper()
 
     def set_border_color(self, color_hex):
@@ -996,7 +996,7 @@ class SEMImageEditor:
     
     def save_image(self):
         if self.processed_image is None:
-            messagebox.showerror("Error", "Flujo de trabajo incorrecto. Complete todos los pasos anteriores.")
+            messagebox.showerror("Error", "Invalid workflow. Complete all previous steps.")
             return
         # Preparar nombre por defecto: nombre_original_edited + extensión original (si existe)
         initialfile = "image_edited.tiff"
@@ -1023,7 +1023,7 @@ class SEMImageEditor:
                 default_ext = ".tiff"
 
         file_path = filedialog.asksaveasfilename(
-            title="Guardar imagen procesada",
+            title="Save processed image",
             initialfile=initialfile,
             initialdir=initialdir,
             defaultextension=default_ext,
@@ -1031,7 +1031,7 @@ class SEMImageEditor:
                 ("TIFF files", "*.tiff *.tif"),
                 ("PNG files", "*.png"),
                 ("JPEG files", "*.jpg *.jpeg"),
-                ("Todos los archivos", "*.*")
+                ("All files", "*.*")
             ]
         )
 
@@ -1046,9 +1046,9 @@ class SEMImageEditor:
                 except Exception:
                     pass
 
-                messagebox.showinfo("Éxito", f"Imagen guardada en: {file_path}")
+                messagebox.showinfo("Success", f"Image saved to: {file_path}")
             except Exception as e:
-                messagebox.showerror("Error", f"No se pudo guardar la imagen: {str(e)}")
+                messagebox.showerror("Error", f"Could not save image: {str(e)}")
     
     def display_image_on_canvas(self):
         if self.current_image is None:
