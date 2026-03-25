@@ -45,7 +45,7 @@ SHAPE_BINS = 5
 SHAPE_MARKERS = ["o", "s", "^", "D", "v", "P", "X", "h", "*"]
 MISSING_LABEL = "Missing"
 CATEGORY_DECIMALS = {
-    "Water (g)": 1,
+    "Water (g)": 0,
 }
 
 

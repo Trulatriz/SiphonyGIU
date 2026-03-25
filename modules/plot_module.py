@@ -11,6 +11,7 @@ from tkinter import ttk, filedialog, messagebox
 import pandas as pd
 import numpy as np
 import matplotlib
+from matplotlib import ticker as mticker
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
@@ -1003,6 +1004,32 @@ class PlotModule:
             return f"${label}$"
         return label
 
+    @staticmethod
+    def _format_independent_value(display: str | None, value) -> str:
+        if value is None or (isinstance(value, float) and not np.isfinite(value)):
+            return "-"
+        try:
+            num = float(value)
+            if not np.isfinite(num):
+                return str(value)
+            if display in {"Water (g)", "Psat (MPa)"} and abs(num - round(num)) < 1e-9:
+                return str(int(round(num)))
+            if abs(num - round(num)) < 1e-9:
+                return str(int(round(num)))
+            return f"{num:.3g}"
+        except Exception:
+            return str(value)
+
+    def _apply_x_axis_formatter(self, x_display: str):
+        if x_display not in {"Water (g)", "Psat (MPa)"}:
+            self.ax.xaxis.set_major_formatter(mticker.ScalarFormatter())
+            return
+
+        def _formatter(value, _pos):
+            return self._format_independent_value(x_display, value)
+
+        self.ax.xaxis.set_major_formatter(mticker.FuncFormatter(_formatter))
+
     def _maybe_jitter(self, x_vals: np.ndarray):
         # Apply small jitter if many overlaps in X
         if x_vals.size == 0:
@@ -1241,6 +1268,7 @@ class PlotModule:
         if y_min is not None or y_max is not None:
             cur = self.ax.get_ylim()
             self.ax.set_ylim(y_min if y_min is not None else cur[0], y_max if y_max is not None else cur[1])
+        self._apply_x_axis_formatter(x_display)
 
         # Legends
         group_handles, group_labels = [], []
@@ -1270,7 +1298,7 @@ class PlotModule:
                     markeredgewidth=0.6,
                 )
                 group_handles.append(h)
-                group_labels.append(f"{combined_label} = {value}")
+                group_labels.append(f"{combined_label} = {self._format_independent_value(group_display, value)}")
         elif group_display:
             group_label = self._format_label(independent_latex(group_display))
             for gval in group_values:
@@ -1289,7 +1317,7 @@ class PlotModule:
                     markeredgewidth=0.6,
                 )
                 group_handles.append(h)
-                group_labels.append(f"{group_label} = {gval}")
+                group_labels.append(f"{group_label} = {self._format_independent_value(group_display, gval)}")
         if color_display and not combined_encoding:
             shape_label = self._format_label(independent_latex(color_display))
             for sval in shape_values:
@@ -1306,7 +1334,7 @@ class PlotModule:
                     markeredgewidth=0.6,
                 )
                 shape_handles.append(h)
-                shape_labels.append(f"{shape_label} = {sval}")
+                shape_labels.append(f"{shape_label} = {self._format_independent_value(color_display, sval)}")
 
         legend_right = 0.78 if (group_handles or shape_handles) else 0.95
         self.fig.subplots_adjust(left=0.12, right=legend_right, bottom=0.12, top=0.95)
