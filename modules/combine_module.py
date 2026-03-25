@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import pandas as pd
+import numpy as np
 import os
 import re
 import glob
@@ -19,6 +20,11 @@ DESV_RHO_FOAM_G = "Desvest \u03C1 foam (g/cm^3)"
 DESV_RHO_FOAM_KG = "Desvest \u03C1 foam (kg/m^3)"
 PDER_RHO_FOAM = "%DER \u03C1 foam (g/cm^3)"
 RHO_REL = "\u03C1\u1D63"  # ρ with subscript r
+DESV_RHO_REL = "Desvest \u03C1\u1D63"
+RSD_RHO_REL = "RSD \u03C1\u1D63 (%)"
+N0_COL = "N\u2080 (nuclei/cm^3)"
+DESV_N0_COL = "Desvest N\u2080 (nuclei/cm^3)"
+RSD_N0_COL = "RSD N\u2080 (%)"
 EXPANSION_COL = "X"
 
 BASE_NEW_COLUMN_ORDER = [
@@ -27,12 +33,13 @@ BASE_NEW_COLUMN_ORDER = [
     'Pi (MPa)', 'Pf (MPa)', 'PDR (MPa/s)',
     'n SEM images', '\u00F8 (\u00B5m)', 'Desvest \u00F8 (\u00B5m)', 'RSD \u00F8 (%)',
     'N\u1D65 (cells\u00B7cm^3)', 'Desvest N\u1D65 (cells\u00B7cm^3)', 'RSD N\u1D65 (%)',
-    RHO_FOAM_G, RHO_FOAM_KG, DESV_RHO_FOAM_G, DESV_RHO_FOAM_KG, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL,
+    N0_COL, DESV_N0_COL, RSD_N0_COL,
+    RHO_FOAM_G, RHO_FOAM_KG, DESV_RHO_FOAM_G, DESV_RHO_FOAM_KG, PDER_RHO_FOAM, RHO_REL, DESV_RHO_REL, RSD_RHO_REL, EXPANSION_COL,
     'OC (%)',
     'DSC Tm (\u00B0C)', 'DSC Xc (%)', 'DSC Tg (\u00B0C)'
 ]
 
-DENSITY_DATA_COLUMNS = [RHO_FOAM_G, RHO_FOAM_KG, DESV_RHO_FOAM_G, DESV_RHO_FOAM_KG, PDER_RHO_FOAM, RHO_REL, EXPANSION_COL]
+DENSITY_DATA_COLUMNS = [RHO_FOAM_G, RHO_FOAM_KG, DESV_RHO_FOAM_G, DESV_RHO_FOAM_KG, PDER_RHO_FOAM, RHO_REL, DESV_RHO_REL, RSD_RHO_REL, EXPANSION_COL]
 
 DOE_HEADER_CANDIDATES = {
     'Polymer': ['Polymer', 'Pol\u00EDmero'],
@@ -97,6 +104,60 @@ def _ensure_psat_column(df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
         df["Psat (MPa)"] = psat
     return df
+
+
+def _augment_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute derived density/cell-population columns without altering source data."""
+    if df is None or df.empty:
+        return df
+
+    out = df.copy()
+    def _num_series(column_name: str) -> pd.Series:
+        if column_name in out.columns:
+            return pd.to_numeric(out[column_name], errors="coerce")
+        return pd.Series(np.nan, index=out.index, dtype=float)
+
+    rho_f = _num_series(RHO_FOAM_G)
+    desv_rho_f = _num_series(DESV_RHO_FOAM_G)
+    rho_r = _num_series(RHO_REL)
+    nv = _num_series('N\u1D65 (cells\u00B7cm^3)')
+    desv_nv = _num_series('Desvest N\u1D65 (cells\u00B7cm^3)')
+
+    valid_rho_f = rho_f.notna() & (rho_f != 0)
+    valid_rho_r = rho_r.notna() & (rho_r != 0)
+    valid_nv = nv.notna() & (nv != 0)
+
+    rsd_rho_rel = pd.Series(np.nan, index=out.index, dtype=float)
+    rsd_rho_rel.loc[valid_rho_f] = (desv_rho_f.loc[valid_rho_f].abs() / rho_f.loc[valid_rho_f].abs()) * 100.0
+    desv_rho_rel = pd.Series(np.nan, index=out.index, dtype=float)
+    both_rho = valid_rho_r & rsd_rho_rel.notna()
+    desv_rho_rel.loc[both_rho] = rho_r.loc[both_rho].abs() * rsd_rho_rel.loc[both_rho] / 100.0
+
+    n0 = pd.Series(np.nan, index=out.index, dtype=float)
+    valid_n0 = nv.notna() & valid_rho_r
+    n0.loc[valid_n0] = nv.loc[valid_n0] / rho_r.loc[valid_n0]
+
+    rel_nv = pd.Series(np.nan, index=out.index, dtype=float)
+    rel_nv.loc[valid_nv] = desv_nv.loc[valid_nv].abs() / nv.loc[valid_nv].abs()
+    rel_rho = pd.Series(np.nan, index=out.index, dtype=float)
+    rel_rho.loc[valid_rho_r] = desv_rho_rel.loc[valid_rho_r].abs() / rho_r.loc[valid_rho_r].abs()
+
+    desv_n0 = pd.Series(np.nan, index=out.index, dtype=float)
+    valid_desv_n0 = n0.notna() & rel_nv.notna() & rel_rho.notna()
+    desv_n0.loc[valid_desv_n0] = n0.loc[valid_desv_n0].abs() * np.sqrt(
+        rel_nv.loc[valid_desv_n0] ** 2 + rel_rho.loc[valid_desv_n0] ** 2
+    )
+
+    rsd_n0 = pd.Series(np.nan, index=out.index, dtype=float)
+    valid_rsd_n0 = n0.notna() & (n0 != 0) & desv_n0.notna()
+    rsd_n0.loc[valid_rsd_n0] = (desv_n0.loc[valid_rsd_n0].abs() / n0.loc[valid_rsd_n0].abs()) * 100.0
+
+    out[DESV_RHO_REL] = desv_rho_rel
+    out[RSD_RHO_REL] = rsd_rho_rel
+    out[N0_COL] = n0
+    out[DESV_N0_COL] = desv_n0
+    out[RSD_N0_COL] = rsd_n0
+    return out
 
 class CombineModule:
     def __init__(self, root, paper_path=None):
@@ -869,6 +930,7 @@ class CombineModule:
                 if DESV_RHO_FOAM_G in all_data.columns:
                     all_data[DESV_RHO_FOAM_KG] = pd.to_numeric(all_data[DESV_RHO_FOAM_G], errors='coerce') * 1000
                 all_data = _ensure_psat_column(all_data)
+                all_data = _augment_derived_columns(all_data)
                 for col in self.new_column_order:
                     if col not in all_data.columns:
                         all_data[col] = pd.NA
@@ -948,6 +1010,7 @@ class CombineModule:
             })
             out[RHO_FOAM_KG] = _normalize_numeric_series(out[RHO_FOAM_G]) * 1000
             out[DESV_RHO_FOAM_KG] = _normalize_numeric_series(out[DESV_RHO_FOAM_G]) * 1000
+            out = _augment_derived_columns(out)
             return out[['Label'] + DENSITY_DATA_COLUMNS].dropna(subset=['Label'])
         except Exception:
             return pd.DataFrame(columns=fallback)
@@ -1192,6 +1255,7 @@ class CombineModule:
 
         df = pd.DataFrame(rows)
         df = _ensure_psat_column(df)
+        df = _augment_derived_columns(df)
         for col in self.new_column_order:
             if col not in df.columns:
                 df[col] = pd.NA

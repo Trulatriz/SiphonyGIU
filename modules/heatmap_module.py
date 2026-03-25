@@ -22,7 +22,9 @@ INDEPENDENTS = [
 DEPENDENTS = [
     "\u00F8 (\u00B5m)",
     "N\u1D65 (cells\u00B7cm^3)",
+    "N\u2080 (nuclei/cm^3)",
     "\u03C1 foam (g/cm^3)",
+    "\u03C1\u1D63",
     "OC (%)",
     "DSC Tm (\u00B0C)",
     "DSC Tg (\u00B0C)",

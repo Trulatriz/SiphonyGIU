@@ -270,14 +270,14 @@ class OCModule:
         self.selected_picnometry_files = []
         folder = self.picnometry_folder or self.picnometry_folder_var.get()
         if not folder:
-            messagebox.showwarning("No folder", "Please select an Input Folder first.")
+            messagebox.showwarning("Warning", "Please select an input folder first.")
             return
         excel_files = []
         for ext in ("*.xlsx", "*.xls"):
             excel_files.extend(glob.glob(os.path.join(folder, ext)))
         excel_files = sorted(excel_files)
         if not excel_files:
-            messagebox.showinfo("Info", "No Excel files found in the selected folder")
+            messagebox.showinfo("Information", "No Excel files were found in the selected folder.")
             self.update_file_tree([])
             return
         self.selected_picnometry_files = excel_files
@@ -367,7 +367,7 @@ class OCModule:
             sug = self.foam_manager.get_suggested_paths("OC", self.current_foam_type)
             target = sug.get("results_file") if sug else None
             if not target:
-                messagebox.showerror("Error", "No results file path configured. Set an Output Folder first.")
+                messagebox.showerror("Error", "No results file path is configured. Please select an output folder first.")
                 return
             self.results_file_var.set(target)
         
@@ -435,10 +435,10 @@ class OCModule:
     def process_files(self):
         selected_files = self.get_selected_files()
         if not selected_files:
-            messagebox.showerror("Error", "No files selected for processing. Check files in the list.")
+            messagebox.showerror("Error", "Please select at least one file to process.")
             return
         if not self.output_folder:
-            messagebox.showerror("Error", "Output folder not selected.")
+            messagebox.showerror("Error", "Please select an output folder first.")
             return
         os.makedirs(self.output_folder, exist_ok=True)
 
@@ -446,7 +446,7 @@ class OCModule:
             density_df = self._load_density_dataframe()
         except Exception as e:
             density_df = None
-            messagebox.showwarning("Warning", f"Density file not loaded: {e}")
+            messagebox.showwarning("Warning", f"The density file could not be loaded: {e}")
 
         foam_class = self.instrument_var.get()
 
@@ -958,7 +958,7 @@ class OCModule:
         """Apply edit values to selected row"""
         selection = self.review_tree.selection()
         if not selection:
-            messagebox.showwarning("No Selection", "Please select a row to edit.")
+            messagebox.showwarning("Warning", "Please select a row to edit.")
             return
 
         item_id = selection[0]
@@ -982,7 +982,7 @@ class OCModule:
         filepath = base_data.get('filepath')
         filename = base_data.get('filename', 'Unknown')
         if not filepath:
-            messagebox.showerror("Error", "Missing original file path for reprocessing.")
+            messagebox.showerror("Error", "The original file path is missing for reprocessing.")
             return
 
         ok, new_data = self.process_single_file(filepath, density_df, instrument=instrument)
@@ -1073,7 +1073,7 @@ class OCModule:
             target_file = self.results_file_var.get() or os.path.join(self.output_folder or "", self.get_output_filename())
             messagebox.showinfo("Success", f"Saved {len(excel_data)} results to {os.path.basename(target_file)}")
         except Exception as e:
-            messagebox.showerror("Error", f"Error saving results: {e}")
+            messagebox.showerror("Error", f"Failed to save results: {e}")
 
     def save_results(self, results_list):
         # Determine results file path

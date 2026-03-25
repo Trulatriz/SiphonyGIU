@@ -739,7 +739,7 @@ class PressTechGUI:
             if os.path.exists(doc_path):
                 webbrowser.open(f"file://{doc_path}")
             else:
-                messagebox.showinfo("Documentation", "Documentation files not found.")
+                messagebox.showinfo("Information", "Documentation files were not found.")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open documentation: {str(e)}")
     
@@ -751,7 +751,7 @@ class PressTechGUI:
             if os.path.exists(help_path):
                 webbrowser.open(f"file://{help_path}")
             else:
-                messagebox.showinfo("Help", "HELP.md was not found in the application folder.")
+                messagebox.showinfo("Information", "HELP.md was not found in the application folder.")
         except Exception as e:
             messagebox.showerror("Error", f"Could not open help: {str(e)}")
     

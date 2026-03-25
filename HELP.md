@@ -238,12 +238,17 @@ Funciones relevantes:
 - `Nv (cells*cm^3)`
 - `Desvest Nv (cells*cm^3)`
 - `RSD Nv (%)`
+- `N₀ (nuclei/cm^3)`
+- `Desvest N₀ (nuclei/cm^3)`
+- `RSD N₀ (%)`
 - `rho foam (g/cm^3)`
 - `rho foam (kg/m^3)`
 - `Desvest rho foam (g/cm^3)`
 - `Desvest rho foam (kg/m^3)`
 - `%DER rho foam (g/cm^3)`
 - `rho_r`
+- `Desvest rho_r`
+- `RSD rho_r (%)`
 - `X`
 - `OC (%)`
 - `DSC Tm (degC)`
@@ -256,6 +261,11 @@ Comportamiento relevante:
 - escribe una hoja global `All_Results` y hojas por foam type
 - mueve resultados anteriores a `Previous results`
 - copia tambien el nuevo resultado a `Previous results`
+- calcula `Psat (MPa)` desde `P CO2 (bar)` si hace falta
+- calcula `Desvest rho_r` y `RSD rho_r (%)` a partir de `rho foam`, `Desvest rho foam` y `rho_r`
+- calcula `N₀ = Nv / rho_r`
+- calcula `Desvest N₀` por propagacion de error usando la desviacion de `Nv` y la de `rho_r`
+- calcula `RSD N₀ (%)` a partir de `N₀` y `Desvest N₀`
 
 ## 7. Scatter plots
 
@@ -274,6 +284,7 @@ Funciones importantes:
 - filtros y constancy rule
 - agrupacion por color y/o forma
 - barras de error cuando existe la desviacion correspondiente
+- disponibles tambien para `N₀` y `rho_r` si el `All_Results` incluye sus columnas derivadas
 - exportacion de figura
 - copia al portapapeles en Windows
 - exportacion de datos filtrados con JSON de reproduccion
@@ -297,6 +308,7 @@ Funciones:
 
 - seleccion por hoja
 - seleccion multiple de columnas independientes y dependientes
+- pueden incluir columnas derivadas como `N₀ (nuclei/cm^3)` y `rho_r`
 - metodos:
   - `Spearman`
   - `Pearson`

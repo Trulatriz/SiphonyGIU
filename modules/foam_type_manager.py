@@ -765,7 +765,7 @@ class FoamTypeSelector:
                     
                 messagebox.showinfo("Success", f"Foam type '{new_type}' added successfully!")
             else:
-                messagebox.showwarning("Warning", f"Foam type '{new_type}' already exists!")
+                messagebox.showwarning("Warning", f"Foam type '{new_type}' already exists.")
     
     def remove_foam_type(self):
         """Remove current foam type"""
@@ -773,7 +773,7 @@ class FoamTypeSelector:
         
         current_type = self.foam_var.get()
         if len(self.foam_manager.get_foam_types()) <= 1:
-            messagebox.showwarning("Warning", "Cannot remove the last foam type!")
+            messagebox.showwarning("Warning", "The last foam type cannot be removed.")
             return
         
         result = messagebox.askyesno("Confirm Remove", f"Remove foam type '{current_type}' and all its saved paths?")
@@ -922,7 +922,7 @@ class PaperSelector:
         from tkinter import messagebox
         current = self.paper_var.get()
         if len(self.foam_manager.get_papers()) <= 1:
-            messagebox.showwarning("Warning", "Cannot remove the last paper!")
+            messagebox.showwarning("Warning", "The last paper cannot be removed.")
             return
         foams = self.foam_manager.get_foam_types_for_paper(current)
         warning = f"Remove paper '{current}' and its saved paths?"
@@ -1454,7 +1454,7 @@ class AdditiveManagerDialog:
         foam = self.foam_var.get()
         additive = self.additive_var.get().strip()
         if not foam or not additive:
-            messagebox.showwarning("Missing information", "Select a foam and enter an additive.")
+            messagebox.showwarning("Warning", "Select a foam and enter an additive.")
             return
         loads = self._parse_loadings(self.loadings_var.get())
         self.formulations.setdefault(foam, {})[additive] = loads
@@ -1656,10 +1656,10 @@ class ManagePapersDialog:
             return
         base = self.foam_manager.get_paper_root_path(paper)
         if not base:
-            messagebox.showwarning("No folder", "This paper does not have a base directory assigned.")
+            messagebox.showwarning("Warning", "This paper does not have a base directory assigned.")
             return
         if not os.path.exists(base):
-            messagebox.showwarning("Missing folder", f"Folder not found:\n{base}")
+            messagebox.showwarning("Warning", f"Folder not found:\n{base}")
             return
         try:
             os.startfile(base)
@@ -1678,7 +1678,7 @@ class ManagePapersDialog:
         if not messagebox.askyesno("Confirm delete", warning):
             return
         if not self.foam_manager.remove_paper(paper):
-            messagebox.showwarning("Cannot delete", "At least one paper must remain in the workspace.")
+            messagebox.showwarning("Warning", "At least one paper must remain in the workspace.")
             return
         messagebox.showinfo("Paper deleted", f"Paper '{paper}' has been removed.")
         self._populate_tree()
@@ -1695,7 +1695,7 @@ class ManagePapersDialog:
             return
         new_name = new_name.strip()
         if not new_name:
-            messagebox.showwarning("Invalid name", "Please enter a valid paper name.")
+            messagebox.showwarning("Warning", "Please enter a valid paper name.")
             return
         base = self.foam_manager.get_paper_root_path(paper)
         move_folder = False
@@ -1937,7 +1937,7 @@ class ManageFoamsDialog:
 
         selected = [foam for foam, var in self.available_foam_vars.items() if var.get()]
         if not selected:
-            messagebox.showinfo("No Selection", "Select at least one foam to add.")
+            messagebox.showinfo("Information", "Select at least one foam to add.")
             return
 
         for foam in selected:
@@ -1954,7 +1954,7 @@ class ManageFoamsDialog:
 
         selected = [foam for foam, var in self.unused_foam_vars.items() if var.get()]
         if not selected:
-            messagebox.showinfo("No Selection", "Select at least one foam to delete.")
+            messagebox.showinfo("Information", "Select at least one foam to delete.")
             return
 
         if not messagebox.askyesno(
@@ -1990,7 +1990,7 @@ class ManageFoamsDialog:
         if not custom:
             return
         if custom in self.current_foam_vars or custom in self.available_foam_vars:
-            messagebox.showwarning("Duplicate", f"Foam type '{custom}' is already listed.")
+            messagebox.showwarning("Warning", f"Foam type '{custom}' is already listed.")
             return
 
         self.foam_manager.add_foam_type(custom)

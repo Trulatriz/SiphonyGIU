@@ -233,14 +233,14 @@ class DSCModule:
         self.selected_dsc_files = []
         folder = self.input_folder or self.input_folder_var.get()
         if not folder:
-            messagebox.showwarning("No folder", "Please select a DSC Files Folder first.")
+            messagebox.showwarning("Warning", "Please select a DSC files folder first.")
             return
         
         txt_files = glob.glob(os.path.join(folder, "*.txt"))
         txt_files = sorted(txt_files)
         
         if not txt_files:
-            messagebox.showinfo("Info", "No DSC text files found in the selected folder")
+            messagebox.showinfo("Information", "No DSC text files were found in the selected folder.")
             self.update_file_tree([])
             return
         
@@ -286,7 +286,7 @@ class DSCModule:
                 # If we have output folder, construct the path
                 target = os.path.join(self.output_folder, self.get_output_filename())
             else:
-                messagebox.showerror("Error", "No results file path configured. Set an Output Folder first.")
+                messagebox.showerror("Error", "No results file path is configured. Please select an output folder first.")
                 return
             self.results_file_var.set(target)
         
@@ -340,10 +340,10 @@ class DSCModule:
     def process_files(self):
         selected_files = self.get_selected_files()
         if not selected_files:
-            messagebox.showerror("Error", "No files selected for processing. Check files in the list.")
+            messagebox.showerror("Error", "Please select at least one DSC file to process.")
             return
         if not self.output_folder:
-            messagebox.showerror("Error", "Output folder not selected.")
+            messagebox.showerror("Error", "Please select an output folder first.")
             return
         
         os.makedirs(self.output_folder, exist_ok=True)
@@ -554,7 +554,7 @@ class DSCModule:
 
         if not new_data:
             print("No new samples to add. Excel file is already up to date.")
-            messagebox.showinfo("Info", "No new samples to add. Excel file is already up to date.")
+            messagebox.showinfo("Information", "No new samples were found. The Excel file is already up to date.")
             return
 
         # Combine data and save

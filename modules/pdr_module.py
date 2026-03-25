@@ -258,7 +258,7 @@ class PDRModule:
     def scan_csv_files(self):
         """Scan input folder for CSV files"""
         if not self.input_folder:
-            messagebox.showerror("Error", "Please select input folder first")
+            messagebox.showerror("Error", "Please select an input folder first.")
             return
             
         # Clear existing items
@@ -269,7 +269,7 @@ class PDRModule:
             csv_files = [f for f in os.listdir(self.input_folder) if f.endswith('.csv')]
             
             if not csv_files:
-                messagebox.showwarning("Warning", "No CSV files found in the selected folder")
+                messagebox.showwarning("Warning", "No CSV files were found in the selected folder.")
                 return
                 
             for csv_file in csv_files:
@@ -283,7 +283,7 @@ class PDRModule:
             self.status_var.set(f"Found {len(csv_files)} CSV files")
             
         except Exception as e:
-            messagebox.showerror("Error", f"Error scanning folder: {str(e)}")
+            messagebox.showerror("Error", f"Failed to scan the input folder: {str(e)}")
             
     def select_all_files(self):
         """Select all files in the tree"""
@@ -309,7 +309,7 @@ class PDRModule:
         """Process selected CSV files"""
         # Validation
         if not self.input_folder or not self.output_folder:
-            messagebox.showerror("Error", "Please select both input and output folders")
+            messagebox.showerror("Error", "Please select both an input folder and an output folder.")
             return
             
         # Check if registros file is needed
@@ -338,7 +338,7 @@ class PDRModule:
             
         selected_items = self.file_tree.selection()
         if not selected_items:
-            messagebox.showerror("Error", "Please select at least one CSV file to process")
+            messagebox.showerror("Error", "Please select at least one CSV file to process.")
             return
             
         # Get selected filenames
@@ -396,7 +396,7 @@ class PDRModule:
         if error_count == 0:
             messagebox.showinfo("Success", message)
         else:
-            messagebox.showwarning("Completed with errors", message)
+            messagebox.showwarning("Warning", message)
             
         self.status_var.set(f"Processing complete: {processed_count} processed, {error_count} errors")
         
@@ -894,7 +894,7 @@ class PDRModule:
         else:
             # File doesn't exist or not selected, ask to create
             if not self.output_folder:
-                messagebox.showerror("Error", "Please select output folder first")
+                messagebox.showerror("Error", "Please select an output folder first.")
                 return
                 
             response = messagebox.askyesno(

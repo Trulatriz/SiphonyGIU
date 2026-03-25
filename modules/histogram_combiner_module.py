@@ -341,14 +341,14 @@ class HistogramCombinerModule:
                     pass
             output_file = os.path.join(output_folder, f'SEM_Results_{foam}.xlsx') if output_folder else self.output_file_var.get()
             if not input_folder or not os.path.isdir(input_folder):
-                messagebox.showerror("Error", "Please select a valid input folder")
+                messagebox.showerror("Error", "Please select a valid input folder.")
                 return
             if not output_folder or not os.path.isdir(output_folder):
-                messagebox.showerror("Error", "Please select a valid output folder")
+                messagebox.showerror("Error", "Please select a valid output folder.")
                 return
             files = glob.glob(os.path.join(input_folder, 'histogram_*.xlsx'))
             if not files:
-                messagebox.showwarning("Warning", "No histogram files found in the selected folder")
+                messagebox.showwarning("Warning", "No histogram files were found in the selected folder.")
                 return
             labels = []
             for fp in files:
@@ -356,7 +356,7 @@ class HistogramCombinerModule:
                 if m:
                     labels.append(m.group(1))
             if not labels:
-                messagebox.showerror("Error", "No valid histogram files found")
+                messagebox.showerror("Error", "No valid histogram files were found.")
                 return
             rows = []
             for label in labels:
@@ -368,7 +368,7 @@ class HistogramCombinerModule:
                     row.update(data)
                     rows.append(row)
             if not rows:
-                messagebox.showerror("Error", "No data could be extracted from histogram files")
+                messagebox.showerror("Error", "No data could be extracted from the histogram files.")
                 return
             df = pd.DataFrame(rows)
             # Ensure columns and order
@@ -380,7 +380,7 @@ class HistogramCombinerModule:
             with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
                 df.to_excel(writer, sheet_name='Combined_Results', index=False)
             self.status_var.set(f"Successfully combined {len(rows)} samples")
-            messagebox.showinfo("Success", f"Histogram data combined successfully!\nProcessed: {len(rows)} samples\nOutput: {output_file}")
+            messagebox.showinfo("Success", f"Histogram data were combined successfully.\nProcessed: {len(rows)} samples\nOutput: {output_file}")
         except Exception as e:
             self.status_var.set(str(e))
             messagebox.showerror("Error", str(e))

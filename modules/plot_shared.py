@@ -17,6 +17,9 @@ RHO_FOAM_KG = "\u03c1 foam (kg/m^3)"
 RHO_REL = "\u03c1\u1d63"
 DESV_RHO_FOAM_G = "Desvest \u03c1 foam (g/cm^3)"
 DESV_RHO_FOAM_KG = "Desvest \u03c1 foam (kg/m^3)"
+DESV_RHO_REL = "Desvest \u03c1\u1d63"
+N0_COL = "N\u2080 (nuclei/cm^3)"
+DESV_N0_COL = "Desvest N\u2080 (nuclei/cm^3)"
 
 # Exact canonical column names from CombineModule.new_column_order
 INDEPENDENT_OPTIONS = [
@@ -40,6 +43,7 @@ INDEPENDENT_LATEX = {display: latex for display, _column, latex in INDEPENDENT_O
 DEPENDENT_OPTIONS = [
     ("\u00f8 (\u00b5m)", "\u00f8 (\u00b5m)", r"$\varnothing\;(\mu\mathrm{m})$"),
     ("N\u1d65 (cells\u00b7cm^3)", "N\u1d65 (cells\u00b7cm^3)", r"$N_{\mathrm{v}}\;(\mathrm{cells}/\mathrm{cm}^3)$"),
+    ("N\u2080 (nuclei/cm^3)", N0_COL, r"$N_{0}\;(\mathrm{nuclei}/\mathrm{cm}^3)$"),
     ("\u03c1f (g/cm^3)", RHO_FOAM_G, r"$\rho_{f}\;(\mathrm{g}/\mathrm{cm}^3)$"),
     ("\u03c1f (kg/m^3)", RHO_FOAM_KG, r"$\rho_{f}\;(\mathrm{kg}/\mathrm{m}^3)$"),
     ("\u03c1\u1d63", RHO_REL, r"$\rho_{r}$"),
@@ -61,8 +65,10 @@ DEPENDENTS = DEPENDENT_LABELS
 DEPENDENT_TO_DEVIATION = {
     "\u00f8 (\u00b5m)": "Desvest \u00f8 (\u00b5m)",
     "N\u1d65 (cells\u00b7cm^3)": "Desvest N\u1d65 (cells\u00b7cm^3)",
+    "N\u2080 (nuclei/cm^3)": DESV_N0_COL,
     "\u03c1f (g/cm^3)": DESV_RHO_FOAM_G,
     "\u03c1f (kg/m^3)": DESV_RHO_FOAM_KG,
+    "\u03c1\u1d63": DESV_RHO_REL,
 }
 
 DEVIATIONS = DEPENDENT_TO_DEVIATION.copy()
